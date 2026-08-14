@@ -8,6 +8,8 @@ English | [中文](README.zh.md)
 
 On `agent/session-start`, the plugin creates the initial root plan when absent and selects the Contextify compiler. Each plan snapshot records path ancestry, the active and mainline paths, and explicit include/exclude overrides. Each route assigns one turn to a path and parent node. Compilation walks the active path to its root, applies overrides, and always restores messages from the current turn.
 
+The `contextify` service exposes generated Remote reads and compare-and-set mutations for graph paging, branch creation, path selection, returning to mainline, and natural/include/exclude node modes. Mutations are accepted only for the exact live idle Agent and the current plan revision. Assistant tool calls and their tool results form one closed selection group, so an override can never send a broken tool exchange to the model.
+
 The compiler rejects non-monotonic plans, duplicate or cyclic paths, missing active paths, duplicate routes, stale route revisions, missing route parents, and overrides that reference no message node. Root-only histories remain equivalent to the ordinary Harness surface.
 
 ## Model Experience
@@ -28,7 +30,6 @@ Staying on a path preserves its stable prefix. Switching paths or changing an ea
 
 ## Known Limitations and Deferred Work
 
-- **Domain/compiler foundation only** — the mutation service, graph paging, browser runtime, and pinned Context Map panel are the next delivery stages.
-- **Tool exchange closure pending** — include/exclude currently operates on individual message nodes; the service must not expose tool-node mutation until whole-exchange closure lands.
+- **Bounded refresh latency** — the Web panel refreshes the graph at a 1.5-second interval while mounted; a dedicated Contextify projection/event channel can replace this polling later.
 - **Compaction projection pending** — replacement events are not yet represented as expandable shadow relationships.
-- **In-repository incubation** — the package currently lives in the Harness fork so its compiler seam and replay rules can be verified together; extraction to `dsh-plugin-contextify` follows the complete Host/Client package.
+- **In-repository incubation** — the package currently lives in the Harness fork so its compiler seam, Remote boundary, and replay rules can be verified together; it can be extracted to a plugin repository after the API stabilizes.

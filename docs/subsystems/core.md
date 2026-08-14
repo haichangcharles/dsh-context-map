@@ -765,6 +765,69 @@ Types: [Session](session.md)
 
 Source: [`packages/context/context-compiler/src/index.ts:108`](../../packages/context/context-compiler/src/index.ts)
 
+<a id="ctxcontextify--contextifyservice"></a>
+
+### `ctx.contextify` — `ContextifyService`
+
+Durable Contextify state, mutations, routing, graph reads, and compiler registration.
+
+```ts cordis-catalog
+/**
+ * Read the current detached view for one live Agent.
+ * @param agent - Live Agent whose Session owns the Contextify plan.
+ * @returns A transport-safe snapshot of the current plan and selection counts.
+ */
+@Remote('get') get(agent: Agent): ContextifyView
+
+/**
+ * Create and select a child path anchored at an existing node.
+ * @param agent - Live Agent whose Session will receive the durable plan event.
+ * @param ref - Expected plan revision used for compare-and-swap safety.
+ * @param anchorSeq - Message event sequence from which the new path diverges.
+ * @param label - Optional human-readable path label.
+ * @returns The view after committing and selecting the child path.
+ */
+@Remote('createBranch') createBranch(agent: Agent, ref: ContextPlanRef, anchorSeq: number, label?: string): ContextifyView
+
+/**
+ * Select one active path without creating another Session.
+ * @param agent - Live Agent whose Contextify plan will change.
+ * @param ref - Expected plan revision used for compare-and-swap safety.
+ * @param pathId - Existing active path to select.
+ * @returns The view after selecting the requested path.
+ */
+@Remote('selectPath') selectPath(agent: Agent, ref: ContextPlanRef, pathId: ContextPathId): ContextifyView
+
+/**
+ * Select the durable mainline path.
+ * @param agent - Live Agent whose Contextify plan will change.
+ * @param ref - Expected plan revision used for compare-and-swap safety.
+ * @returns The current view, after switching when necessary.
+ */
+@Remote('returnToMainline') returnToMainline(agent: Agent, ref: ContextPlanRef): ContextifyView
+
+/**
+ * Set or clear one explicit message selection override.
+ * @param agent - Live Agent whose Contextify plan will change.
+ * @param ref - Expected plan revision used for compare-and-swap safety.
+ * @param seq - Message event sequence whose selection mode will change.
+ * @param mode - Natural path behavior or an explicit include/exclude override.
+ * @returns The view after committing the new override set.
+ */
+@Remote('setNodeMode') setNodeMode(agent: Agent, ref: ContextPlanRef, seq: number, mode: 'natural' | 'include' | 'exclude'): ContextifyView
+
+/**
+ * Return a bounded detached graph page.
+ * @param agent - Live Agent whose Session graph will be read.
+ * @param afterSeq - Exclusive event-sequence cursor; omitted to read from the start.
+ * @param limit - Maximum records to return, from 1 through 500.
+ * @returns A transport-safe page of graph nodes and previews.
+ */
+@Remote('graphPage') graphPage(agent: Agent, afterSeq?: number, limit?: number): ContextGraphPage
+```
+
+Source: [`packages/context/contextify/src/index.ts:236`](../../packages/context/contextify/src/index.ts)
+
 <a id="agent-events"></a>
 
 ### `agent/*` events

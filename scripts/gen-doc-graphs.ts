@@ -356,6 +356,15 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Selects a versioned compiler per durable session; providers choose logged event sequences while the registry validates and derives the exact model-visible messages.',
   },
   {
+    key: 'contextify',
+    pkg: 'contextify',
+    title: 'Durable context graph and path controller',
+    mode: 'core',
+    consumers: ['api-remotes'],
+    companions: ['context-compiler', 'ui-contextify'],
+    note: 'Folds same-Session message ancestry, commits revisioned path and selection plans, and registers the contextify@1 compiler used by the next admitted model request.',
+  },
+  {
     key: 'goals',
     pkg: 'goal',
     title: 'Same-session goal domain',

@@ -12,6 +12,7 @@
     { "path": "../context-compiler" },
     { "path": "../../runtime-diagnostics/invariants" },
     { "path": "../../llm/llm" },
-    { "path": "../../core/session" }
+    { "path": "../../core/session" },
+    { "path": "../../typert/protocol" }
   ]
 }

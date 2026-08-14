@@ -528,6 +528,49 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'contextify',
+    summary: 'Durable Contextify state, mutations, routing, graph reads, and compiler registration.',
+    description: 'Durable Contextify state, mutations, routing, graph reads, and compiler registration.',
+    methods: [
+      {
+        signature: '@Remote(\'get\') get(agent: Agent): ContextifyView',
+        description: 'Read the current detached view for one live Agent.',
+        parameters: [{ name: 'agent', description: 'Live Agent whose Session owns the Contextify plan.' }],
+        returns: 'A transport-safe snapshot of the current plan and selection counts.',
+      },
+      {
+        signature: '@Remote(\'createBranch\') createBranch(agent: Agent, ref: ContextPlanRef, anchorSeq: number, label?: string): ContextifyView',
+        description: 'Create and select a child path anchored at an existing node.',
+        parameters: [{ name: 'agent', description: 'Live Agent whose Session will receive the durable plan event.' }, { name: 'ref', description: 'Expected plan revision used for compare-and-swap safety.' }, { name: 'anchorSeq', description: 'Message event sequence from which the new path diverges.' }, { name: 'label', description: 'Optional human-readable path label.' }],
+        returns: 'The view after committing and selecting the child path.',
+      },
+      {
+        signature: '@Remote(\'selectPath\') selectPath(agent: Agent, ref: ContextPlanRef, pathId: ContextPathId): ContextifyView',
+        description: 'Select one active path without creating another Session.',
+        parameters: [{ name: 'agent', description: 'Live Agent whose Contextify plan will change.' }, { name: 'ref', description: 'Expected plan revision used for compare-and-swap safety.' }, { name: 'pathId', description: 'Existing active path to select.' }],
+        returns: 'The view after selecting the requested path.',
+      },
+      {
+        signature: '@Remote(\'returnToMainline\') returnToMainline(agent: Agent, ref: ContextPlanRef): ContextifyView',
+        description: 'Select the durable mainline path.',
+        parameters: [{ name: 'agent', description: 'Live Agent whose Contextify plan will change.' }, { name: 'ref', description: 'Expected plan revision used for compare-and-swap safety.' }],
+        returns: 'The current view, after switching when necessary.',
+      },
+      {
+        signature: '@Remote(\'setNodeMode\') setNodeMode(agent: Agent, ref: ContextPlanRef, seq: number, mode: \'natural\' | \'include\' | \'exclude\'): ContextifyView',
+        description: 'Set or clear one explicit message selection override.',
+        parameters: [{ name: 'agent', description: 'Live Agent whose Contextify plan will change.' }, { name: 'ref', description: 'Expected plan revision used for compare-and-swap safety.' }, { name: 'seq', description: 'Message event sequence whose selection mode will change.' }, { name: 'mode', description: 'Natural path behavior or an explicit include/exclude override.' }],
+        returns: 'The view after committing the new override set.',
+      },
+      {
+        signature: '@Remote(\'graphPage\') graphPage(agent: Agent, afterSeq?: number, limit?: number): ContextGraphPage',
+        description: 'Return a bounded detached graph page.',
+        parameters: [{ name: 'agent', description: 'Live Agent whose Session graph will be read.' }, { name: 'afterSeq', description: 'Exclusive event-sequence cursor; omitted to read from the start.' }, { name: 'limit', description: 'Maximum records to return, from 1 through 500.' }],
+        returns: 'A transport-safe page of graph nodes and previews.',
+      },
+    ],
+  },
+  {
     key: 'credentials',
     summary: 'Abstract credential service.',
     description: 'Abstract credential service. Providers implement the four operations over their source layers; one seam-wide rule binds them all: an empty stored value is absent everywhere — `resolve` skips it, `describe` reports it unconfigured — so a blank never masquerades as a configured secret.',
@@ -2887,6 +2930,42 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ContextFormed',
     declaration: 'export type ContextFormed = {\n    readonly form?: never;\n} | {\n    readonly form: \'instructions\';\n} | {\n    readonly form: \'catalog\';\n} | {\n    readonly form: \'snapshot\';\n    readonly sections: readonly ContextSnapshotSection[];\n} | {\n    readonly form: \'notice\';\n    readonly summary: string;\n} | {\n    readonly form: \'relay\';\n} | {\n    readonly form: \'recall\';\n};',
+  },
+  {
+    name: 'ContextGraphNode',
+    declaration: 'export interface ContextGraphNode {\n    readonly seq: number;\n    readonly parentSeq: number | null;\n    readonly pathId: ContextPathId;\n    readonly turn: number | null;\n    readonly role: \'user\' | \'assistant\';\n    readonly sourceKind: string;\n    readonly locked: boolean;\n}',
+  },
+  {
+    name: 'ContextGraphPage',
+    declaration: 'export interface ContextGraphPage {\n    readonly asOfSeq: number;\n    readonly records: readonly ContextGraphRecord[];\n    readonly nextAfterSeq?: number;\n}',
+  },
+  {
+    name: 'ContextGraphRecord',
+    declaration: 'export interface ContextGraphRecord extends ContextGraphNode {\n    readonly preview: string;\n}',
+  },
+  {
+    name: 'ContextifyView',
+    declaration: 'export interface ContextifyView {\n    readonly plan: ContextPlanSnapshot;\n    readonly graphAsOfSeq: number;\n    readonly activeTipSeq: number | null;\n    readonly selectedCount: number;\n    readonly totalNodeCount: number;\n}',
+  },
+  {
+    name: 'ContextNodeOverride',
+    declaration: 'export interface ContextNodeOverride {\n    readonly seq: number;\n    readonly mode: \'include\' | \'exclude\';\n}',
+  },
+  {
+    name: 'ContextPath',
+    declaration: 'export interface ContextPath {\n    readonly id: ContextPathId;\n    readonly parentPathId: ContextPathId | null;\n    readonly anchorSeq: number | null;\n    readonly label: string;\n    readonly status: \'active\' | \'archived\';\n}',
+  },
+  {
+    name: 'ContextPathId',
+    declaration: 'export type ContextPathId = Branded<\'ContextPathId\'>;',
+  },
+  {
+    name: 'ContextPlanRef',
+    declaration: 'export interface ContextPlanRef {\n    readonly revision: number;\n}',
+  },
+  {
+    name: 'ContextPlanSnapshot',
+    declaration: 'export interface ContextPlanSnapshot {\n    readonly kind: \'contextify/plan\';\n    readonly version: 1;\n    readonly revision: number;\n    readonly mainlinePathId: ContextPathId;\n    readonly activePathId: ContextPathId;\n    readonly paths: readonly ContextPath[];\n    readonly overrides: readonly ContextNodeOverride[];\n}',
   },
   {
     name: 'ContextSelection',

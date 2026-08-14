@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import AgentRegistry from '@deepseek-ai/dsh-agent'
 import ContextCompilerRegistry from '@deepseek-ai/dsh-context-compiler'
-import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
+import { CallId, createAssistantMessage, createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import {
   ContextPathId,
-  apply,
+  ContextifyService,
   compileContextify,
   createInitialContextPlan,
   type ContextPlanSnapshot,
@@ -105,8 +106,9 @@ describe('Contextify compiler', () => {
 
   it('registers as the real Harness compiler provider', async () => {
     const ctx = new Context()
+    await ctx.plugin(AgentRegistry)
     await ctx.plugin(ContextCompilerRegistry)
-    apply(ctx)
+    await ctx.plugin(ContextifyService).await()
     const session = Session.create(SessionId('contextify-provider'))
     session.append('contextify/plan', createInitialContextPlan())
     appendUser(session, 'compiled by registry')
@@ -117,5 +119,53 @@ describe('Contextify compiler', () => {
       version: 1,
       eventSeqs: [1],
     })
+  })
+
+  it('includes and excludes a multi-call tool exchange as one closed group', () => {
+    const session = Session.create(SessionId('contextify-tool-closure'))
+    session.append('contextify/plan', createInitialContextPlan())
+    session.append('turn/start', { turn: 1 })
+    const promptSeq = appendUser(session, 'inspect both files')
+    const first = CallId('call-first')
+    const second = CallId('call-second')
+    const assistantSeq = session.append('assistant/message', {
+      turn: 1,
+      step: 1,
+      message: createAssistantMessage({
+        content: [
+          { type: 'tool-call', id: first, name: 'read', arguments: '{"path":"a"}' },
+          { type: 'tool-call', id: second, name: 'read', arguments: '{"path":"b"}' },
+        ],
+        source: { provider: 'mock', model: 'mock' },
+      }),
+    }, { surfaceOp: 'append' }).seq
+    const firstResultSeq = session.append('tool/result', {
+      turn: 1, step: 1,
+      message: createToolResultMessage({ callId: first, content: [{ type: 'text', text: 'a' }], isError: false }),
+    }, { surfaceOp: 'append' }).seq
+    const secondResultSeq = session.append('tool/result', {
+      turn: 1, step: 1,
+      message: createToolResultMessage({ callId: second, content: [{ type: 'text', text: 'b' }], isError: false }),
+    }, { surfaceOp: 'append' }).seq
+    session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    session.append('contextify/plan', {
+      ...createInitialContextPlan(),
+      revision: 2,
+      overrides: [{ seq: firstResultSeq, mode: 'exclude' }],
+    })
+
+    expect(compileContextify({ session, turn: 2, step: 1 }).eventSeqs).toEqual([promptSeq])
+
+    session.append('contextify/plan', {
+      ...createInitialContextPlan(),
+      revision: 3,
+      overrides: [
+        { seq: assistantSeq, mode: 'exclude' },
+        { seq: secondResultSeq, mode: 'include' },
+      ],
+    })
+    expect(compileContextify({ session, turn: 2, step: 1 }).eventSeqs).toEqual([
+      promptSeq, assistantSeq, firstResultSeq, secondResultSeq,
+    ])
   })
 })

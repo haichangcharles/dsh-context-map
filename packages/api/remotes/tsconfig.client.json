@@ -21,6 +21,9 @@
       "path": "../../client/connection/tsconfig.client.json"
     },
     {
+      "path": "../../context/contextify"
+    },
+    {
       "path": "../../credentials/credentials"
 
     },

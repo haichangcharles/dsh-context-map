@@ -409,28 +409,22 @@ Source: [`packages/context/context-compiler/src/index.ts:97`](../packages/contex
 #### `contextify/plan` — log-only
 
 ```ts persistence-catalog
-/**
- * Complete post-mutation Contextify plan. The last snapshot wins and its
- * revision, paths, and overrides determine subsequent request selection.
- */
+/** Complete post-mutation Contextify plan. */
 'contextify/plan': ContextPlanSnapshot
 ```
 
-Source: [`packages/context/contextify/src/index.ts:90`](../packages/context/contextify/src/index.ts)
+Source: [`packages/context/contextify/src/types.ts:108`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyroute--log-only"></a>
 
 #### `contextify/route` — log-only
 
 ```ts persistence-catalog
-/**
- * Immutable assignment of one turn to a path and causal parent. One route
- * precedes that turn's message events and remains stable across replay.
- */
+/** Immutable assignment of one turn to a path and causal parent. */
 'contextify/route': ContextRoute
 ```
 
-Source: [`packages/context/contextify/src/index.ts:95`](../packages/context/contextify/src/index.ts)
+Source: [`packages/context/contextify/src/types.ts:110`](../packages/context/contextify/src/types.ts)
 
 ### `feedback/*`
 

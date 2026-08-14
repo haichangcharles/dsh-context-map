@@ -94,6 +94,11 @@
     - id: plugin-inventory
       name: '@deepseek-ai/dsh-host-plugin-inventory'
 
+    # Durable same-session context graph and the compiler selected for every
+    # Web Agent. Its Remote methods back the pinned browser Context Map.
+    - id: contextify
+      name: '@deepseek-ai/dsh-contextify'
+
     # The API gateway: the transport-agnostic dispatch face every client shape
     # shares. The base layer's agent-default-model service owns the default model.
     - id: api-gateway
@@ -197,6 +202,10 @@
 
     - id: ui-conversation
       name: '@deepseek-ai/dsh-client-ui-conversation'
+
+    # Always-visible right-side Context Map over the active chat session.
+    - id: ui-contextify
+      name: '@deepseek-ai/dsh-client-ui-contextify'
 
     # Tool call tree, generic fallback, and keyed business Tool views.
     - id: ui-tool

@@ -1,0 +1,20 @@
+.root { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--dsw-alias-bg-base); color: var(--dsw-alias-fg-primary); }
+.header { display: flex; align-items: center; justify-content: space-between; padding: 14px 14px 10px; border-bottom: 1px solid var(--dsw-alias-border-l2); }
+.header h2 { margin: 0; font-size: 15px; }
+.header p { margin: 3px 0 0; color: var(--dsw-alias-fg-secondary); font-size: 12px; }
+.iconButton { border: 0; background: transparent; color: inherit; font-size: 22px; cursor: pointer; }
+.error { margin: 8px 12px; padding: 8px; border-radius: 6px; background: var(--dsw-alias-bg-danger-subtle); color: var(--dsw-alias-fg-danger); font-size: 12px; }
+.paths { display: flex; gap: 6px; overflow-x: auto; padding: 10px 12px; border-bottom: 1px solid var(--dsw-alias-border-l2); }
+.path, .activePath, .mainline { flex: none; border: 1px solid var(--dsw-alias-border-l2); border-radius: 999px; padding: 5px 9px; background: transparent; color: inherit; cursor: pointer; }
+.activePath { border-color: var(--dsw-alias-border-brand); background: var(--dsw-alias-bg-brand-subtle); }
+.mainline { margin-left: auto; }
+.canvas { flex: 1; min-height: 0; overflow: auto; padding: 14px; background-image: radial-gradient(var(--dsw-alias-border-l2) 0.7px, transparent 0.7px); background-size: 14px 14px; }
+.node { position: relative; margin: 0 0 12px; padding: 10px; border: 1px solid var(--dsw-alias-border-l2); border-left: 3px solid var(--dsw-alias-border-l2); border-radius: 8px; background: var(--dsw-alias-bg-elevated); box-shadow: 0 2px 8px rgb(0 0 0 / 6%); }
+.node[data-active] { border-left-color: var(--dsw-alias-border-brand); }
+.node[data-mode='include'] { outline: 2px solid var(--dsw-alias-border-success); }
+.node[data-mode='exclude'] { opacity: 0.55; text-decoration: line-through; }
+.nodeMeta { display: flex; gap: 8px; color: var(--dsw-alias-fg-secondary); font-size: 11px; }
+.node p { margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
+.actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.actions button { border: 1px solid var(--dsw-alias-border-l2); border-radius: 5px; padding: 3px 6px; background: transparent; color: inherit; font-size: 11px; cursor: pointer; }
+.actions button:disabled { cursor: default; opacity: 0.45; }

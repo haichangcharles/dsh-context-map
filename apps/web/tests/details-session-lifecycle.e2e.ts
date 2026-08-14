@@ -1,6 +1,5 @@
-// Keyless browser regression for the details column's default visibility and Session ownership.
-// The shipped composition starts closed after selection and reload, retains an explicitly opened width through
-// unselected states, and closes it only when a different Session takes ownership.
+// Keyless browser regression for the pinned Context Map's visibility and Session ownership.
+// The shipped composition keeps the map beside non-blank chats across reloads and Session changes.
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
@@ -88,17 +87,17 @@ describe.skipIf(MODE === 'record')('web e2e: details panel follows the current S
     await scaffold?.close()
   })
 
-  it('starts and reloads closed, then stays closed across Session ownership changes', async () => {
+  it('keeps the Context Map open across reload and non-blank Session ownership changes', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-details-session-lifecycle'))
     const settled = scaffold.whenTurnSettled()
     const input = page.locator('textarea').first()
     await input.fill(PROMPT)
     await input.press('Enter')
     await settled
-    await page.getByText('LIGHTHOUSE', { exact: true }).waitFor({ timeout: 15_000 })
+    await page.getByText('LIGHTHOUSE', { exact: true }).first().waitFor({ timeout: 15_000 })
 
-    await expect.poll(() => detailsTrack(page), { timeout: 5_000 }).toBe(0)
-    expect(await page.getByText('Details', { exact: true }).isVisible()).toBe(false)
+    await expect.poll(() => detailsTrack(page), { timeout: 5_000 }).toBe(360)
+    await page.getByRole('region', { name: 'Context Map' }).waitFor({ timeout: 5_000 })
     await compareOrRefreshGolden(HANDLES_EXPECTED, await handleSnapshot(page), MODE)
 
     const sidebarBefore = await sidebarTrack(page)
@@ -116,20 +115,20 @@ describe.skipIf(MODE === 'record')('web e2e: details panel follows the current S
     await page.reload({ waitUntil: 'load' })
     acknowledgeReloadConnectionLoss(tripwire, warningStart)
     await appFrame(page).waitFor({ timeout: 30_000 })
-    await page.getByText('LIGHTHOUSE', { exact: true }).waitFor({ timeout: 15_000 })
-    await expect.poll(() => detailsTrack(page), { timeout: 5_000 }).toBe(0)
-    expect(await page.getByText('Details', { exact: true }).isVisible()).toBe(false)
+    await page.getByText('LIGHTHOUSE', { exact: true }).first().waitFor({ timeout: 15_000 })
+    await expect.poll(() => detailsTrack(page), { timeout: 5_000 }).toBe(360)
+    await page.getByRole('region', { name: 'Context Map' }).waitFor({ timeout: 5_000 })
 
     await page.getByRole('button', { name: /^(?:New session|新.*会话)$/ }).last().click()
     await page.getByText('Into the Unknown', { exact: false }).waitFor({ timeout: 15_000 })
     await expect.poll(() => detailsTrack(page), { timeout: 5_000 }).toBe(0)
-    expect(await page.getByText('Details', { exact: true }).isVisible()).toBe(false)
+    expect(await page.getByRole('region', { name: 'Context Map' }).isVisible()).toBe(false)
 
     const original = page.locator('[role=treeitem]').filter({ hasText: 'Reply with the single word' }).first()
     await original.click()
-    await page.getByText('LIGHTHOUSE', { exact: true }).waitFor({ timeout: 15_000 })
-    await expect.poll(() => detailsTrack(page), { timeout: 5_000 }).toBe(0)
-    expect(await page.getByText('Details', { exact: true }).isVisible()).toBe(false)
+    await page.getByText('LIGHTHOUSE', { exact: true }).first().waitFor({ timeout: 15_000 })
+    await expect.poll(() => detailsTrack(page), { timeout: 5_000 }).toBe(360)
+    await page.getByRole('region', { name: 'Context Map' }).waitFor({ timeout: 5_000 })
 
     const ungrouped = page.getByText('Ungrouped', { exact: true })
     const ungroupedRow = ungrouped.locator('..').locator('..')
@@ -143,8 +142,9 @@ describe.skipIf(MODE === 'record')('web e2e: details panel follows the current S
     }, { timeout: 5_000 }).toBe('true')
     const seeded = ungroupedSection.locator('[role="treeitem"]').nth(1)
     await seeded.click()
-    await page.getByText('DONE', { exact: true }).waitFor({ timeout: 15_000 })
-    await expect.poll(() => detailsTrack(page), { timeout: 5_000 }).toBe(0)
+    await page.getByText('DONE', { exact: true }).first().waitFor({ timeout: 15_000 })
+    await expect.poll(() => detailsTrack(page), { timeout: 5_000 }).toBe(360)
+    await page.getByRole('region', { name: 'Context Map' }).waitFor({ timeout: 5_000 })
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])
     await assertFixtureInventory(SNAPSHOT_DIR, ['handles.expected.md'])
