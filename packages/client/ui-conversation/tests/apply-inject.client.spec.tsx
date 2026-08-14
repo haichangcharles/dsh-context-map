@@ -340,7 +340,22 @@ describe('details inject API', () => {
     const b = await bench()
     const entry = b.entryOf('details')
     const injected = (entry.inject as unknown as () => DetailsInjected)()
-    expect(Object.keys(injected)).toEqual(['closeDetails'])
+    expect(Object.keys(injected)).toEqual(['closeDetails', 'hooks'])
+    expect(injected.hooks.pinnedDetails.getSnapshot()).toBe(false)
+    const occupancyChanged = vi.fn()
+    const stopOccupancy = injected.hooks.pinnedDetails.subscribe(occupancyChanged)
+    const disposePinned = b.slots.register({
+      name: 'conversation.details.pinned',
+      id: 'probe',
+    }, () => null)
+    await Promise.resolve()
+    expect(occupancyChanged).toHaveBeenCalledTimes(1)
+    expect(injected.hooks.pinnedDetails.getSnapshot()).toBe(true)
+    disposePinned()
+    await Promise.resolve()
+    expect(occupancyChanged).toHaveBeenCalledTimes(2)
+    expect(injected.hooks.pinnedDetails.getSnapshot()).toBe(false)
+    stopOccupancy()
     injected.closeDetails()
     expect(b.layoutFake.closeDetails).toHaveBeenCalledTimes(1)
     // The shared handle: details resolves the SAME instance conversation writes.

@@ -441,15 +441,21 @@ export function apply(ctx: Context): void {
   // registration path into the input dock declared above.
   ctx.plugin(queueDockEntry)
 
+  const pinnedDetails = {
+    getSnapshot: () => slots.entries('conversation.details.pinned').length > 0,
+    subscribe: (fn: () => void) => slots.subscribe('conversation.details.pinned', fn),
+  }
   slots.register({
     name: 'details',
     locale: NS,
     children: {
+      'conversation.details.pinned': { kind: 'list', scope: 'session' },
       'conversation.details.tool': { kind: 'single', scope: 'session' },
     },
     store: chatStore,
     inject: (): DetailsInjected => ({
       closeDetails: () => { layout.closeDetails() },
+      hooks: { pinnedDetails },
     }),
   }, DetailsPanel)
 

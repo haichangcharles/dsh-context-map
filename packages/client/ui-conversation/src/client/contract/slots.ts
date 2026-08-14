@@ -123,6 +123,12 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'conversation.details.tool': { kind: 'single'; scope: 'session'; owner: DetailsToolOwnerProps }
     /**
+     * Additive, always-visible content in the conversation details column.
+     * Entries share the column with the transient Tool drawer instead of
+     * replacing it; each entry owns its own header and close affordance.
+     */
+    'conversation.details.pinned': { kind: 'list'; scope: 'session'; owner: Record<string, never> }
+    /**
      * The composer takeover chain: entries are selector-routed replacements
      * of the default InputBar. Declared by this package's 'conversation'
      * entry; the owner dispatches the {@link ComposerChainProps} currency and
@@ -719,11 +725,16 @@ export type ChatViewSlotProps =
 export interface DetailsInjected {
   /** Close the details panel (layout geometry stays with ctx.layout). */
   closeDetails: () => void
+  hooks: {
+    /** Live occupancy of the pinned area, including late plugin changes. */
+    pinnedDetails: ObservableSnapshot<boolean>
+  }
 }
 
-/** Full details-slot props: selection store, Tool output seat, injected close callback, and locale. */
-export type DetailsSlotProps = PropsRuntime<'details'> & PropsRenderSlots<'conversation.details.tool'>
-  & PropsStore<ChatStore> & DetailsInjected & PropsLocale<'conversation'>
+/** Full details-slot props: selection store, pinned and Tool seats, injected layout callbacks, and locale. */
+export type DetailsSlotProps = PropsRuntime<'details'>
+  & PropsRenderSlots<'conversation.details.pinned' | 'conversation.details.tool'>
+  & PropsStore<ChatStore> & InjectFace<DetailsInjected> & PropsLocale<'conversation'>
 
 /** Owner share common to the hero / New-Session Workspace pickers. */
 export interface EmptyWorkspaceOwnerProps {

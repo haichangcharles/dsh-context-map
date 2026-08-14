@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render } from '@testing-library/react'
+import { cleanup, fireEvent, render } from '@testing-library/react'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
 import {
   createSnapshotStore, EMPTY_CHAT_SNAPSHOT, EMPTY_CONVERSATION_VIEWS,
@@ -136,11 +136,61 @@ describe('render branch tails', () => {
         useStore={bindSnapshotSelector(chat)}
         actions={chat.actions}
         closeDetails={vi.fn()}
+        usePinnedDetails={select => select(false)}
         t={t}
       />,
     )
     expect(view.getByText('详情')).toBeTruthy()
     expect(view.getByText('该调用不在当前窗口内')).toBeTruthy()
+  })
+
+  it('keeps pinned content visible and closes only the transient Tool drawer', () => {
+    localStorage.clear()
+    const snap = snapshotBase()
+    const chat = createChatStore().create()
+    chat.actions.select({ turnSeq: 1, callId: 'ghost' } satisfies SelectionTarget)
+    const closeDetails = vi.fn()
+    const emptyList = createSnapshotStore<SessionListState>(
+      { ids: [], byId: {}, current: undefined, phase: 'ready', subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined })
+    const emptyWorkspaces = createSnapshotStore<WorkspaceListState>({
+      items: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
+      baselinesReady: true, recentWorkspaceId: undefined,
+    })
+    const renderSlot = ((key: string) => key === 'conversation.details.pinned'
+      ? <div>Context Map mock</div>
+      : <div data-testid="tool-details-seat" />) as DetailsSlotProps['renderSlot']
+    const view = render(
+      <DetailsPanel
+        SessionProvider={SessionProviderStub}
+        renderSlot={renderSlot}
+        sessionId={SID}
+        useSession={bindSnapshotSelector({ getSnapshot: () => snap, subscribe: () => () => {} })}
+        useSessions={bindSnapshotSelector(emptyList)}
+        useWorkspaces={bindSnapshotSelector(emptyWorkspaces)}
+        useProjection={(() => undefined)}
+        useInput={(() => { throw new Error('unused') })}
+        inputActions={{
+          setDraft: () => {},
+          addImages: () => true,
+          removeImage: () => {},
+          pruneImages: () => {},
+          submit: () => {},
+        }}
+        useStore={bindSnapshotSelector(chat)}
+        actions={chat.actions}
+        closeDetails={closeDetails}
+        usePinnedDetails={select => select(true)}
+        t={t}
+      />,
+    )
+
+    expect(view.getByText('Context Map mock')).toBeTruthy()
+    expect(view.getByText('该调用不在当前窗口内')).toBeTruthy()
+    fireEvent.click(view.getByRole('button', { name: '关闭详情' }))
+    expect(chat.getSnapshot().selection).toBeNull()
+    expect(closeDetails).not.toHaveBeenCalled()
+    expect(view.queryByText('Context Map mock')).toBeTruthy()
+    expect(view.queryByText('该调用不在当前窗口内')).toBeNull()
   })
 
   it('DetailsPanel resolves a nested run_code leaf to its full logged args and output', () => {
@@ -193,6 +243,7 @@ describe('render branch tails', () => {
         useStore={bindSnapshotSelector(chat)}
         actions={chat.actions}
         closeDetails={vi.fn()}
+        usePinnedDetails={select => select(false)}
         t={t}
       />,
     )

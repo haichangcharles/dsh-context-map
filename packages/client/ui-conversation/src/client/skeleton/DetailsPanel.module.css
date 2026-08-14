@@ -11,6 +11,21 @@
   background: var(--dsw-alias-bg-base);
 }
 
+.pinned {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.drawer {
+  display: flex;
+  flex: 0 1 45%;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 45%;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+}
+
 /* figma RightSidebar header frame (I54:42735;43:36451): pad 14/12/12/12, gap 8. */
 .header {
   display: flex;
