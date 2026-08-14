@@ -11,6 +11,8 @@ export const name = 'context-compiler-invariant'
 /** Service required before package ownership can be reserved. */
 export const inject = ['invariants']
 /** Request reconstruction is checked by the Agent Loop companion. */
+// No runtime invariant: the Agent Loop companion recompiles each request and
+// owns the relationship between compiler identity, selected events, and messages.
 const install: InvariantInstaller = () => {}
 
 /** Register this package's invariant companion. */

@@ -173,6 +173,7 @@
     { "path": "./packages/schedule/schedule" },
     { "path": "./packages/context/time-context" },
     { "path": "./packages/context/context-compiler" },
+    { "path": "./packages/context/contextify" },
     { "path": "./packages/context/tmux-context" },
     { "path": "./packages/context/session-reference" },
     { "path": "./packages/interaction/user-questions" },
