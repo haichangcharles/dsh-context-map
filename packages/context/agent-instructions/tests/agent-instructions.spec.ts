@@ -9,6 +9,7 @@ import LlmRuntime, { createUserMessage, CallId, type Message, type StreamChunk }
 import SessionStore, { Session, SessionId, SESSION_FORMAT_VERSION, type SessionEvent, type UserMessage } from '@deepseek-ai/dsh-session'
 import AgentRegistry, { agentEvents, Inbox, type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
+import ContextCompilerRegistry from '@deepseek-ai/dsh-context-compiler'
 import { FileSystem, FsTargetKey, FsVersion } from '@deepseek-ai/dsh-fs'
 import type {
   FsDirEntry,
@@ -2511,6 +2512,7 @@ describe('dynamic nested workspace context injection', () => {
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(AgentRegistry)
+      await ctx.plugin(ContextCompilerRegistry)
       await ctx.plugin(LocalFileSystem, { cwd: '/' })
       await ctx.plugin(ToolFs)
       await ctx.plugin(workspaceContext, { dshHome: home, maxBytes: 65536 })

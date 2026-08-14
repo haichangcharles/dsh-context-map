@@ -157,9 +157,10 @@ The request envelope — the `EpochHeader` (call config + markers for adapter-su
 
 ```ts type-equiv
 /**
- * Logged request state outside derived history: call config, system prompt, and
- * tools. The latest full `request/header` snapshot reconstructs it; canonical
- * empty optional fields are absent.
+ * Logged request state outside derived history: call config, system prompt,
+ * tools, and the compiler that selected model-visible messages. The latest
+ * full `request/header` snapshot reconstructs it; canonical empty optional
+ * fields are absent.
  */
 interface EpochHeader {
   /** The conversation's call configuration (provider, model, reasoning effort, and sampling scalars). */
@@ -170,6 +171,8 @@ interface EpochHeader {
   system?: string
   /** Assembled tool schemas; absent for a tool-less request. */
   tools?: ToolSchema[]
+  /** Context compiler that selected the request's model-visible messages. */
+  readonly contextCompiler?: RequestContextCompilerDescriptor
 }
 ```
 

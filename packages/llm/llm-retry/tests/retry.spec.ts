@@ -19,6 +19,7 @@ import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent, RequestErrorAction } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
+import ContextCompilerRegistry from '@deepseek-ai/dsh-context-compiler'
 import * as retry from '../src/index.ts'
 
 type ScriptEntry = Error | Iterable<StreamChunk> | AsyncIterable<StreamChunk>
@@ -110,6 +111,7 @@ async function harness(
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(AgentRegistry)
+  await ctx.plugin(ContextCompilerRegistry)
   beforeRetry?.(ctx)
   adapter.configureRetryPolicies(policies)
   const retryFiber = await ctx.plugin(Object.assign((inner: Context) => {

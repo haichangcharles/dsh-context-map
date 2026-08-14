@@ -3,11 +3,13 @@ import { Context } from '@deepseek-ai/cordis'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import InvariantRegistry from '@deepseek-ai/dsh-invariants'
 import * as AgentLoopInvariant from '@deepseek-ai/dsh-agent-loop/invariant'
+import ContextCompilerRegistry from '@deepseek-ai/dsh-context-compiler'
 import { createUserMessage, markAgentLoopRequest, type GenerateOptions  } from '@deepseek-ai/dsh-llm'
 
 async function setup(): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(SessionStore)
+  await ctx.plugin(ContextCompilerRegistry)
   await ctx.plugin(InvariantRegistry)
   await ctx.plugin(AgentLoopInvariant)
   return ctx
@@ -31,7 +33,13 @@ async function requestSetup() {
   }), { surfaceOp: 'append' })
   const boundary = session.deriveMessages()
   session.append('step/start', { turn: 1, step: 1 })
-  session.append('request/header', { header: { config: { provider: 'mock', model: 'm' } }, reason: 'initial' })
+  session.append('request/header', {
+    header: {
+      config: { provider: 'mock', model: 'm' },
+      contextCompiler: { id: 'surface', version: 1 },
+    },
+    reason: 'initial',
+  })
   return { ctx, session, boundary }
 }
 
@@ -73,6 +81,40 @@ describe('request-reconstruction invariant', () => {
       .toThrow(/diverges from the dispatch-time durable derivation/)
     expect(() => { dispatch(ctx, loopRequest({ model: 'other', messages: Object.freeze(boundary), sessionId: session.id })) })
       .toThrow(/diverges from the folded request header/)
+  })
+
+  it('validates messages against the selected context compiler instead of the full surface', async () => {
+    const ctx = await setup()
+    const session = ctx.sessions.create(SessionId('compiled-request'))
+    session.append('turn/start', { turn: 1 })
+    session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'excluded' }], source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+    session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'selected' }], source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+    ctx.contextCompiler.register({
+      id: 'last-only',
+      version: 1,
+      select: () => ({ eventSeqs: [1] }),
+    })
+    ctx.contextCompiler.select(session, 'last-only')
+    session.append('step/start', { turn: 1, step: 1 })
+    session.append('request/header', {
+      header: {
+        config: { provider: 'mock', model: 'm' },
+        contextCompiler: { id: 'last-only', version: 1 },
+      },
+      reason: 'initial',
+    })
+    const compilation = ctx.contextCompiler.compile({ session, turn: 1, step: 1 })
+    const options = loopRequest({
+      model: 'm',
+      messages: compilation.messages,
+      sessionId: session.id,
+    })
+
+    expect(() => { dispatch(ctx, options) }).not.toThrow()
   })
 
   it('rejects loop requests with no boundary or header', async () => {
@@ -122,6 +164,7 @@ describe('request-reconstruction invariant', () => {
   it('prepends ahead of a short-circuiting stream listener', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)
+    await ctx.plugin(ContextCompilerRegistry)
     ctx.on('llm/stream', () => (async function* () {})() as never)
     await ctx.plugin(InvariantRegistry)
     await ctx.plugin(AgentLoopInvariant)
@@ -131,7 +174,13 @@ describe('request-reconstruction invariant', () => {
       content: [{ type: 'text', text: 'hi' }], source: { kind: 'user' },
     }), { surfaceOp: 'append' })
     session.append('step/start', { turn: 1, step: 1 })
-    session.append('request/header', { header: { config: { provider: 'mock', model: 'm' } }, reason: 'initial' })
+    session.append('request/header', {
+      header: {
+        config: { provider: 'mock', model: 'm' },
+        contextCompiler: { id: 'surface', version: 1 },
+      },
+      reason: 'initial',
+    })
     const divergent = loopRequest({
       model: 'm',
       messages: Object.freeze([{ role: 'user', content: [{ type: 'text', text: 'phantom' }] }]),

@@ -24,6 +24,9 @@
       "path": "../../core/session"
     },
     {
+      "path": "../../context/context-compiler"
+    },
+    {
       "path": "../../session/session-persistence"
     },
     {

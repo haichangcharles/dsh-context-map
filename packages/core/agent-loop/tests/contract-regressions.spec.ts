@@ -6,6 +6,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineContentToolFixture, type PostToolDecision } from '@deepseek-ai/dsh-tools'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
+import ContextCompilerRegistry from '@deepseek-ai/dsh-context-compiler'
 import { ReactLoopAgent } from '../src/agent.ts'
 import InvariantRegistry from '@deepseek-ai/dsh-invariants'
 import * as SessionInvariant from '@deepseek-ai/dsh-session/invariant'
@@ -33,6 +34,7 @@ async function harness(adapter: MockAdapter) {
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(AgentRegistry)
+  await ctx.plugin(ContextCompilerRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
   ctx.llm.registerAdapter(['mock'], adapter)
   return ctx
@@ -528,6 +530,7 @@ describe('turn numbering continues across seeded sessions', () => {
     await ctx2.plugin(SystemPrompt)
     await ctx2.plugin(ToolRuntime)
     await ctx2.plugin(AgentRegistry)
+    await ctx2.plugin(ContextCompilerRegistry)
     await ctx2.plugin(AgentLoop, { agents: [] })
     ctx2.llm.registerAdapter(['mock'], second)
 
@@ -679,6 +682,7 @@ describe('turn and step boundary recovery', () => {
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(AgentRegistry)
+    await ctx.plugin(ContextCompilerRegistry)
     await ctx.plugin(AgentLoop, { agents: [] })
     await mountInvariants(ctx)
     ctx.llm.registerAdapter(['mock'], adapter)
@@ -1111,6 +1115,7 @@ describe('disposal and cancellation during pre-step assembly', () => {
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(AgentRegistry)
+    await ctx.plugin(ContextCompilerRegistry)
     await ctx.plugin(AgentLoop, { agents: [] })
     await mountInvariants(ctx)
     ctx.llm.registerAdapter(['mock'], adapter)
@@ -1161,6 +1166,7 @@ describe('disposal and cancellation during pre-step assembly', () => {
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(AgentRegistry)
+    await ctx.plugin(ContextCompilerRegistry)
     await ctx.plugin(AgentLoop, { agents: [] })
     await mountInvariants(ctx)
     ctx.llm.registerAdapter(['mock'], adapter)
@@ -1211,6 +1217,7 @@ describe('disposal and cancellation during pre-step assembly', () => {
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(AgentRegistry)
+    await ctx.plugin(ContextCompilerRegistry)
     await ctx.plugin(AgentLoop, { agents: [] })
     await mountInvariants(ctx)
     ctx.llm.registerAdapter(['mock'], adapter)
@@ -1257,6 +1264,7 @@ describe('disposal and cancellation during pre-step assembly', () => {
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(AgentRegistry)
+    await ctx.plugin(ContextCompilerRegistry)
     await ctx.plugin(AgentLoop, { agents: [] })
     await mountInvariants(ctx)
     ctx.llm.registerAdapter(['mock'], adapter)
@@ -1305,6 +1313,7 @@ describe('disposal and cancellation during pre-step assembly', () => {
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(AgentRegistry)
+    await ctx.plugin(ContextCompilerRegistry)
     await ctx.plugin(AgentLoop, { agents: [] })
     await mountInvariants(ctx)
     ctx.llm.registerAdapter(['mock'], adapter)

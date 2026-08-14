@@ -294,7 +294,7 @@ function validateConfiguredAgents(agents: Config['agents']): void {
 
 /** Concrete agent factory and driver service. */
 export class AgentLoop extends Service implements AgentFactory {
-  static inject = ['agents', 'sessions', 'llm', 'tools', 'systemPrompt']
+  static inject = ['agents', 'sessions', 'llm', 'tools', 'systemPrompt', 'contextCompiler']
 
   /** Runtime schema for declarative agents. */
   static Config = z.object({

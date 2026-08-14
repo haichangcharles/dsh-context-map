@@ -9,6 +9,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import AgentRegistry, { assembleContextFor } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
+import ContextCompilerRegistry from '@deepseek-ai/dsh-context-compiler'
 import InvariantRegistry from '@deepseek-ai/dsh-invariants'
 import { describe, expect, it } from 'vitest'
 import AgentPresets, { livePresetMounts, type Config } from '@deepseek-ai/dsh-agent-presets'
@@ -30,6 +31,7 @@ async function harness(roster: Partial<Config> = {}): Promise<Context> {
   await ctx.plugin(SystemPrompt, { persona: '' })
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(AgentRegistry)
+  await ctx.plugin(ContextCompilerRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(AgentPresets, { default: 'standard', roots: ROOTS, includeUserRoot: false, ...roster })
   await ctx.plugin(InvariantRegistry)

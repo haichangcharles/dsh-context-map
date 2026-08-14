@@ -33,6 +33,16 @@ describe('canonicalHeader', () => {
       tools: [tool('a')],
     })
   })
+
+  it('preserves the active context compiler descriptor', () => {
+    expect(canonicalHeader({
+      config: CONFIG,
+      contextCompiler: { id: 'contextify', version: 1 },
+    })).toEqual({
+      config: CONFIG,
+      contextCompiler: { id: 'contextify', version: 1 },
+    })
+  })
 })
 
 describe('headerEquals', () => {
@@ -61,6 +71,23 @@ describe('headerEquals', () => {
 
   it('treats absent and empty tool arrays as equivalent canonical absence', () => {
     expect(headerEquals({ config: CONFIG }, { config: CONFIG, tools: [] })).toBe(true)
+  })
+
+  it('compares the context compiler id and version', () => {
+    const surface: EpochHeader = {
+      config: CONFIG,
+      contextCompiler: { id: 'surface', version: 1 },
+    }
+    expect(headerEquals(surface, structuredClone(surface))).toBe(true)
+    expect(headerEquals(surface, {
+      ...surface,
+      contextCompiler: { id: 'contextify', version: 1 },
+    })).toBe(false)
+    expect(headerEquals(surface, {
+      ...surface,
+      contextCompiler: { id: 'surface', version: 2 },
+    })).toBe(false)
+    expect(headerEquals(surface, { config: CONFIG })).toBe(false)
   })
 })
 

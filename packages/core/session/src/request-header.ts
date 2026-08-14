@@ -27,6 +27,7 @@ export function canonicalHeader(header: EpochHeader): EpochHeader {
       : {},
     ...header.system !== undefined && header.system.length > 0 ? { system: header.system } : {},
     ...header.tools !== undefined && header.tools.length > 0 ? { tools: header.tools } : {},
+    ...header.contextCompiler !== undefined ? { contextCompiler: header.contextCompiler } : {},
   }
 }
 
@@ -47,6 +48,8 @@ export function headerEquals(a: EpochHeader, b: EpochHeader): boolean {
     || a.adapterDefaults?.reasoningEffort !== b.adapterDefaults?.reasoningEffort
     || a.adapterDefaults?.maxTokens !== b.adapterDefaults?.maxTokens
     || a.system !== b.system
+    || a.contextCompiler?.id !== b.contextCompiler?.id
+    || a.contextCompiler?.version !== b.contextCompiler?.version
   ) return false
   const at = a.tools ?? []
   const bt = b.tools ?? []

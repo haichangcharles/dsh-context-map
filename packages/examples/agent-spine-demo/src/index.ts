@@ -34,6 +34,7 @@ import * as workspaceContext from '@deepseek-ai/dsh-agent-instructions'
 import * as toolSkill from '@deepseek-ai/dsh-tool-skill'
 import * as toolJobs from '@deepseek-ai/dsh-tool-jobs'
 import AgentLoop, { type Config as AgentLoopConfig } from '@deepseek-ai/dsh-agent-loop'
+import ContextCompilerRegistry from '@deepseek-ai/dsh-context-compiler'
 import * as llmRetry from '@deepseek-ai/dsh-llm-retry'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 
@@ -235,6 +236,7 @@ export function apply(ctx: Context, config: Config): void {
     ctx.plugin(SkillFileSystem, Object.assign({}, config.skills?.filesystem, { dshHome }))
   }
   ctx.plugin(AgentRegistry)
+  ctx.plugin(ContextCompilerRegistry)
   ctx.plugin(llmRetry)
   if (config.goals !== undefined && config.goals !== false) {
     ctx.plugin(GoalService, config.goals.domain ?? {})

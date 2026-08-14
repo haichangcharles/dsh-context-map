@@ -348,6 +348,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'The one concrete loop plugin; extension packages depend on dsh-agent events and services, not on this package.',
   },
   {
+    key: 'contextCompiler',
+    pkg: 'context-compiler',
+    title: 'Model context compiler registry',
+    mode: 'seam',
+    consumers: ['agent-loop'],
+    note: 'Selects a versioned compiler per durable session; providers choose logged event sequences while the registry validates and derives the exact model-visible messages.',
+  },
+  {
     key: 'goals',
     pkg: 'goal',
     title: 'Same-session goal domain',

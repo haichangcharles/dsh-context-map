@@ -160,7 +160,7 @@ docs/subsystems/core.zh.md
 
 `packages/context/context-compiler/src/index.ts` 定义以下精确概念：
 
-```ts
+```ts ignore-check
 export interface ContextCompilerDescriptor {
   readonly id: string
   readonly version: number
@@ -188,7 +188,7 @@ export interface ContextCompilerDefinition extends ContextCompilerDescriptor {
 
 `ContextCompilerRegistry` 作为 `ctx.contextCompiler` Service 提供：
 
-```ts
+```ts ignore-check
 register(definition: ContextCompilerDefinition): () => void
 select(session: Session, id: string): ContextCompilerDescriptor
 descriptor(session: Session): ContextCompilerDescriptor
@@ -209,7 +209,7 @@ Registry 内建保留 provider `{ id: 'surface', version: 1 }`。当 Session 没
 
 Context Compiler package 通过 declaration merge 增加 required Session Event：
 
-```ts
+```ts ignore-check
 'context/compiler': {
   readonly id: string
   readonly version: number
@@ -236,7 +236,7 @@ Provider 返回 seq 后，Registry 必须逐项执行以下验证：
 
 `ReactLoopAgent.step()` 不再直接把 `this.session.deriveMessages()` 传给 `buildRequest()`。每次 while retry attempt 外先执行一次：
 
-```ts
+```ts ignore-check
 const compilation = this.loopCtx.contextCompiler.compile({
   session: this.session,
   turn,
@@ -252,7 +252,7 @@ Agent Loop 的静态 `inject` 增加 `contextCompiler`。Base bundle 在 Agent L
 
 `packages/core/session/src/types.ts` 自己声明不依赖 Context Compiler package 的结构类型，避免 `dsh-session -> dsh-context-compiler -> dsh-session` 循环：
 
-```ts
+```ts ignore-check
 export interface RequestContextCompilerDescriptor {
   readonly id: string
   readonly version: number
@@ -330,7 +330,7 @@ package 名为 `dsh-plugin-contextify`，repository topic 使用 `dsh-plugin`。
 
 `src/types.ts` 是 Host 和 Client 共用的纯类型出口，不导入 Node API、Cordis Service 或 React。
 
-```ts
+```ts ignore-check
 export type ContextPathId = Branded<'ContextPathId'>
 
 export interface ContextPath {
@@ -374,7 +374,7 @@ Session Event keys为 `contextify/plan` 和 `contextify/route`。两者都是 re
 
 `ContextifyService` 扩展 `TypertRemoteService` 并注册为 `ctx.contextify`。公开 Remote 方法：
 
-```ts
+```ts ignore-check
 get(agent: Agent): ContextifyView
 createBranch(agent: Agent, ref: ContextPlanRef, anchorSeq: number, label?: string): ContextifyView
 selectPath(agent: Agent, ref: ContextPlanRef, pathId: ContextPathId): ContextifyView
@@ -414,7 +414,7 @@ Route 的 `pathId` 来自当时 plan.activePathId，`parentSeq` 来自该 path �
 
 Graph fold 为每个可产生 Message 的 Session Event 建立内部节点：
 
-```ts
+```ts ignore-check
 export interface ContextGraphNode {
   readonly seq: number
   readonly messageId: MessageId
@@ -473,7 +473,7 @@ Contextify provider 最终只返回 `eventSeqs`。它不创建、克隆或改写
 
 插件注册 `contextify` SessionProjectionMap key，值只包含：
 
-```ts
+```ts ignore-check
 export interface ContextifyProjection {
   readonly plan: ContextPlanSnapshot
   readonly graphAsOfSeq: number
@@ -505,7 +505,7 @@ React 组件只通过 framework 绑定的 `useContextGraph` 和 `useProjection('
 
 在 `packages/client/ui-conversation/src/client/contract/slots.ts` 增加：
 
-```ts
+```ts ignore-check
 'conversation.details.pinned': {
   kind: 'list'
   scope: 'session'

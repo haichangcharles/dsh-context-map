@@ -13,6 +13,7 @@ import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
+import ContextCompilerRegistry from '@deepseek-ai/dsh-context-compiler'
 import { MockAdapter, textResponse } from './mock-adapter.ts'
 
 const dirs: string[] = []
@@ -31,6 +32,7 @@ async function mountPersistentHarness(root: string, adapter: MockAdapter): Promi
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(AgentRegistry)
+  await ctx.plugin(ContextCompilerRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(JsonlSessionPersistence, { root })
   ctx.llm.registerAdapter(['mock'], adapter)
@@ -247,6 +249,7 @@ describe('the session-persistence Agent Note: AgentLoop factory create/resume', 
     await ctx2.plugin(SystemPrompt)
     await ctx2.plugin(ToolRuntime)
     await ctx2.plugin(AgentRegistry)
+    await ctx2.plugin(ContextCompilerRegistry)
     await ctx2.plugin(AgentLoop, { agents: [] })
     await ctx2.plugin(JsonlSessionPersistence, { root })
     ctx2.llm.registerAdapter(['mock'], adapter2)
@@ -275,6 +278,7 @@ describe('the session-persistence Agent Note: AgentLoop factory create/resume', 
     await ctx2.plugin(SystemPrompt)
     await ctx2.plugin(ToolRuntime)
     await ctx2.plugin(AgentRegistry)
+    await ctx2.plugin(ContextCompilerRegistry)
     await ctx2.plugin(AgentLoop, { agents: [] })
     await ctx2.plugin(JsonlSessionPersistence, { root })
     ctx2.llm.registerAdapter(['mock'], adapter2)
@@ -525,6 +529,7 @@ describe('the session-persistence Agent Note: AgentLoop factory create/resume', 
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(AgentRegistry)
+    await ctx.plugin(ContextCompilerRegistry)
     const loopFiber = await ctx.plugin(AgentLoop, { agents: [] })
     await ctx.plugin(JsonlSessionPersistence, { root })
     ctx.llm.registerAdapter(['mock'], new MockAdapter([textResponse('next')]))
@@ -588,6 +593,7 @@ describe('the session-persistence Agent Note: AgentLoop factory create/resume', 
     await ctx2.plugin(SystemPrompt)
     await ctx2.plugin(ToolRuntime)
     await ctx2.plugin(AgentRegistry)
+    await ctx2.plugin(ContextCompilerRegistry)
     await ctx2.plugin(AgentLoop, { agents: [] })
     await ctx2.plugin(JsonlSessionPersistence, { root })
     ctx2.llm.registerAdapter(['mock'], adapter2)
@@ -620,6 +626,7 @@ describe('the session-persistence Agent Note: AgentLoop factory create/resume', 
     await ctx2.plugin(SystemPrompt)
     await ctx2.plugin(ToolRuntime)
     await ctx2.plugin(AgentRegistry)
+    await ctx2.plugin(ContextCompilerRegistry)
     await ctx2.plugin(AgentLoop, { agents: [] })
     await ctx2.plugin(JsonlSessionPersistence, { root })
     ctx2.llm.registerAdapter(['mock'], adapter2)
@@ -656,6 +663,7 @@ describe('the session-persistence Agent Note: AgentLoop factory create/resume', 
     await ctx2.plugin(SystemPrompt)
     await ctx2.plugin(ToolRuntime)
     await ctx2.plugin(AgentRegistry)
+    await ctx2.plugin(ContextCompilerRegistry)
     await ctx2.plugin(AgentLoop, { agents: [] })
     await ctx2.plugin(JsonlSessionPersistence, { root })
     ctx2.llm.registerAdapter(['mock'], adapter2)
@@ -689,6 +697,7 @@ describe('the session-persistence Agent Note: AgentLoop factory create/resume', 
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(AgentRegistry)
+    await ctx.plugin(ContextCompilerRegistry)
     await ctx.plugin(AgentLoop, { agents: [] })
     ctx.llm.registerAdapter(['mock'], adapter)
     await expect(ctx.agents.resume({ resumeSessionId: SessionId('nope') }))
@@ -878,6 +887,7 @@ describe('configured-start failure edges', () => {
     await configured.plugin(SystemPrompt)
     await configured.plugin(ToolRuntime)
     await configured.plugin(AgentRegistry)
+    await configured.plugin(ContextCompilerRegistry)
     await configured.plugin(JsonlSessionPersistence, { root })
     configured.llm.registerAdapter(['mock'], new MockAdapter([]))
     configured.sessionPersistence.prepare = (id, signal) => ctx.sessionPersistence.prepare(id, signal)
@@ -923,6 +933,7 @@ describe('configured-start failure edges', () => {
     await configured.plugin(SystemPrompt)
     await configured.plugin(ToolRuntime)
     await configured.plugin(AgentRegistry)
+    await configured.plugin(ContextCompilerRegistry)
     await configured.plugin(JsonlSessionPersistence, { root })
     configured.llm.registerAdapter(['mock'], new MockAdapter([]))
     configured.sessionPersistence.prepare = (id, signal) => ctx.sessionPersistence.prepare(id, signal)

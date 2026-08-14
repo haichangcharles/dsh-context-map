@@ -7,6 +7,7 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
+import ContextCompilerRegistry from '@deepseek-ai/dsh-context-compiler'
 import * as LlmDeepSeek from '@deepseek-ai/dsh-llm-deepseek'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import * as Spawn from '@deepseek-ai/dsh-subagent-spawn-in-process'
@@ -35,6 +36,7 @@ async function harness(): Promise<Context> {
   await built.plugin(SystemPrompt)
   await built.plugin(ToolRuntime)
   await built.plugin(AgentRegistry)
+  await built.plugin(ContextCompilerRegistry)
   await built.plugin(AgentLoop, { agents: [] })
   await built.plugin(LlmDeepSeek)
   await built.plugin(SubagentRuntime)

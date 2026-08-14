@@ -497,6 +497,37 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'contextCompiler',
+    summary: 'Registry and validation boundary for request context compilers.',
+    description: 'Registry and validation boundary for request context compilers.',
+    methods: [
+      {
+        signature: 'register(definition: ContextCompilerDefinition): () => void',
+        description: 'Register one provider until the returned disposer is called.',
+        parameters: [{ name: 'definition', description: 'Stable provider identity and pure selection function.' }],
+        returns: 'A disposer that removes this exact registration.',
+      },
+      {
+        signature: 'select(session: Session, id: string): ContextCompilerDescriptor',
+        description: 'Durably select a registered provider for one Session.',
+        parameters: [{ name: 'session', description: 'Session whose future requests use the provider.' }, { name: 'id', description: 'Registered provider id to select.' }],
+        returns: 'The exact provider descriptor appended or already active.',
+      },
+      {
+        signature: 'descriptor(session: Session): ContextCompilerDescriptor',
+        description: 'Resolve the durable provider descriptor active for one Session.',
+        parameters: [{ name: 'session', description: 'Session whose compiler selection should be folded.' }],
+        returns: 'The latest durable selection, or the built-in surface compiler.',
+      },
+      {
+        signature: 'compile(request: ContextCompileRequest): ContextCompilation',
+        description: 'Compile the provider-selected durable Session events into messages.',
+        parameters: [{ name: 'request', description: 'Session and loop coordinates supplied to the provider.' }],
+        returns: 'Frozen provider identity, event sequences, and derived messages.',
+      },
+    ],
+  },
+  {
     key: 'credentials',
     summary: 'Abstract credential service.',
     description: 'Abstract credential service. Providers implement the four operations over their source layers; one seam-wide rule binds them all: an empty stored value is absent everywhere — `resolve` skips it, `describe` reports it unconfigured — so a blank never masquerades as a configured secret.',
@@ -2838,8 +2869,28 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ContentBlockType = keyof ContentBlockMap;',
   },
   {
+    name: 'ContextCompilation',
+    declaration: 'export interface ContextCompilation extends ContextCompilerDescriptor {\n    readonly eventSeqs: readonly number[];\n    readonly messages: readonly Message[];\n}',
+  },
+  {
+    name: 'ContextCompilerDefinition',
+    declaration: 'export interface ContextCompilerDefinition extends ContextCompilerDescriptor {\n    readonly select: (request: ContextCompileRequest) => ContextSelection;\n}',
+  },
+  {
+    name: 'ContextCompilerDescriptor',
+    declaration: 'export interface ContextCompilerDescriptor {\n    readonly id: string;\n    readonly version: number;\n}',
+  },
+  {
+    name: 'ContextCompileRequest',
+    declaration: 'export interface ContextCompileRequest {\n    readonly session: Session;\n    readonly turn: number;\n    readonly step: number;\n}',
+  },
+  {
     name: 'ContextFormed',
     declaration: 'export type ContextFormed = {\n    readonly form?: never;\n} | {\n    readonly form: \'instructions\';\n} | {\n    readonly form: \'catalog\';\n} | {\n    readonly form: \'snapshot\';\n    readonly sections: readonly ContextSnapshotSection[];\n} | {\n    readonly form: \'notice\';\n    readonly summary: string;\n} | {\n    readonly form: \'relay\';\n} | {\n    readonly form: \'recall\';\n};',
+  },
+  {
+    name: 'ContextSelection',
+    declaration: 'export interface ContextSelection {\n    readonly eventSeqs: readonly number[];\n}',
   },
   {
     name: 'ContextSnapshotSection',
@@ -3027,7 +3078,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'EpochHeader',
-    declaration: 'export interface EpochHeader {\n    config: LlmCallConfig;\n    adapterDefaults?: LlmCallConfigAdapterDefaults;\n    system?: string;\n    tools?: ToolSchema[];\n}',
+    declaration: 'export interface EpochHeader {\n    config: LlmCallConfig;\n    adapterDefaults?: LlmCallConfigAdapterDefaults;\n    system?: string;\n    tools?: ToolSchema[];\n    readonly contextCompiler?: RequestContextCompilerDescriptor;\n}',
   },
   {
     name: 'FileDiff',
@@ -3580,6 +3631,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'RequestContext',
     declaration: 'export interface RequestContext {\n    provider: string;\n    model: string;\n    contextWindow?: number;\n}',
+  },
+  {
+    name: 'RequestContextCompilerDescriptor',
+    declaration: 'export interface RequestContextCompilerDescriptor {\n    readonly id: string;\n    readonly version: number;\n}',
   },
   {
     name: 'RequestErrorAction',

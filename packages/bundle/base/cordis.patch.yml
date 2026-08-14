@@ -27,6 +27,9 @@
     - id: session
       name: '@deepseek-ai/dsh-session'
 
+    - id: context-compiler
+      name: '@deepseek-ai/dsh-context-compiler'
+
     - id: typert
       name: '@deepseek-ai/dsh-typert-registry'
 

@@ -29,15 +29,20 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
     }
 
     const events = session.events
-    if (!events.some(event => event.type === 'step/start')) {
+    const stepStart = events.findLast(event => event.type === 'step/start')
+    if (stepStart === undefined) {
       return fail('a loop-built request with no step/start in its session log')
     }
     const header = foldRequestHeader(events)
     if (header === undefined) {
       return fail('a loop-built request with no request/header event in its session log')
     }
-    const expected = session.deriveMessages()
-    if (JSON.stringify(options.messages) !== JSON.stringify(expected)) {
+    const compilation = ctx.contextCompiler.compile({
+      session,
+      turn: stepStart.data.turn,
+      step: stepStart.data.step,
+    })
+    if (JSON.stringify(options.messages) !== JSON.stringify(compilation.messages)) {
       fail(`llm request for session "${String(session.id)}" diverges from the dispatch-time durable derivation (log-reconstruction desync)`)
     }
 
@@ -47,12 +52,14 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
       && options.maxTokens === header.config.maxTokens
       && JSON.stringify(options.stop) === JSON.stringify(header.config.stop)
       && JSON.stringify(options.tools ?? []) === JSON.stringify(header.tools ?? [])
+      && header.contextCompiler?.id === compilation.id
+      && header.contextCompiler.version === compilation.version
     if (!headerMatches) {
       fail(`llm request for session "${String(session.id)}" diverges from the folded request header`)
     }
     return next()
   }, { global: true, prepend: true })
-}, { inject: ['sessions'] })
+}, { inject: ['sessions', 'contextCompiler'] })
 
 /**
  * Register the agent-loop invariant companion.

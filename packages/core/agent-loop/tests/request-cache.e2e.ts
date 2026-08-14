@@ -8,6 +8,7 @@ import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
+import ContextCompilerRegistry from '@deepseek-ai/dsh-context-compiler'
 import * as LlmDeepSeek from '@deepseek-ai/dsh-llm-deepseek'
 
 /**
@@ -44,6 +45,7 @@ async function loopHarness(): Promise<Context> {
   await created.plugin(SystemPrompt, { persona: SYSTEM })
   await created.plugin(ToolRuntime)
   await created.plugin(AgentRegistry)
+  await created.plugin(ContextCompilerRegistry)
   await created.plugin(AgentLoop, { agents: [] })
   await created.plugin(LlmDeepSeek)
   created.tools.register(defineContentToolFixture({

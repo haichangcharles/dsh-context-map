@@ -19,6 +19,8 @@ A turn flows through the six packages in one loop: the driver in [`agent-loop`](
 
 `scope/` is the one non-service package: a dependency-free library (`createScope`/`scopeOf`/`scopeTarget`) that sits below `session/` and `system-prompt/` in the module graph precisely so they can consume it without a cycle. `agent-loop` is the one concrete implementation of the public `Agent` contract and lives here because it is the harness's default product loop; it runs each driver inside `ctx.agents.withInitiator()`. Extension plugins depend on `agent` — including when they need the initiating Agent — and never on `agent-loop` directly, so the loop stays swappable. The default composition that wires this spine into a runnable agent is [`examples/agent-spine-demo`](../../packages/examples/agent-spine-demo/README.md).
 
+Before each model call, `agent-loop` delegates durable-history selection to [`dsh-context-compiler`](../../packages/context/context-compiler/README.md). The default provider preserves the Session surface, while an extension provider can select a different ordered subset of message events. The loop compiles once per step, records the provider descriptor in `request/header`, and reuses the same result across request retries.
+
 ## Creation and ownership
 
 Consumers create agents through `ctx.agents` — `create()` builds a fresh session and agent under one caller-supplied `SessionId`, `resume()` loads a persisted session first — or declaratively through the loop's config entries. Programmatic creation returns the owner's handle:
@@ -721,6 +723,47 @@ roots(): Agent[]
 ```
 
 Source: [`packages/core/agent/src/index.ts:256`](../../packages/core/agent/src/index.ts)
+
+<a id="ctxcontextcompiler--contextcompilerregistry"></a>
+
+### `ctx.contextCompiler` — `ContextCompilerRegistry`
+
+Registry and validation boundary for request context compilers.
+
+```ts cordis-catalog
+/**
+ * Register one provider until the returned disposer is called.
+ * @param definition - Stable provider identity and pure selection function.
+ * @returns A disposer that removes this exact registration.
+ */
+register(definition: ContextCompilerDefinition): () => void
+
+/**
+ * Durably select a registered provider for one Session.
+ * @param session - Session whose future requests use the provider.
+ * @param id - Registered provider id to select.
+ * @returns The exact provider descriptor appended or already active.
+ */
+select(session: Session, id: string): ContextCompilerDescriptor
+
+/**
+ * Resolve the durable provider descriptor active for one Session.
+ * @param session - Session whose compiler selection should be folded.
+ * @returns The latest durable selection, or the built-in surface compiler.
+ */
+descriptor(session: Session): ContextCompilerDescriptor
+
+/**
+ * Compile the provider-selected durable Session events into messages.
+ * @param request - Session and loop coordinates supplied to the provider.
+ * @returns Frozen provider identity, event sequences, and derived messages.
+ */
+compile(request: ContextCompileRequest): ContextCompilation
+```
+
+Types: [Session](session.md)
+
+Source: [`packages/context/context-compiler/src/index.ts:108`](../../packages/context/context-compiler/src/index.ts)
 
 <a id="agent-events"></a>
 

@@ -16,7 +16,8 @@ import type {
   RequestErrorAction,
 } from '@deepseek-ai/dsh-agent'
 import { Inbox, agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent'
-import type { GenerateOptions, LlmCallConfig, Message, PreparedLlmCall } from '@deepseek-ai/dsh-llm'
+import type { GenerateOptions, LlmCallConfig, PreparedLlmCall } from '@deepseek-ai/dsh-llm'
+import type { ContextCompilation } from '@deepseek-ai/dsh-context-compiler'
 import {
   BlockAssembler,
   LlmError,
@@ -335,10 +336,15 @@ export class ReactLoopAgent implements Agent {
     const { turn, step, abort: { signal } } = this.phase
     signal.throwIfAborted()
     const system = renderPrompt(assembly)
+    const compilation = this.loopCtx.contextCompiler.compile({
+      session: this.session,
+      turn,
+      step,
+    })
 
     while (true) {
       const { request, preparedCall } = await this.buildRequest(
-        turn, step, assembly.tools, system, this.session.deriveMessages(), signal,
+        turn, step, assembly.tools, system, compilation, signal,
       )
       const assembler = new BlockAssembler()
       const chunkSeqs: number[] = []
@@ -409,7 +415,7 @@ export class ReactLoopAgent implements Agent {
     step: number,
     tools: GenerateOptions['tools'] & object,
     system: string,
-    boundaryMessages: Message[],
+    compilation: ContextCompilation,
     signal: AbortSignal,
   ): Promise<{ request: GenerateOptions; preparedCall?: PreparedLlmCall }> {
     const { session } = this
@@ -460,6 +466,7 @@ export class ReactLoopAgent implements Agent {
       ...preparedCall === undefined ? {} : { adapterDefaults: preparedCall.adapterDefaults },
       ...system ? { system } : {},
       ...tools.length > 0 ? { tools } : {},
+      contextCompiler: { id: compilation.id, version: compilation.version },
     })
     const baseline = this.session.requestHeader()
     if (!this.requestHeaderLogged) {
@@ -485,7 +492,9 @@ export class ReactLoopAgent implements Agent {
 
     const request = markAgentLoopRequest(deepFreeze({
       ...header.config,
-      messages: boundaryMessages,
+      // GenerateOptions predates frozen request inputs and spells this mutable;
+      // deepFreeze owns the runtime contract while the compiler exposes readonly data.
+      messages: compilation.messages as GenerateOptions['messages'],
       ...header.system !== undefined ? { system: header.system } : {},
       ...header.tools !== undefined ? { tools: header.tools } : {},
       sessionId: this.session.id,

@@ -198,6 +198,19 @@ export interface TodoItem {
  * tools. The latest full `request/header` snapshot reconstructs it; canonical
  * empty optional fields are absent.
  */
+export interface RequestContextCompilerDescriptor {
+  /** Stable id of the context compiler that selected the request messages. */
+  readonly id: string
+  /** Provider contract version used to compile the request. */
+  readonly version: number
+}
+
+/**
+ * Logged request state outside derived history: call config, system prompt,
+ * tools, and the compiler that selected model-visible messages. The latest
+ * full `request/header` snapshot reconstructs it; canonical empty optional
+ * fields are absent.
+ */
 export interface EpochHeader {
   /** The conversation's call configuration (provider, model, reasoning effort, and sampling scalars). */
   config: LlmCallConfig
@@ -207,6 +220,8 @@ export interface EpochHeader {
   system?: string
   /** Assembled tool schemas; absent for a tool-less request. */
   tools?: ToolSchema[]
+  /** Context compiler that selected the request's model-visible messages. */
+  readonly contextCompiler?: RequestContextCompilerDescriptor
 }
 
 /** Registration-bound metadata for one resolved model route. */

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
+import ContextCompilerRegistry from '@deepseek-ai/dsh-context-compiler'
 import LlmRuntime, { createUserMessage, LlmError  } from '@deepseek-ai/dsh-llm'
 import type { LlmFailure, ResolvedRetryPolicy } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
@@ -16,6 +17,7 @@ async function harness(adapter: MockAdapter): Promise<Context> {
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(AgentRegistry)
+  await ctx.plugin(ContextCompilerRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
   ctx.llm.registerAdapter(['mock'], adapter)
   return ctx
@@ -96,6 +98,36 @@ describe('agent/request-error', () => {
       expect.objectContaining({ mode: 'normal' }),
     ])
     expect(statuses).toEqual(['running', 'idle'])
+  })
+
+  it('compiles context once per step and reuses it across request retries', async () => {
+    const adapter = new MockAdapter([
+      fail('busy', 'RATE_LIMIT'),
+      textResponse('ok'),
+    ])
+    const ctx = await harness(adapter)
+    const agent = ctx.agentLoop.create(SessionId('request-context-retry'), { provider: 'mock', model: 'mock' })
+    let compilations = 0
+    ctx.contextCompiler.register({
+      id: 'counted',
+      version: 1,
+      select: ({ session }) => {
+        compilations += 1
+        return { eventSeqs: session.surface.nodes }
+      },
+    })
+    ctx.contextCompiler.select(agent.session, 'counted')
+    ctx.on('agent/request-error', async () => ({ kind: 'retry' }))
+
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    await agent.whenIdle()
+
+    expect(adapter.requests).toHaveLength(2)
+    // One execution compilation is reused by both attempts. The package
+    // invariant independently reconstructs once before each model dispatch;
+    // recompiling in the retry loop would make this total four.
+    expect(compilations).toBe(3)
+    expect(agent.session.requestHeader()?.contextCompiler).toEqual({ id: 'counted', version: 1 })
   })
 
   it('lets cancellation win over a retry action', async () => {

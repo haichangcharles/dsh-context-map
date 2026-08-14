@@ -19,6 +19,8 @@
 
 `scope/` 是这里唯一的非服务包：一个零依赖库（`createScope`/`scopeOf`/`scopeTarget`），在模块图中位于 `session/` 与 `system-prompt/` 之下，正是为了让它们消费它而不形成环。`agent-loop` 是公开 `Agent` 约定的唯一具体实现，放在这里因为它是 harness 的默认产品循环；它在 `ctx.agents.withInitiator()` 内运行每个 driver。扩展插件依赖 `agent`——包括需要发起 Agent 时——而绝不直接依赖 `agent-loop`，因此循环保持可替换。把这条主干接成可运行 agent 的默认组合是 [`examples/agent-spine-demo`](../../packages/examples/agent-spine-demo/README.md)。
 
+每次调用模型之前，`agent-loop` 都把持久历史选择委托给 [`dsh-context-compiler`](../../packages/context/context-compiler/README.md)。默认 provider 保持 Session 表层，扩展 provider 则可以选择不同的有序消息事件子集。循环在每个步骤只编译一次，把 provider descriptor 记录进 `request/header`，并在请求重试期间复用同一结果。
+
 <a id="creation-and-ownership"></a>
 
 ## 创建与所有权
@@ -729,6 +731,47 @@ roots(): Agent[]
 ```
 
 Source: [`packages/core/agent/src/index.ts:256`](../../packages/core/agent/src/index.ts)
+
+<a id="ctxcontextcompiler--contextcompilerregistry"></a>
+
+### `ctx.contextCompiler` — `ContextCompilerRegistry`
+
+Registry and validation boundary for request context compilers.
+
+```ts cordis-catalog
+/**
+ * Register one provider until the returned disposer is called.
+ * @param definition - Stable provider identity and pure selection function.
+ * @returns A disposer that removes this exact registration.
+ */
+register(definition: ContextCompilerDefinition): () => void
+
+/**
+ * Durably select a registered provider for one Session.
+ * @param session - Session whose future requests use the provider.
+ * @param id - Registered provider id to select.
+ * @returns The exact provider descriptor appended or already active.
+ */
+select(session: Session, id: string): ContextCompilerDescriptor
+
+/**
+ * Resolve the durable provider descriptor active for one Session.
+ * @param session - Session whose compiler selection should be folded.
+ * @returns The latest durable selection, or the built-in surface compiler.
+ */
+descriptor(session: Session): ContextCompilerDescriptor
+
+/**
+ * Compile the provider-selected durable Session events into messages.
+ * @param request - Session and loop coordinates supplied to the provider.
+ * @returns Frozen provider identity, event sequences, and derived messages.
+ */
+compile(request: ContextCompileRequest): ContextCompilation
+```
+
+Types: [Session](session.md)
+
+Source: [`packages/context/context-compiler/src/index.ts:108`](../../packages/context/context-compiler/src/index.ts)
 
 <a id="agent-events"></a>
 
