@@ -12,6 +12,7 @@ import {
   compileContextify,
   createInitialContextPlan,
   currentContextPlan,
+  isContextPlanSnapshot,
   nextPlan,
   redoPlan,
   resetPlan,
@@ -101,12 +102,14 @@ export class ContextifyService extends TypertRemoteService {
     }))
     ctx.on('agent/session-start', ({ agent }) => {
       const latest = agent.session.events.findLast(event => event.type === 'contextify/plan')
+      const current = latest?.data as unknown
       const inherited = agent.session.header.parentSession !== undefined
         && latest !== undefined
         && latest.seq < (agent.session.header.seedLength ?? 0)
-      if (latest === undefined || inherited) {
+      if (latest === undefined || inherited || !isContextPlanSnapshot(current)) {
+        const priorRevision = isRecordWithRevision(current) ? current.revision : 0
         agent.session.append('contextify/plan', createInitialContextPlan(
-          latest === undefined ? 1 : latest.data.revision + 1,
+          priorRevision + 1,
         ))
       }
       ctx.contextCompiler.select(agent.session, name)
@@ -369,6 +372,13 @@ export class ContextifyService extends TypertRemoteService {
     })
     return { graph, inspections, knownSessionIds }
   }
+}
+
+function isRecordWithRevision(value: unknown): value is { readonly revision: number } {
+  if (typeof value !== 'object' || value === null || !('revision' in value)) return false
+  const revision = value.revision
+  return typeof revision === 'number' && Number.isSafeInteger(revision)
+    && revision >= 0 && revision < Number.MAX_SAFE_INTEGER
 }
 
 export default ContextifyService

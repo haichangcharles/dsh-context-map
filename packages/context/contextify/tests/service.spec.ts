@@ -71,6 +71,30 @@ async function harness() {
 }
 
 describe('ContextifyService native Session family', () => {
+  it('migrates a legacy same-Session plan to v2 Natural before compilation', async () => {
+    const { ctx, start } = await harness()
+    const session = ctx.sessions.create(SessionId('legacy-plan'))
+    session.append('contextify/plan', {
+      kind: 'contextify/plan',
+      version: 1,
+      revision: 1,
+      mainlinePathId: 'root',
+      activePathId: 'root',
+      paths: [{
+        id: 'root', parentPathId: null, anchorSeq: null, label: 'Main', status: 'active',
+      }],
+      overrides: [],
+    } as never)
+    appendClosedTurn(session, 1, 'legacy prompt', 'legacy reply')
+
+    const active = start(session)
+    const view = ctx.contextify.get(active.agent)
+
+    expect(view.plan).toMatchObject({ version: 2, revision: 2, excluded: [], included: [] })
+    expect(ctx.contextCompiler.compile({ session, turn: 2, step: 1 }).messages)
+      .toEqual(session.deriveMessages())
+  })
+
   it('pages a de-duplicated family and imports only a same-family message snapshot', async () => {
     const { ctx, start } = await harness()
     const root = ctx.sessions.create(SessionId('root'))

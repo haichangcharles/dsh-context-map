@@ -50,6 +50,44 @@ function assertPlanState(state: ContextPlanState): void {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function isExcludedNode(value: unknown): boolean {
+  return isRecord(value)
+    && typeof value.nodeId === 'string'
+    && Number.isSafeInteger(value.eventSeq)
+    && (value.eventSeq as number) >= 0
+}
+
+function isIncludedNode(value: unknown): boolean {
+  return isRecord(value)
+    && typeof value.nodeId === 'string'
+    && Number.isSafeInteger(value.snapshotSeq)
+    && (value.snapshotSeq as number) >= 0
+    && Number.isSafeInteger(value.position)
+    && (value.position as number) >= 0
+}
+
+/**
+ * Test whether durable data is a complete version-two Context Plan.
+ * @param value - Unknown event payload loaded from current or legacy persistence.
+ * @returns Whether every field needed by compilation and history is present.
+ */
+export function isContextPlanSnapshot(value: unknown): value is ContextPlanSnapshot {
+  if (!isRecord(value) || value.kind !== 'contextify/plan' || value.version !== 2
+    || !Number.isSafeInteger(value.revision) || (value.revision as number) < 1
+    || !Number.isSafeInteger(value.stateRevision) || (value.stateRevision as number) < 1
+    || !isRecord(value.history) || !Array.isArray(value.history.past)
+    || !Array.isArray(value.history.future) || !Array.isArray(value.excluded)
+    || !Array.isArray(value.included)) return false
+  return value.history.past.every(revision => Number.isSafeInteger(revision) && revision >= 1)
+    && value.history.future.every(revision => Number.isSafeInteger(revision) && revision >= 1)
+    && value.excluded.every(isExcludedNode)
+    && value.included.every(isIncludedNode)
+}
+
 /**
  * Create a Natural plan with no explicit message choices.
  * @param revision - First durable revision for a fresh or reset child Session.
