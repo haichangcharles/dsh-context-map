@@ -33,6 +33,10 @@
   },
   "scripts": { "bundle": "tsdown", "watch": "tsdown --watch" },
   "license": "MIT",
+  "dependencies": {
+    "@xyflow/react": "^12.10.1",
+    "dagre": "^0.8.5"
+  },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-api-remotes": "workspace:^",
@@ -56,6 +60,7 @@
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-typert-protocol": "workspace:^",
     "@testing-library/react": "^16.1.0",
+    "@types/dagre": "^0.7.53",
     "@types/react": "~18.3.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"

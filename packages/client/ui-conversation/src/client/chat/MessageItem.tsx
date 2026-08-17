@@ -1,10 +1,11 @@
 // MessageItem: simple chat nodes — user and consumed-steering bubbles
-// (right-aligned, with clock + copy IconActions; branch lives only under
-// assistant answers), pending steering (copy only), context injection,
+// (right-aligned, with clock + copy and completed-turn actions), pending
+// steering (copy only), context injection,
 // compaction marker, retry disclosure, and unknown-surface JSON rows.
 
 import { memo, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
   ModelRetryNode, TurnErrorNode, UserMessageNode,
 } from '@deepseek-ai/dsh-client-runtime/client'
@@ -234,10 +235,9 @@ export function PendingSteeringBubble({ content, loadImage, t }: {
   )
 }
 
-/** User and admitted-steering keyed Chat renderer. */
-export const UserMessageNodeView = memo(function UserMessageNodeView({
-  node, loadImage, forkAt, useSession, t,
-}: ChatNodeViewProps<'user' | 'steering'>) {
+function UserMessageNodeBody({
+  node, loadImage, forkAt, useSession, t, extraActions,
+}: ChatNodeViewProps<'user' | 'steering'> & { extraActions?: ReactNode }) {
   const data = node.data
   const branchBoundary = useSession((snapshot) => {
     const current = snapshot.chat.nodes.get(node.key)
@@ -271,12 +271,30 @@ export const UserMessageNodeView = memo(function UserMessageNodeView({
           time={data.time}
           clock="start"
           onBranch={branchBoundary === undefined ? undefined : () => { forkAt(branchBoundary) }}
+          extraActions={extraActions}
           className={css.actions}
           t={t}
         />
       )}
     />
   )
+}
+
+/** Durable user-message renderer with additive per-message actions. */
+export const UserMessageNodeView = memo(function UserMessageNodeView({
+  renderSlot, ...props
+}: ChatNodeViewProps<'user'> & PropsRenderSlots<'conversation.chat.user-actions'>) {
+  return <UserMessageNodeBody
+    {...props}
+    extraActions={renderSlot('conversation.chat.user-actions', { seq: props.node.data.seq })}
+  />
+})
+
+/** Admitted steering renderer; steering is not a model-visible Context Map node. */
+export const SteeringMessageNodeView = memo(function SteeringMessageNodeView(
+  props: ChatNodeViewProps<'steering'>,
+) {
+  return <UserMessageNodeBody {...props} />
 })
 
 /** Injected-context keyed Chat renderer. */

@@ -1,123 +1,221 @@
-import { useCallback, useEffect, useState } from 'react'
+/** Interactive React Flow surface for one native Session Context Map. */
+import { useEffect, useMemo, useState } from 'react'
+import {
+  Background, Controls, MarkerType, ReactFlow, SelectionMode,
+  type Edge, type NodeChange, type ReactFlowInstance,
+} from '@xyflow/react'
+import '@xyflow/react/dist/style.css'
+import type {
+  ContextFamilyGraphNode, ContextMessageRef, ContextNodeMutation,
+} from '@deepseek-ai/dsh-contextify/types'
+import type { HostObservable, PropsStore, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
+import { ContextMapNode, type ContextMapNodeData, type ContextNodeMode } from './ContextMapNode.tsx'
+import type { ContextifyControllerSnapshot } from './controller.ts'
+import { layoutContextMap } from './layout.ts'
+import { createContextMapStore } from './store.ts'
 import css from './ContextMapPanel.module.css'
 
-export interface ContextMapPath {
-  id: string
-  parentPathId: string | null
-  anchorSeq: number | null
-  label: string
-  status: 'active' | 'archived'
-}
-
-export interface ContextMapView {
-  plan: {
-    revision: number
-    mainlinePathId: string
-    activePathId: string
-    paths: readonly ContextMapPath[]
-    overrides: readonly { seq: number; mode: 'include' | 'exclude' }[]
-  }
-  graphAsOfSeq: number
-  activeTipSeq: number | null
-  selectedCount: number
-  totalNodeCount: number
-}
-
-export interface ContextMapRecord {
-  seq: number
-  parentSeq: number | null
-  pathId: string
-  turn: number | null
-  role: 'user' | 'assistant'
-  sourceKind: string
-  locked: boolean
-  preview: string
-}
-
-export interface ContextMapPanelActions {
-  load: () => Promise<{ view: ContextMapView; records: readonly ContextMapRecord[] }>
-  createBranch: (seq: number, revision: number) => Promise<void>
-  selectPath: (pathId: string, revision: number) => Promise<void>
-  returnToMainline: (revision: number) => Promise<void>
-  setNodeMode: (seq: number, mode: 'natural' | 'include' | 'exclude', revision: number) => Promise<void>
+/** Model-changing and navigation actions shared with Chat controls. */
+export interface ContextMapActions {
+  setNodeMode: (node: ContextMessageRef, mode: ContextNodeMode) => Promise<void>
+  setNodeModes: (mutations: readonly ContextNodeMutation[]) => Promise<void>
+  reset: () => Promise<void>
+  undo: () => Promise<void>
+  redo: () => Promise<void>
+  branch: (node: ContextFamilyGraphNode) => Promise<void>
+  navigate: (node: ContextFamilyGraphNode) => void
+  locate: (nodeId: string) => void
   close: () => void
 }
 
-export function ContextMapPanel({ actions }: { actions: ContextMapPanelActions }) {
-  const [data, setData] = useState<Awaited<ReturnType<ContextMapPanelActions['load']>>>()
-  const [error, setError] = useState<string>()
-  const [pending, setPending] = useState(false)
-  const reload = useCallback(async (clearError = true) => {
-    try {
-      setData(await actions.load())
-      if (clearError) setError(undefined)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
-    }
-  }, [actions])
-  useEffect(() => {
-    void reload()
-    // Session graph events stream independently from this feature's mutation
-    // calls. A small bounded refresh keeps the pinned map current while the
-    // assistant is replying without coupling Contextify to chat internals.
-    const timer = globalThis.setInterval(() => { void reload(false) }, 1_500)
-    return () => { globalThis.clearInterval(timer) }
-  }, [reload])
+/** Slot-injected controller source and ordinary action face. */
+export interface ContextMapPanelInjected {
+  readonly hooks: { readonly contextify: HostObservable<ContextifyControllerSnapshot> }
+  readonly mapActions: ContextMapActions
+}
 
-  const mutate = async (operation: () => Promise<void>): Promise<void> => {
-    setPending(true)
-    try {
-      await operation()
-      await reload()
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
-    } finally {
-      setPending(false)
+/** Props after the slot runtime binds the controller and viewing store hooks. */
+export type ContextMapPanelProps =
+  PropsStore<ReturnType<typeof createContextMapStore>>
+  & Omit<ContextMapPanelInjected, 'hooks'>
+  & { readonly useContextify: SnapshotSelectorHook<ContextifyControllerSnapshot> }
+
+const nodeTypes = { contextMessage: ContextMapNode }
+const EMPTY_NODES: readonly ContextFamilyGraphNode[] = []
+
+function ignoreHandledError(operation: Promise<void>): void {
+  void operation.catch(() => {})
+}
+
+function modeOf(snapshot: ContextifyControllerSnapshot, node: ContextFamilyGraphNode): ContextNodeMode {
+  const plan = snapshot.view?.plan
+  if (plan?.excluded.some(item => item.nodeId === node.id) === true) return 'exclude'
+  if (plan?.included.some(item => item.nodeId === node.id) === true) return 'include'
+  return 'natural'
+}
+
+/** The pinned header, graph canvas, search, layouts, history, and batch controls. */
+export function ContextMapPanel({ useContextify, useStore, actions, mapActions }: ContextMapPanelProps) {
+  const snapshot = useContextify(value => value)
+  const layout = useStore(value => value.layout)
+  const selectedNodeIds = useStore(value => value.selectedNodeIds)
+  const positionOverrides = useStore(value => value.positionOverrides)
+  const [query, setQuery] = useState('')
+  const [resultIndex, setResultIndex] = useState(0)
+  const [instance, setInstance] = useState<ReactFlowInstance | null>(null)
+  const graph = snapshot.graph
+  const records = graph?.nodes ?? EMPTY_NODES
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  const searchResultIds = useMemo(() => normalizedQuery === ''
+    ? []
+    : records.filter(node => node.preview.toLocaleLowerCase().includes(normalizedQuery)).map(node => node.id),
+  [normalizedQuery, records])
+  const activeSearchId = searchResultIds.length === 0
+    ? undefined
+    : searchResultIds[resultIndex % searchResultIds.length]
+
+  useEffect(() => {
+    actions.retainNodeIds(records.map(node => node.id))
+  }, [actions, records])
+  useEffect(() => { setResultIndex(0) }, [normalizedQuery])
+  useEffect(() => {
+    const target = snapshot.focusedNodeId ?? activeSearchId
+    if (target === undefined || instance === null) return
+    void instance.fitView({ nodes: [{ id: target }], duration: 220, maxZoom: 1.2 })
+  }, [activeSearchId, instance, snapshot.focusedNodeId])
+
+  const flowNodes = useMemo(() => {
+    if (graph === undefined) return []
+    const searchMatches = new Set(searchResultIds)
+    const selected = new Set(selectedNodeIds)
+    const sessions = new Map(graph.sessions.map(session => [session.id, session]))
+    return layoutContextMap(graph.nodes, graph.edges, layout).map((node) => {
+      const record = node.data.record
+      const session = sessions.get(record.owner.sessionId)
+      const data: ContextMapNodeData = {
+        record,
+        mode: modeOf(snapshot, record),
+        sessionLabel: session?.depth === 0 ? 'Root Session' : `Branch Session · depth ${String(session?.depth ?? 0)}`,
+        active: record.sessionIds.includes(graph.activeSessionId),
+        focused: snapshot.focusedNodeId === record.id || activeSearchId === record.id,
+        searchMatch: searchMatches.has(record.id),
+        onMode: (ref, mode) => { ignoreHandledError(mapActions.setNodeMode(ref, mode)) },
+        onBranch: (candidate) => { ignoreHandledError(mapActions.branch(candidate)) },
+        onNavigate: mapActions.navigate,
+        onLocate: (candidate) => { mapActions.locate(candidate.id) },
+      }
+      return {
+        ...node,
+        data,
+        selected: selected.has(node.id),
+        position: positionOverrides[node.id] ?? node.position,
+      }
+    })
+  }, [activeSearchId, graph, layout, mapActions, positionOverrides, searchResultIds, selectedNodeIds, snapshot])
+
+  const flowEdges = useMemo((): Edge[] => (graph?.edges ?? []).map(edge => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    type: 'smoothstep',
+    markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
+  })), [graph])
+
+  const onNodesChange = (changes: Array<NodeChange>): void => {
+    for (const change of changes) {
+      if (change.type === 'select') actions.setNodeSelected(change.id, change.selected)
+      if (change.type === 'position' && change.position !== undefined && change.dragging === false) {
+        actions.setPosition(change.id, change.position)
+      }
     }
   }
-  const revision = data?.view.plan.revision ?? 0
-  const override = new Map(data?.view.plan.overrides.map(item => [item.seq, item.mode]))
+  const selectedRecords = records.filter(record => selectedNodeIds.includes(record.id))
+  const batch = (mode: ContextNodeMode): void => {
+    ignoreHandledError(mapActions.setNodeModes(selectedRecords.map(record => ({ node: record.owner, mode }))))
+  }
+  const stepSearch = (delta: -1 | 1): void => {
+    if (searchResultIds.length === 0) return
+    setResultIndex(index => (index + delta + searchResultIds.length) % searchResultIds.length)
+  }
 
-  return <section className={css.root} aria-label="Context Map">
-    <header className={css.header}>
-      <div>
-        <h2>Context Map</h2>
-        <p>{data === undefined ? 'Loading context…' : `${data.view.selectedCount} / ${data.view.totalNodeCount} selected`}</p>
+  return (
+    <section className={css.root} aria-label="Context Map">
+      <header className={css.header}>
+        <div>
+          <h2>Context Map</h2>
+          <p>{snapshot.view === undefined
+            ? 'Loading context…'
+            : `${String(snapshot.view.selectedCount)} / ${String(snapshot.view.totalNodeCount)} selected`}</p>
+        </div>
+        <button type="button" className={css.iconButton} aria-label="Close Context Map" onClick={mapActions.close}>×</button>
+      </header>
+      <div className={css.toolbar}>
+        <label className={css.searchBox}>
+          <span className={css.visuallyHidden}>Search Context Map</span>
+          <input
+            aria-label="Search Context Map"
+            value={query}
+            placeholder="Search messages"
+            onChange={(event) => { setQuery(event.target.value) }}
+          />
+          <span>{searchResultIds.length === 0 ? '0 / 0' : `${String(resultIndex + 1)} / ${String(searchResultIds.length)}`}</span>
+        </label>
+        <button type="button" aria-label="Previous search result" onClick={() => { stepSearch(-1) }}>↑</button>
+        <button type="button" aria-label="Next search result" onClick={() => { stepSearch(1) }}>↓</button>
       </div>
-      <button type="button" className={css.iconButton} aria-label="Close Context Map" onClick={actions.close}>×</button>
-    </header>
-    {error !== undefined && <div className={css.error} role="alert">{error}</div>}
-    {data !== undefined && <>
-      <nav className={css.paths} aria-label="Context paths">
-        {data.view.plan.paths.filter(path => path.status === 'active').map(path =>
+      <div className={css.toolbar} aria-label="Context Map layout">
+        {(['tree', 'mindmap', 'timeline'] as const).map(mode => (
           <button
-            type="button" key={path.id} disabled={pending}
-            className={path.id === data.view.plan.activePathId ? css.activePath : css.path}
-            onClick={() => { void mutate(() => actions.selectPath(path.id, revision)) }}
-          >{path.label}</button>)}
-        {data.view.plan.activePathId !== data.view.plan.mainlinePathId &&
-          <button type="button" disabled={pending} className={css.mainline} aria-label="Return to mainline"
-            onClick={() => { void mutate(() => actions.returnToMainline(revision)) }}>↩ Main</button>}
-      </nav>
-      <div className={css.canvas}>
-        {data.records.map((node) => {
-          const mode = override.get(node.seq) ?? 'natural'
-          const active = node.pathId === data.view.plan.activePathId
-          return <article key={node.seq} className={css.node} data-active={active || undefined} data-mode={mode}>
-            <div className={css.nodeMeta}><span>#{node.seq}</span><span>{node.role}</span><span>{node.pathId}</span></div>
-            <p>{node.preview || '(empty message)'}</p>
-            <div className={css.actions}>
-              {(['natural', 'include', 'exclude'] as const).map(next =>
-                <button type="button" key={next} disabled={pending || node.locked || mode === next}
-                  aria-label={`${next.charAt(0).toUpperCase()}${next.slice(1)} ${node.preview}`}
-                  onClick={() => { void mutate(() => actions.setNodeMode(node.seq, next, revision)) }}>{next}</button>)}
-              <button type="button" disabled={pending || node.locked}
-                aria-label={`Branch from ${node.preview}`}
-                onClick={() => { void mutate(() => actions.createBranch(node.seq, revision)) }}>Branch</button>
-            </div>
-          </article>
-        })}
+            type="button"
+            key={mode}
+            aria-pressed={layout === mode}
+            aria-label={`${mode} layout`}
+            onClick={() => { actions.setLayout(mode); actions.clearPositions() }}
+          >{mode === 'mindmap' ? 'Mind map' : mode.charAt(0).toUpperCase() + mode.slice(1)}</button>
+        ))}
+        <span className={css.toolbarSpacer} />
+        <button type="button" disabled={snapshot.pending} onClick={() => { ignoreHandledError(mapActions.reset()) }}>Reset</button>
+        <button type="button" disabled={snapshot.pending || snapshot.view?.canUndo !== true} onClick={() => { ignoreHandledError(mapActions.undo()) }}>Undo</button>
+        <button type="button" disabled={snapshot.pending || snapshot.view?.canRedo !== true} onClick={() => { ignoreHandledError(mapActions.redo()) }}>Redo</button>
       </div>
-    </>}
-  </section>
+      {snapshot.error !== undefined && <div className={css.error} role="alert">{snapshot.error}</div>}
+      <div className={css.canvas} data-layout={layout}>
+        {graph !== undefined && (
+          <ReactFlow
+            key={layout}
+            nodes={flowNodes}
+            edges={flowEdges}
+            nodeTypes={nodeTypes}
+            onNodesChange={onNodesChange}
+            onInit={setInstance}
+            fitView
+            minZoom={0.18}
+            maxZoom={1.8}
+            nodesDraggable
+            elementsSelectable
+            selectionOnDrag
+            selectionMode={SelectionMode.Partial}
+            panOnScroll
+            multiSelectionKeyCode={['Meta', 'Control']}
+          >
+            <Background gap={18} size={1} />
+            <Controls showInteractive={false} />
+          </ReactFlow>
+        )}
+        {snapshot.phase === 'loading' && <div className={css.empty}>Loading Context Map…</div>}
+        {snapshot.phase !== 'loading' && records.length === 0 && <div className={css.empty}>No message nodes yet.</div>}
+      </div>
+      {selectedRecords.length > 0 && (
+        <div className={css.selectionBar} aria-label="Selected message actions">
+          <strong>{selectedRecords.length} selected</strong>
+          <button type="button" onClick={() => { batch('include') }}>Include selected</button>
+          <button type="button" onClick={() => { batch('exclude') }}>Exclude selected</button>
+          <button type="button" onClick={() => { batch('natural') }}>Natural selected</button>
+          <button type="button" onClick={() => { actions.clearSelection() }}>Clear</button>
+        </div>
+      )}
+    </section>
+  )
 }
+
+export type { ContextMapLayout } from './store.ts'

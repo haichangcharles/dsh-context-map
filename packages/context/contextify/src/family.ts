@@ -16,8 +16,21 @@ interface MutableNode {
   readonly role: 'user' | 'assistant'
   readonly preview: string
   readonly time: number
+  readonly branchAtSeq: number | null
   readonly sessionIds: Set<SessionId>
   activeEventSeq: number | null
+}
+
+function branchBoundaries(events: readonly SessionEvent[]): ReadonlyMap<number, number> {
+  const pending: number[] = []
+  const boundaries = new Map<number, number>()
+  for (const event of events) {
+    if (visibleMessage(event) !== null) pending.push(event.seq)
+    if (event.type !== 'turn/end') continue
+    for (const seq of pending) boundaries.set(seq, event.seq)
+    pending.length = 0
+  }
+  return boundaries
 }
 
 interface MutableEdge {
@@ -133,6 +146,7 @@ export function projectSessionFamily(input: {
 
   for (const { inspection, depth } of ordered) {
     const path: string[] = []
+    const boundaries = branchBoundaries(inspection.events)
     for (const event of inspection.events) {
       const visible = visibleMessage(event)
       if (visible === null) continue
@@ -146,6 +160,7 @@ export function projectSessionFamily(input: {
           role: visible.role,
           preview: preview(visible.message),
           time: event.time,
+          branchAtSeq: boundaries.get(event.seq) ?? null,
           sessionIds: new Set(),
           activeEventSeq: null,
         }
@@ -182,6 +197,7 @@ export function projectSessionFamily(input: {
     role: node.role,
     preview: node.preview,
     time: node.time,
+    branchAtSeq: node.branchAtSeq,
     sessionIds: Object.freeze([...node.sessionIds]),
     activeEventSeq: node.activeEventSeq,
   }))

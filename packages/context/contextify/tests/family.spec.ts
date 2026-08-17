@@ -86,6 +86,8 @@ describe('projectSessionFamily', () => {
       'child B question',
     ])
     expect(graph.nodes.filter(node => node.preview === 'root answer')).toHaveLength(1)
+    expect(graph.nodes.find(node => node.preview === 'root question')?.branchAtSeq).toBe(rootBoundary)
+    expect(graph.nodes.find(node => node.preview === 'root answer')?.branchAtSeq).toBe(rootBoundary)
     expect(graph.nodes.some(node => node.preview.includes('reasoning'))).toBe(false)
     expect(graph.nodes.some(node => node.preview.includes('tool output'))).toBe(false)
     const rootAnswerId = `${root.id}:${rootAnswer.seq}`

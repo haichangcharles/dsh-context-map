@@ -1,0 +1,5 @@
+.root { display: inline-flex; align-items: center; gap: 3px; }
+.root button { border: 0; border-radius: 5px; padding: 2px 4px; background: transparent; color: inherit; font-size: 10px; cursor: pointer; }
+.root button:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.root button[data-active] { background: rgb(79 125 243 / 13%); color: #3567df; }
+.root button:disabled { cursor: default; opacity: 0.45; }

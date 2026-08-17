@@ -30,6 +30,8 @@ export interface ContextFamilyGraphNode {
   readonly role: 'user' | 'assistant'
   readonly preview: string
   readonly time: number
+  /** Completed native Turn boundary accepted by Session fork, or null while unavailable. */
+  readonly branchAtSeq: number | null
   readonly sessionIds: readonly SessionId[]
   readonly activeEventSeq: number | null
 }

@@ -99,6 +99,12 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * only to return null; an all-declined chain renders nothing.
      */
     'conversation.chat.turnTail': { kind: 'chain'; scope: 'session'; owner: TurnTailOwnerProps }
+    /** Action strip attached to one durable user or admitted steering message. */
+    'conversation.chat.user-actions': {
+      kind: 'list'
+      scope: 'session'
+      owner: UserActionOwnerProps
+    }
     /**
      * Action strip attached to one finalized assistant message, rendered
      * inside that message's IconActions row. The chat entry owns the render
@@ -344,6 +350,14 @@ export interface TurnTailOwnerProps {
 export interface AssistantActionOwnerProps {
   /** Stable identity carried from the `assistant/message` event. */
   messageId: MessageId
+  /** Local durable event sequence used by Context Map correlation. */
+  seq: number
+}
+
+/** Owner currency of one durable user-message action strip. */
+export interface UserActionOwnerProps {
+  /** Local durable event sequence used by Context Map correlation. */
+  seq: number
 }
 
 /** Hook constrained to business data published on the current Chat Node's Turn. */

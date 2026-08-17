@@ -18,8 +18,8 @@ import {
   formatMessageClock, msUntilNextLocalMidnight, startOfLocalDay,
 } from '../src/client/chat/message-chrome.ts'
 import {
-  CompactionNodeView, ContextMessageNodeView, RetryNodeView, UnknownNodeView,
-  UserMessageNodeView,
+  CompactionNodeView, ContextMessageNodeView, RetryNodeView, SteeringMessageNodeView,
+  UnknownNodeView, UserMessageNodeView,
 } from '../src/client/chat/MessageItem.tsx'
 import { AssistantMarkdown } from '../src/client/chat/AssistantMarkdown.tsx'
 import { StatsLine, type StatsLineProps } from '../src/client/chat/StatsLine.tsx'
@@ -67,11 +67,17 @@ function MessageItem({ node, t: translate }: MessageItemProps) {
     getSnapshot: () => snapshot,
     subscribe: () => () => {},
   })
-  const props = { node: viewNode, t: translate, useSession, forkAt: vi.fn() } as unknown as ChatNodeViewProps
+  const props = {
+    node: viewNode, t: translate, useSession, forkAt: vi.fn(), renderSlot: () => null,
+  } as unknown as ChatNodeViewProps
   switch (node.kind) {
     case 'user':
+      return <UserMessageNodeView
+        {...props as ChatNodeViewProps<'user'>}
+        renderSlot={() => null}
+      />
     case 'steering':
-      return <UserMessageNodeView {...props as ChatNodeViewProps<'user' | 'steering'>} />
+      return <SteeringMessageNodeView {...props as ChatNodeViewProps<'steering'>} />
     case 'context':
       return <ContextMessageNodeView {...props as ChatNodeViewProps<'context'>} />
     case 'compaction':
