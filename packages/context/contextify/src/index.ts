@@ -1,26 +1,45 @@
-/** Durable, same-Session context graph and compiler for Contextify. */
-import { randomUUID } from 'node:crypto'
+/** Durable context selection across one native Session fork family. */
+import { createHash } from 'node:crypto'
 import { Context } from '@deepseek-ai/cordis'
-import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
-import { HarnessError } from '@deepseek-ai/dsh-llm'
-import type { Session } from '@deepseek-ai/dsh-session'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import { HarnessError, type Message } from '@deepseek-ai/dsh-llm'
+import type { Session, SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-context-compiler'
+import type {} from '@deepseek-ai/dsh-session-persistence'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { projectSessionFamily } from './family.ts'
 import {
-  ContextPathId,
-  type ContextGraph,
-  type ContextGraphNode,
-  type ContextGraphPage,
-  type ContextGraphRecord,
-  type ContextPath,
-  type ContextPlanRef,
-  type ContextPlanSnapshot,
-  type ContextRoute,
-  type ContextifyCompilation,
-  type ContextifyView,
+  compileContextify,
+  createInitialContextPlan,
+  currentContextPlan,
+  nextPlan,
+  redoPlan,
+  resetPlan,
+  undoPlan,
+} from './plan.ts'
+import type {
+  ContextFamilyGraph,
+  ContextFamilyGraphNode,
+  ContextFamilyGraphPage,
+  ContextFamilyInspection,
+  ContextMessageRef,
+  ContextNodeMutation,
+  ContextPlanRef,
+  ContextPlanSnapshot,
+  ContextifyView,
 } from './types.ts'
 
 export * from './types.ts'
+export {
+  compileContextify,
+  createInitialContextPlan,
+  currentContextPlan,
+  nextPlan,
+  projectSessionFamily,
+  redoPlan,
+  resetPlan,
+  undoPlan,
+}
 
 export const name = 'contextify'
 
@@ -31,243 +50,73 @@ declare module '@deepseek-ai/cordis' {
   interface Context { contextify: ContextifyService }
 }
 
-const ROOT = ContextPathId('root')
-
-/**
- * Create the revision-one root-only plan.
- * @returns A deeply frozen initial plan.
- */
-export function createInitialContextPlan(): ContextPlanSnapshot {
-  return Object.freeze({
-    kind: 'contextify/plan',
-    version: 1,
-    revision: 1,
-    mainlinePathId: ROOT,
-    activePathId: ROOT,
-    paths: Object.freeze([Object.freeze({
-      id: ROOT,
-      parentPathId: null,
-      anchorSeq: null,
-      label: 'Main',
-      status: 'active' as const,
-    })]),
-    overrides: Object.freeze([]),
-  })
+interface LoadedFamily {
+  readonly graph: ContextFamilyGraph
+  readonly inspections: ReadonlyMap<SessionId, ContextFamilyInspection>
+  readonly knownSessionIds: ReadonlySet<SessionId>
 }
 
-function assertPlan(plan: ContextPlanSnapshot, previousRevision: number): void {
-  if (!Number.isSafeInteger(plan.revision) || plan.revision <= previousRevision) {
-    throw new Error('Contextify plan revisions must increase monotonically')
-  }
-  const paths = new Map<ContextPathId, ContextPath>()
-  for (const path of plan.paths) {
-    if (paths.has(path.id)) throw new Error(`duplicate Contextify path "${path.id}"`)
-    paths.set(path.id, path)
-  }
-  const root = paths.get(ROOT)
-  if (root === undefined || root.parentPathId !== null || root.anchorSeq !== null) {
-    throw new Error('Contextify root path is missing or malformed')
-  }
-  for (const id of [plan.mainlinePathId, plan.activePathId]) {
-    if (paths.get(id)?.status !== 'active') throw new Error(`Contextify active path "${id}" does not exist`)
-  }
-  for (const path of paths.values()) {
-    const seen = new Set<ContextPathId>([path.id])
-    let parentId = path.parentPathId
-    while (parentId !== null) {
-      if (seen.has(parentId)) throw new Error('Contextify path ancestry contains a cycle')
-      seen.add(parentId)
-      const parent = paths.get(parentId)
-      if (parent === undefined) throw new Error(`Contextify parent path "${parentId}" does not exist`)
-      parentId = parent.parentPathId
-    }
-  }
-  const overrideSeqs = new Set<number>()
-  for (const override of plan.overrides) {
-    if (!Number.isSafeInteger(override.seq) || override.seq < 0 || overrideSeqs.has(override.seq)) {
-      throw new Error('Contextify overrides must have unique event sequences')
-    }
-    overrideSeqs.add(override.seq)
-  }
+function exactMessage(inspection: ContextFamilyInspection, seq: number): Message | null {
+  const event = inspection.events[seq]
+  if (event?.type === 'user/message' && event.surfaceOp === 'append') return event.data
+  if (event?.type === 'assistant/message' && event.surfaceOp === 'append') return event.data.message
+  return null
 }
 
-/**
- * Fold durable routes and message events into a causal, same-Session graph.
- * @param session - Session whose complete event log is replayed.
- * @returns A frozen graph with the latest validated plan.
- */
-export function foldContextGraph(session: Session): ContextGraph {
-  let plan = createInitialContextPlan()
-  let planRevision = 0
-  let openTurn: number | null = null
-  let activeRoute: ContextRoute | null = null
-  const routedTurns = new Map<number, ContextRoute>()
-  const tips = new Map<ContextPathId, number | null>([[ROOT, null]])
-  const nodes: ContextGraphNode[] = []
-  const nodeSeqs = new Set<number>()
-
-  for (const event of session.events) {
-    if (event.type === 'contextify/plan') {
-      assertPlan(event.data, planRevision)
-      plan = event.data
-      planRevision = plan.revision
-      continue
-    }
-    if (event.type === 'turn/start') {
-      openTurn = event.data.turn
-      activeRoute = routedTurns.get(openTurn) ?? null
-      continue
-    }
-    if (event.type === 'turn/end') {
-      if (openTurn === event.data.turn) {
-        openTurn = null
-        activeRoute = null
-      }
-      continue
-    }
-    if (event.type === 'contextify/route') {
-      const route = event.data
-      if (routedTurns.has(route.turn)) throw new Error(`duplicate Contextify route for turn ${String(route.turn)}`)
-      const path = plan.paths.find(candidate => candidate.id === route.pathId)
-      if (path === undefined || path.status !== 'active') throw new Error(`Contextify route path "${route.pathId}" does not exist`)
-      if (route.planRevision !== plan.revision) throw new Error('Contextify route references a stale plan revision')
-      if (route.parentSeq !== null && !nodeSeqs.has(route.parentSeq)) throw new Error('Contextify route parent is not a graph node')
-      routedTurns.set(route.turn, route)
-      if (openTurn === route.turn) activeRoute = route
-      continue
-    }
-    if (event.type !== 'user/message' && event.type !== 'assistant/message' && event.type !== 'tool/result') continue
-    if (event.surfaceOp !== 'append') continue
-
-    const eventTurn = event.type === 'user/message' ? openTurn : event.data.turn
-    const route = eventTurn === null ? null : routedTurns.get(eventTurn) ?? activeRoute
-    const pathId = route?.pathId ?? ROOT
-    const priorTip = tips.get(pathId)
-    const parentSeq = priorTip === undefined ? route?.parentSeq ?? null : priorTip
-    const message = session.deriveEventMessage(event)
-    if (message === null) continue
-    nodes.push(Object.freeze({
-      seq: event.seq,
-      parentSeq,
-      pathId,
-      turn: eventTurn,
-      role: event.type === 'assistant/message' ? 'assistant' : 'user',
-      sourceKind: message.source.kind,
-      locked: !['user', 'model', 'tool'].includes(message.source.kind),
-    }))
-    nodeSeqs.add(event.seq)
-    tips.set(pathId, event.seq)
+function importedMessage(message: Message): Message {
+  if (message.content.some(block => block.type === 'tool-call' || block.type === 'tool-result')) {
+    throw new ContextifyError(
+      'tool exchanges cannot be imported without their native protocol context',
+      'CONTEXTIFY_UNSUPPORTED_MESSAGE',
+    )
   }
-  return Object.freeze({ plan, nodes: Object.freeze(nodes) })
+  const content = message.content.filter(block => block.type !== 'reasoning')
+  if (content.length === 0) {
+    throw new ContextifyError(
+      'a reasoning-only message has no Context Map content to import',
+      'CONTEXTIFY_UNSUPPORTED_MESSAGE',
+    )
+  }
+  return structuredClone({ ...message, content })
 }
 
-/**
- * Select a causal path plus explicit overrides, keeping the current turn fixed.
- * @param request - Session and current Agent Loop coordinates.
- * @returns Frozen ordered event sequences and their derived messages.
- */
-export function compileContextify(request: { session: Session; turn: number; step: number }): ContextifyCompilation {
-  const graph = foldContextGraph(request.session)
-  const bySeq = new Map(graph.nodes.map(node => [node.seq, node]))
-  const toolGroups: Set<number>[] = []
-  const groupBySeq = new Map<number, Set<number>>()
-  const resultByCall = new Map<string, number>()
-  for (const node of graph.nodes) {
-    const event = request.session.events[node.seq]
-    if (event?.type === 'tool/result') resultByCall.set(event.data.message.source.callId, node.seq)
-  }
-  for (const node of graph.nodes) {
-    const event = request.session.events[node.seq]
-    if (event?.type !== 'assistant/message') continue
-    const calls = event.data.message.content.flatMap(block => block.type === 'tool-call' ? [block.id] : [])
-    if (calls.length === 0) continue
-    const group = new Set<number>([node.seq])
-    for (const call of calls) {
-      const resultSeq = resultByCall.get(call)
-      if (resultSeq !== undefined) group.add(resultSeq)
-    }
-    toolGroups.push(group)
-    for (const seq of group) groupBySeq.set(seq, group)
-  }
-  const tips = graph.nodes.filter(node => node.pathId === graph.plan.activePathId)
-  let cursor: number | null = tips.at(-1)?.seq
-    ?? graph.plan.paths.find(path => path.id === graph.plan.activePathId)?.anchorSeq
-    ?? null
-  const selected = new Set<number>()
-  while (cursor !== null) {
-    const node = bySeq.get(cursor)
-    if (node === undefined) throw new Error(`Contextify natural path references missing node ${String(cursor)}`)
-    selected.add(cursor)
-    cursor = node.parentSeq
-  }
-  const excludedGroups = new Set<Set<number>>()
-  const includedGroups = new Set<Set<number>>()
-  for (const override of graph.plan.overrides) {
-    if (!bySeq.has(override.seq)) throw new Error(`Contextify override references missing node ${String(override.seq)}`)
-    const group = groupBySeq.get(override.seq)
-    if (group !== undefined) {
-      if (override.mode === 'include') includedGroups.add(group)
-      else excludedGroups.add(group)
-    } else if (override.mode === 'include') selected.add(override.seq)
-    else selected.delete(override.seq)
-  }
-  for (const group of excludedGroups) for (const seq of group) selected.delete(seq)
-  for (const group of includedGroups) for (const seq of group) selected.add(seq)
-  for (const node of graph.nodes) {
-    if (node.turn === request.turn) selected.add(node.seq)
-  }
-  for (const group of toolGroups) {
-    if ([...group].some(seq => selected.has(seq))) {
-      for (const seq of group) selected.add(seq)
-    }
-  }
-  const eventSeqs = graph.nodes.map(node => node.seq).filter(seq => selected.has(seq))
-  const messages = eventSeqs.map((seq) => {
-    const event = request.session.events[seq]
-    if (event === undefined) throw new Error(`Contextify selected missing event ${String(seq)}`)
-    const message = request.session.deriveEventMessage(event)
-    if (message === null) throw new Error(`Contextify selected non-message event ${String(seq)}`)
-    return message
-  })
-  return Object.freeze({ eventSeqs: Object.freeze(eventSeqs), messages: Object.freeze(messages) })
+function contentHash(message: Message): string {
+  return createHash('sha256').update(JSON.stringify(message)).digest('hex')
 }
 
-/** Durable Contextify state, mutations, routing, graph reads, and compiler registration. */
+function resolveNode(graph: ContextFamilyGraph, ref: ContextMessageRef): ContextFamilyGraphNode | undefined {
+  return graph.nodes.find(node => node.owner.seq === ref.seq && node.sessionIds.includes(ref.sessionId))
+}
+
+/** Durable Context Plan mutations and native Session-family graph reads. */
 export class ContextifyService extends TypertRemoteService {
-  static inject = ['agents', 'contextCompiler']
+  static inject = ['agents', 'sessions', 'sessionPersistence', 'contextCompiler']
 
   constructor(ctx: Context) {
     super(ctx, 'contextify')
     ctx.effect(() => ctx.contextCompiler.register({
-      id: name, version: 1,
+      id: name,
+      version: 2,
       select: request => ({ eventSeqs: compileContextify(request).eventSeqs }),
     }))
     ctx.on('agent/session-start', ({ agent }) => {
-      if (!agent.session.events.some(event => event.type === 'contextify/plan')) {
-        agent.session.append('contextify/plan', createInitialContextPlan())
+      const latest = agent.session.events.findLast(event => event.type === 'contextify/plan')
+      const inherited = agent.session.header.parentSession !== undefined
+        && latest !== undefined
+        && latest.seq < (agent.session.header.seedLength ?? 0)
+      if (latest === undefined || inherited) {
+        agent.session.append('contextify/plan', createInitialContextPlan(
+          latest === undefined ? 1 : latest.data.revision + 1,
+        ))
       }
       ctx.contextCompiler.select(agent.session, name)
-    })
-    ctx.on('agent/pre-step', async ({ agent, turn }, next): Promise<PreStepDecision> => {
-      const decision = await next()
-      if (decision.kind !== 'enter') return decision
-      if (agent.session.events.some(event => event.type === 'contextify/route' && event.data.turn === turn)) return decision
-      const graph = foldContextGraph(agent.session)
-      const active = graph.plan.activePathId
-      const parentSeq = graph.nodes.filter(node => node.pathId === active).at(-1)?.seq
-        ?? graph.plan.paths.find(path => path.id === active)?.anchorSeq ?? null
-      agent.session.append('contextify/route', {
-        kind: 'contextify/route', version: 1, turn, pathId: active,
-        parentSeq, planRevision: graph.plan.revision,
-      })
-      return decision
     })
   }
 
   /**
-   * Read the current detached view for one live Agent.
-   * @param agent - Live Agent whose Session owns the Contextify plan.
-   * @returns A transport-safe snapshot of the current plan and selection counts.
+   * Read the active Session's current Context Plan.
+   * @param agent - Live Agent whose Session owns the plan.
+   * @returns A detached plan and compilation summary.
    */
   @Remote('get')
   get(agent: Agent): ContextifyView {
@@ -276,124 +125,177 @@ export class ContextifyService extends TypertRemoteService {
   }
 
   /**
-   * Create and select a child path anchored at an existing node.
-   * @param agent - Live Agent whose Session will receive the durable plan event.
-   * @param ref - Expected plan revision used for compare-and-swap safety.
-   * @param anchorSeq - Message event sequence from which the new path diverges.
-   * @param label - Optional human-readable path label.
-   * @returns The view after committing and selecting the child path.
+   * Read one bounded page of the active Session's native fork family.
+   * @param agent - Live Agent selecting the family root and active path.
+   * @param after - Zero-based node offset; omitted starts at the first node.
+   * @param limit - Maximum records from 1 through 500.
+   * @returns Family metadata, all edges, and the requested canonical node page.
    */
-  @Remote('createBranch')
-  createBranch(agent: Agent, ref: ContextPlanRef, anchorSeq: number, label?: string): ContextifyView {
-    const plan = this.prepare(agent, ref)
-    const graph = foldContextGraph(agent.session)
-    const anchor = graph.nodes.find(node => node.seq === anchorSeq)
-    if (anchor === undefined) throw new ContextifyError('branch anchor is not a message node', 'CONTEXTIFY_INVALID_ANCHOR')
-    const resolvedLabel = (label ?? 'New branch').trim()
-    if (resolvedLabel.length === 0 || resolvedLabel.length > 80) {
-      throw new ContextifyError('branch label must contain 1-80 characters', 'CONTEXTIFY_INVALID_LABEL')
-    }
-    const id = ContextPathId(`path-${randomUUID()}`)
-    return this.commit(agent.session, {
-      ...plan, revision: plan.revision + 1, activePathId: id,
-      paths: [...plan.paths, {
-        id, parentPathId: anchor.pathId, anchorSeq, label: resolvedLabel, status: 'active',
-      }],
-    })
-  }
-
-  /**
-   * Select one active path without creating another Session.
-   * @param agent - Live Agent whose Contextify plan will change.
-   * @param ref - Expected plan revision used for compare-and-swap safety.
-   * @param pathId - Existing active path to select.
-   * @returns The view after selecting the requested path.
-   */
-  @Remote('selectPath')
-  selectPath(agent: Agent, ref: ContextPlanRef, pathId: ContextPathId): ContextifyView {
-    const plan = this.prepare(agent, ref)
-    if (plan.paths.find(path => path.id === pathId)?.status !== 'active') {
-      throw new ContextifyError(`path "${pathId}" is unavailable`, 'CONTEXTIFY_PATH_NOT_FOUND')
-    }
-    return this.commit(agent.session, { ...plan, revision: plan.revision + 1, activePathId: pathId })
-  }
-
-  /**
-   * Select the durable mainline path.
-   * @param agent - Live Agent whose Contextify plan will change.
-   * @param ref - Expected plan revision used for compare-and-swap safety.
-   * @returns The current view, after switching when necessary.
-   */
-  @Remote('returnToMainline')
-  returnToMainline(agent: Agent, ref: ContextPlanRef): ContextifyView {
-    const plan = this.prepare(agent, ref)
-    if (plan.activePathId === plan.mainlinePathId) return this.view(agent.session)
-    return this.commit(agent.session, { ...plan, revision: plan.revision + 1, activePathId: plan.mainlinePathId })
-  }
-
-  /**
-   * Set or clear one explicit message selection override.
-   * @param agent - Live Agent whose Contextify plan will change.
-   * @param ref - Expected plan revision used for compare-and-swap safety.
-   * @param seq - Message event sequence whose selection mode will change.
-   * @param mode - Natural path behavior or an explicit include/exclude override.
-   * @returns The view after committing the new override set.
-   */
-  @Remote('setNodeMode')
-  setNodeMode(agent: Agent, ref: ContextPlanRef, seq: number, mode: 'natural' | 'include' | 'exclude'): ContextifyView {
-    const plan = this.prepare(agent, ref)
-    const node = foldContextGraph(agent.session).nodes.find(candidate => candidate.seq === seq)
-    if (node === undefined) throw new ContextifyError('node does not exist', 'CONTEXTIFY_INVALID_NODE')
-    if (node.locked) throw new ContextifyError('node selection is locked', 'CONTEXTIFY_LOCKED_NODE')
-    const overrides = plan.overrides.filter(override => override.seq !== seq)
-    if (mode !== 'natural') overrides.push({ seq, mode })
-    return this.commit(agent.session, { ...plan, revision: plan.revision + 1, overrides })
-  }
-
-  /**
-   * Return a bounded detached graph page.
-   * @param agent - Live Agent whose Session graph will be read.
-   * @param afterSeq - Exclusive event-sequence cursor; omitted to read from the start.
-   * @param limit - Maximum records to return, from 1 through 500.
-   * @returns A transport-safe page of graph nodes and previews.
-   */
-  @Remote('graphPage')
-  graphPage(agent: Agent, afterSeq?: number, limit?: number): ContextGraphPage {
+  @Remote('familyPage')
+  async familyPage(agent: Agent, after?: number, limit?: number): Promise<ContextFamilyGraphPage> {
     this.assertLive(agent)
-    const cursor = afterSeq ?? -1
+    const offset = after ?? 0
     const pageLimit = limit ?? 250
-    if (!Number.isSafeInteger(pageLimit) || pageLimit < 1 || pageLimit > 500) throw new RangeError('graph page limit must be 1-500')
-    const graph = foldContextGraph(agent.session)
-    const candidates = graph.nodes.filter(node => node.seq > cursor)
-    const records = candidates.slice(0, pageLimit).map((record): ContextGraphRecord => {
-      const event = agent.session.events[record.seq]
-      const message = event === undefined ? null : agent.session.deriveEventMessage(event)
-      const raw = message?.content.flatMap((block) => {
-        if (block.type === 'text') return [block.text]
-        if (block.type === 'tool-call') return [`${block.name}(${block.arguments})`]
-        if (block.type === 'tool-result') return block.content.flatMap(child => child.type === 'text' ? [child.text] : [])
-        return []
-      }).join('\n') ?? ''
-      return { ...record, preview: Array.from(raw).slice(0, 240).join('') }
-    })
-    const last = records.at(-1)
+    if (!Number.isSafeInteger(offset) || offset < 0) throw new RangeError('family page offset must be non-negative')
+    if (!Number.isSafeInteger(pageLimit) || pageLimit < 1 || pageLimit > 500) {
+      throw new RangeError('family page limit must be 1-500')
+    }
+    const { graph } = await this.loadFamily(agent.session)
+    const records = graph.nodes.slice(offset, offset + pageLimit)
+    const next = offset + records.length
     return {
       asOfSeq: agent.session.seq - 1,
+      rootSessionId: graph.rootSessionId,
+      activeSessionId: graph.activeSessionId,
+      sessions: graph.sessions,
+      edges: graph.edges,
       records,
-      ...candidates.length > records.length && last !== undefined ? { nextAfterSeq: last.seq } : {},
+      totalNodeCount: graph.nodes.length,
+      ...(next < graph.nodes.length ? { nextAfter: next } : {}),
     }
   }
 
-  private currentPlan(session: Session): ContextPlanSnapshot {
-    return session.events.findLast(event => event.type === 'contextify/plan')?.data ?? createInitialContextPlan()
+  /**
+   * Set or clear one message's explicit context mode.
+   * @param agent - Live Agent whose Session receives durable events.
+   * @param ref - Expected current plan revision.
+   * @param node - Message location in one Session in the active family.
+   * @param mode - Natural behavior or the meaningful on-path/off-path override.
+   * @returns The view after the mutation commits.
+   */
+  @Remote('setNodeMode')
+  async setNodeMode(
+    agent: Agent,
+    ref: ContextPlanRef,
+    node: ContextMessageRef,
+    mode: 'natural' | 'include' | 'exclude',
+  ): Promise<ContextifyView> {
+    return this.setNodeModes(agent, ref, [{ node, mode }])
+  }
+
+  /**
+   * Apply several node-mode changes as one Context Plan revision.
+   * @param agent - Live Agent whose Session receives durable events.
+   * @param ref - Expected current plan revision.
+   * @param mutations - Ordered message-mode replacements.
+   * @returns The view after one complete plan commits.
+   */
+  @Remote('setNodeModes')
+  async setNodeModes(
+    agent: Agent,
+    ref: ContextPlanRef,
+    mutations: readonly ContextNodeMutation[],
+  ): Promise<ContextifyView> {
+    const current = this.prepare(agent, ref)
+    const family = await this.loadFamily(agent.session)
+    let excluded = [...current.excluded]
+    let included = [...current.included]
+    const pendingSnapshots: Array<{ nodeId: string; ref: ContextMessageRef; message: Message; position: number }> = []
+
+    for (const mutation of mutations) {
+      const node = resolveNode(family.graph, mutation.node)
+      if (node === undefined) {
+        const code = family.knownSessionIds.has(mutation.node.sessionId)
+          ? 'CONTEXTIFY_CROSS_FAMILY'
+          : 'CONTEXTIFY_INVALID_NODE'
+        throw new ContextifyError('message is not part of the active Context Map', code)
+      }
+      excluded = excluded.filter(item => item.nodeId !== node.id)
+      included = included.filter(item => item.nodeId !== node.id)
+      const natural = node.sessionIds.includes(agent.session.id)
+      if (mutation.mode === 'natural' || (natural && mutation.mode === 'include')
+        || (!natural && mutation.mode === 'exclude')) continue
+      if (natural) {
+        if (node.activeEventSeq === null) throw new Error('active Context Map node is missing its local event')
+        excluded.push({ nodeId: node.id, eventSeq: node.activeEventSeq })
+        continue
+      }
+      const source = family.inspections.get(mutation.node.sessionId)
+      const exact = source === undefined ? null : exactMessage(source, mutation.node.seq)
+      if (exact === null) {
+        throw new ContextifyError('message source is unavailable', 'CONTEXTIFY_INVALID_NODE')
+      }
+      const message = importedMessage(exact)
+      const position = family.graph.nodes.filter(candidate =>
+        candidate.sessionIds.includes(agent.session.id) && candidate.time <= node.time).length
+      pendingSnapshots.push({ nodeId: node.id, ref: mutation.node, message, position })
+    }
+
+    const firstSnapshotSeq = agent.session.seq
+    const appendedIncludes = pendingSnapshots.map((snapshot, index) => ({
+      nodeId: snapshot.nodeId,
+      snapshotSeq: firstSnapshotSeq + index,
+      position: snapshot.position,
+    }))
+    const plan = nextPlan(current, { excluded, included: [...included, ...appendedIncludes] })
+    for (const snapshot of pendingSnapshots) {
+      agent.session.append('context/compiler-snapshot', {
+        id: snapshot.nodeId,
+        message: snapshot.message,
+        provenance: {
+          provider: name,
+          sourceId: snapshot.ref.sessionId,
+          sourceSeq: snapshot.ref.seq,
+          contentHash: contentHash(snapshot.message),
+        },
+      })
+    }
+    return this.commit(agent.session, plan)
+  }
+
+  /**
+   * Reset every explicit choice to Natural behavior.
+   * @param agent - Live Agent whose plan changes.
+   * @param ref - Expected current plan revision.
+   * @returns The committed Natural view.
+   */
+  @Remote('reset')
+  reset(agent: Agent, ref: ContextPlanRef): ContextifyView {
+    return this.commit(agent.session, resetPlan(this.prepare(agent, ref)))
+  }
+
+  /**
+   * Restore the prior Context Plan state as a new durable revision.
+   * @param agent - Live Agent whose plan changes.
+   * @param ref - Expected current plan revision.
+   * @returns The committed prior-state view.
+   */
+  @Remote('undo')
+  undo(agent: Agent, ref: ContextPlanRef): ContextifyView {
+    const current = this.prepare(agent, ref)
+    const plan = undoPlan(agent.session, current)
+    if (plan === null) throw new ContextifyError('Context Plan has no earlier state', 'CONTEXTIFY_HISTORY_EMPTY')
+    return this.commit(agent.session, plan)
+  }
+
+  /**
+   * Restore the next Context Plan state as a new durable revision.
+   * @param agent - Live Agent whose plan changes.
+   * @param ref - Expected current plan revision.
+   * @returns The committed next-state view.
+   */
+  @Remote('redo')
+  redo(agent: Agent, ref: ContextPlanRef): ContextifyView {
+    const current = this.prepare(agent, ref)
+    const plan = redoPlan(agent.session, current)
+    if (plan === null) throw new ContextifyError('Context Plan has no later state', 'CONTEXTIFY_HISTORY_EMPTY')
+    return this.commit(agent.session, plan)
   }
 
   private prepare(agent: Agent, ref: ContextPlanRef): ContextPlanSnapshot {
     this.assertLive(agent)
-    if (agent.status !== 'idle') throw new ContextifyError('context can change after the current reply finishes', 'CONTEXTIFY_AGENT_BUSY')
-    const plan = this.currentPlan(agent.session)
+    if (agent.status !== 'idle') {
+      throw new ContextifyError(
+        'context can change after the current reply finishes',
+        'CONTEXTIFY_AGENT_BUSY',
+      )
+    }
+    const plan = currentContextPlan(agent.session)
     if (plan.revision !== ref.revision) {
-      throw new ContextifyError(`stale plan revision ${String(ref.revision)}; current is ${String(plan.revision)}`, 'CONTEXTIFY_STALE_REVISION')
+      throw new ContextifyError(
+        `stale plan revision ${String(ref.revision)}; current is ${String(plan.revision)}`,
+        'CONTEXTIFY_STALE_REVISION',
+      )
     }
     return plan
   }
@@ -410,16 +312,62 @@ export class ContextifyService extends TypertRemoteService {
   }
 
   private view(session: Session): ContextifyView {
-    const graph = foldContextGraph(session)
+    const plan = currentContextPlan(session)
     const compilation = compileContextify({ session, turn: -1, step: -1 })
+    const totalNodeCount = session.events.filter(event =>
+      event.type === 'user/message'
+      || (event.type === 'assistant/message'
+        && event.data.message.content.some(block => block.type === 'text' || block.type === 'image'))).length
     return {
-      plan: structuredClone(graph.plan),
+      plan: structuredClone(plan),
       graphAsOfSeq: session.seq - 1,
-      activeTipSeq: graph.nodes.filter(node => node.pathId === graph.plan.activePathId).at(-1)?.seq
-        ?? graph.plan.paths.find(path => path.id === graph.plan.activePathId)?.anchorSeq ?? null,
-      selectedCount: compilation.eventSeqs.length,
-      totalNodeCount: graph.nodes.length,
+      selectedCount: compilation.messages.filter(message =>
+        message.content.some(block => block.type === 'text' || block.type === 'image')).length,
+      totalNodeCount,
+      canUndo: plan.history.past.length > 0,
+      canRedo: plan.history.future.length > 0,
     }
+  }
+
+  private async loadFamily(active: Session): Promise<LoadedFamily> {
+    const headers = new Map<SessionId, ContextFamilyInspection['meta']>()
+    for (const header of await this.ctx.sessionPersistence.list()) headers.set(header.id, header)
+    for (const session of this.ctx.sessions.list()) headers.set(session.id, session.header)
+    const knownSessionIds = new Set(headers.keys())
+
+    let rootId = active.id
+    const seen = new Set<SessionId>()
+    while (!seen.has(rootId)) {
+      seen.add(rootId)
+      const parent = headers.get(rootId)?.parentSession
+      if (parent === undefined || !headers.has(parent)) break
+      rootId = parent
+    }
+    const familyIds = new Set<SessionId>([rootId])
+    let changed = true
+    while (changed) {
+      changed = false
+      for (const header of headers.values()) {
+        if (header.parentSession === undefined || !familyIds.has(header.parentSession)
+          || familyIds.has(header.id)) continue
+        familyIds.add(header.id)
+        changed = true
+      }
+    }
+
+    const inspections = new Map<SessionId, ContextFamilyInspection>()
+    for (const id of familyIds) {
+      const live = this.ctx.sessions.get(id)
+      const inspection = live === undefined
+        ? await this.ctx.sessionPersistence.inspect(id)
+        : { meta: live.header, events: live.events }
+      inspections.set(id, inspection)
+    }
+    const graph = projectSessionFamily({
+      activeSessionId: active.id,
+      sessions: [...inspections.values()],
+    })
+    return { graph, inspections, knownSessionIds }
   }
 }
 

@@ -1,16 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
-import AgentRegistry from '@deepseek-ai/dsh-agent'
-import ContextCompilerRegistry from '@deepseek-ai/dsh-context-compiler'
-import { CallId, createAssistantMessage, createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
+import {
+  CallId,
+  createAssistantMessage,
+  createToolResultMessage,
+  createUserMessage,
+} from '@deepseek-ai/dsh-llm'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import {
-  ContextPathId,
-  ContextifyService,
   compileContextify,
   createInitialContextPlan,
-  type ContextPlanSnapshot,
-} from '../src/index.ts'
+  nextPlan,
+  redoPlan,
+  resetPlan,
+  undoPlan,
+} from '../src/plan.ts'
 
 function text(message: ReturnType<Session['deriveMessages']>[number]): string {
   return message.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('')
@@ -34,68 +37,9 @@ function appendAssistant(session: Session, turn: number, value: string): number 
   }, { surfaceOp: 'append' }).seq
 }
 
-describe('Contextify compiler', () => {
-  it('models a lightweight branch inside one Session and protects the current turn', () => {
-    const session = Session.create(SessionId('contextify-branch-mock'))
-    const root = ContextPathId('root')
-    session.append('contextify/plan', createInitialContextPlan())
-
-    session.append('turn/start', { turn: 1 })
-    session.append('contextify/route', {
-      kind: 'contextify/route', version: 1, turn: 1, pathId: root, parentSeq: null, planRevision: 1,
-    })
-    session.append('step/start', { turn: 1, step: 1 })
-    const requirementSeq = appendUser(session, 'root requirement')
-    const draftSeq = appendAssistant(session, 1, 'assistant draft to leave behind')
-    session.append('step/end', { turn: 1, step: 1 })
-    session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
-
-    const branch = ContextPathId('branch-1')
-    const branchedPlan: ContextPlanSnapshot = {
-      kind: 'contextify/plan', version: 1, revision: 2,
-      mainlinePathId: root,
-      activePathId: branch,
-      paths: [
-        { id: root, parentPathId: null, anchorSeq: null, label: 'Main', status: 'active' },
-        { id: branch, parentPathId: root, anchorSeq: requirementSeq, label: 'Alternative', status: 'active' },
-      ],
-      overrides: [],
-    }
-    session.append('contextify/plan', branchedPlan)
-    session.append('turn/start', { turn: 2 })
-    session.append('contextify/route', {
-      kind: 'contextify/route', version: 1, turn: 2, pathId: branch,
-      parentSeq: requirementSeq, planRevision: 2,
-    })
-    session.append('step/start', { turn: 2, step: 1 })
-    const branchPromptSeq = appendUser(session, 'branch follow-up')
-
-    expect(compileContextify({ session, turn: 2, step: 1 }).eventSeqs).toEqual([
-      requirementSeq,
-      branchPromptSeq,
-    ])
-    expect(compileContextify({ session, turn: 2, step: 1 }).messages.map(text)).toEqual([
-      'root requirement',
-      'branch follow-up',
-    ])
-
-    session.append('contextify/plan', {
-      ...branchedPlan,
-      revision: 3,
-      overrides: [
-        { seq: draftSeq, mode: 'include' },
-        { seq: branchPromptSeq, mode: 'exclude' },
-      ],
-    })
-    expect(compileContextify({ session, turn: 2, step: 1 }).eventSeqs).toEqual([
-      requirementSeq,
-      draftSeq,
-      branchPromptSeq,
-    ])
-  })
-
-  it('keeps the root-only default equivalent to the Harness surface', () => {
-    const session = Session.create(SessionId('contextify-root-compatibility'))
+describe('native Contextify plan compiler', () => {
+  it('keeps the Natural default equivalent to the Harness surface', () => {
+    const session = Session.create(SessionId('contextify-natural'))
     session.append('contextify/plan', createInitialContextPlan())
     appendUser(session, 'one')
     appendUser(session, 'two')
@@ -104,26 +48,84 @@ describe('Contextify compiler', () => {
       .toEqual(session.deriveMessages())
   })
 
-  it('registers as the real Harness compiler provider', async () => {
-    const ctx = new Context()
-    await ctx.plugin(AgentRegistry)
-    await ctx.plugin(ContextCompilerRegistry)
-    await ctx.plugin(ContextifyService).await()
-    const session = Session.create(SessionId('contextify-provider'))
-    session.append('contextify/plan', createInitialContextPlan())
-    appendUser(session, 'compiled by registry')
-
-    ctx.contextCompiler.select(session, 'contextify')
-    expect(ctx.contextCompiler.compile({ session, turn: 1, step: 1 })).toMatchObject({
-      id: 'contextify',
-      version: 1,
-      eventSeqs: [1],
+  it('excludes Natural history, inserts a sibling snapshot, and protects the current turn', () => {
+    const session = Session.create(SessionId('contextify-native-selection'))
+    const initial = createInitialContextPlan()
+    session.append('contextify/plan', initial)
+    session.append('turn/start', { turn: 1 })
+    const requirementSeq = appendUser(session, 'root requirement')
+    const obsoleteSeq = appendAssistant(session, 1, 'obsolete answer')
+    session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    session.append('turn/start', { turn: 2 })
+    const currentSeq = appendUser(session, 'current question')
+    const snapshot = session.append('context/compiler-snapshot', {
+      id: 'sibling:8',
+      message: createUserMessage({
+        content: [{ type: 'text', text: 'sibling discovery' }],
+        source: { kind: 'runtime-context', provenance: 'contextify:sibling:8' },
+      }),
     })
+    session.append('contextify/plan', nextPlan(initial, {
+      excluded: [
+        { nodeId: 'root:2', eventSeq: obsoleteSeq },
+        { nodeId: 'active:5', eventSeq: currentSeq },
+      ],
+      included: [{ nodeId: 'sibling:8', snapshotSeq: snapshot.seq, position: 1 }],
+    }))
+
+    const compilation = compileContextify({ session, turn: 2, step: 1 })
+    expect(compilation.eventSeqs).toEqual([requirementSeq, snapshot.seq, currentSeq])
+    expect(compilation.messages.map(text)).toEqual([
+      'root requirement',
+      'sibling discovery',
+      'current question',
+    ])
   })
 
-  it('includes and excludes a multi-call tool exchange as one closed group', () => {
+  it('appends immutable Reset, Undo, and Redo revisions without rewriting state history', () => {
+    const session = Session.create(SessionId('contextify-history'))
+    const initial = createInitialContextPlan()
+    session.append('contextify/plan', initial)
+    const excluded = nextPlan(initial, {
+      excluded: [{ nodeId: 'root:1', eventSeq: 1 }],
+      included: [],
+    })
+    session.append('contextify/plan', excluded)
+    const included = nextPlan(excluded, {
+      excluded: excluded.excluded,
+      included: [{ nodeId: 'sibling:4', snapshotSeq: 9, position: 1 }],
+    })
+    session.append('contextify/plan', included)
+
+    const undone = undoPlan(session, included)
+    expect(undone).toMatchObject({
+      revision: 4,
+      stateRevision: excluded.stateRevision,
+      excluded: excluded.excluded,
+      included: [],
+      history: { future: [included.stateRevision] },
+    })
+    session.append('contextify/plan', undone!)
+    const redone = redoPlan(session, undone!)
+    expect(redone).toMatchObject({
+      revision: 5,
+      stateRevision: included.stateRevision,
+      included: included.included,
+      history: { future: [] },
+    })
+    session.append('contextify/plan', redone!)
+    expect(resetPlan(redone!)).toMatchObject({
+      revision: 6,
+      excluded: [],
+      included: [],
+    })
+    expect(initial).toMatchObject({ revision: 1, excluded: [], included: [] })
+  })
+
+  it('keeps a multi-call tool exchange closed when one member is excluded', () => {
     const session = Session.create(SessionId('contextify-tool-closure'))
-    session.append('contextify/plan', createInitialContextPlan())
+    const initial = createInitialContextPlan()
+    session.append('contextify/plan', initial)
     session.append('turn/start', { turn: 1 })
     const promptSeq = appendUser(session, 'inspect both files')
     const first = CallId('call-first')
@@ -140,32 +142,30 @@ describe('Contextify compiler', () => {
       }),
     }, { surfaceOp: 'append' }).seq
     const firstResultSeq = session.append('tool/result', {
-      turn: 1, step: 1,
-      message: createToolResultMessage({ callId: first, content: [{ type: 'text', text: 'a' }], isError: false }),
+      turn: 1,
+      step: 1,
+      message: createToolResultMessage({
+        callId: first,
+        content: [{ type: 'text', text: 'a' }],
+        isError: false,
+      }),
     }, { surfaceOp: 'append' }).seq
     const secondResultSeq = session.append('tool/result', {
-      turn: 1, step: 1,
-      message: createToolResultMessage({ callId: second, content: [{ type: 'text', text: 'b' }], isError: false }),
+      turn: 1,
+      step: 1,
+      message: createToolResultMessage({
+        callId: second,
+        content: [{ type: 'text', text: 'b' }],
+        isError: false,
+      }),
     }, { surfaceOp: 'append' }).seq
     session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
-    session.append('contextify/plan', {
-      ...createInitialContextPlan(),
-      revision: 2,
-      overrides: [{ seq: firstResultSeq, mode: 'exclude' }],
-    })
+    session.append('contextify/plan', nextPlan(initial, {
+      excluded: [{ nodeId: 'root:result', eventSeq: firstResultSeq }],
+      included: [],
+    }))
 
     expect(compileContextify({ session, turn: 2, step: 1 }).eventSeqs).toEqual([promptSeq])
-
-    session.append('contextify/plan', {
-      ...createInitialContextPlan(),
-      revision: 3,
-      overrides: [
-        { seq: assistantSeq, mode: 'exclude' },
-        { seq: secondResultSeq, mode: 'include' },
-      ],
-    })
-    expect(compileContextify({ session, turn: 2, step: 1 }).eventSeqs).toEqual([
-      promptSeq, assistantSeq, firstResultSeq, secondResultSeq,
-    ])
+    expect([assistantSeq, firstResultSeq, secondResultSeq]).not.toContain(promptSeq)
   })
 })

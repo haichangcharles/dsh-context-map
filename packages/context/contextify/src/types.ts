@@ -1,5 +1,4 @@
 /** Client-safe Contextify domain and Remote-boundary vocabulary. */
-import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { Message } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session/types'
 
@@ -52,70 +51,37 @@ export interface ContextFamilyGraph {
   readonly edges: readonly ContextFamilyGraphEdge[]
 }
 
-/** Opaque identity of one lightweight path inside a Session. */
-export type ContextPathId = Branded<'ContextPathId'>
-
-/**
- * Brand a validated path id.
- * @param value - Non-empty, already-trimmed durable path identity.
- * @returns The validated opaque path identity.
- */
-export function ContextPathId(value: string): ContextPathId {
-  if (value.length === 0 || value.trim() !== value) throw new TypeError('context path id must be non-empty and trimmed')
-  return value as ContextPathId
+/** One Natural active-Session message explicitly omitted from compilation. */
+export interface ContextExcludedNode {
+  readonly nodeId: string
+  readonly eventSeq: number
 }
 
-/** Durable ancestry and lifecycle of one conversation path. */
-export interface ContextPath {
-  readonly id: ContextPathId
-  readonly parentPathId: ContextPathId | null
-  readonly anchorSeq: number | null
-  readonly label: string
-  readonly status: 'active' | 'archived'
+/** One same-family message copied into a local compiler snapshot event. */
+export interface ContextIncludedNode {
+  readonly nodeId: string
+  readonly snapshotSeq: number
+  readonly position: number
 }
 
-/** Explicit inclusion decision for one durable message event. */
-export interface ContextNodeOverride {
-  readonly seq: number
-  readonly mode: 'include' | 'exclude'
+/** Selection fields copied between revisioned Context Plan states. */
+export interface ContextPlanState {
+  readonly excluded: readonly ContextExcludedNode[]
+  readonly included: readonly ContextIncludedNode[]
 }
 
-/** Complete last-wins context selection plan. */
+/** Complete last-wins context selection and undo history. */
 export interface ContextPlanSnapshot {
   readonly kind: 'contextify/plan'
-  readonly version: 1
+  readonly version: 2
   readonly revision: number
-  readonly mainlinePathId: ContextPathId
-  readonly activePathId: ContextPathId
-  readonly paths: readonly ContextPath[]
-  readonly overrides: readonly ContextNodeOverride[]
-}
-
-/** Immutable assignment of one turn to a path and causal parent. */
-export interface ContextRoute {
-  readonly kind: 'contextify/route'
-  readonly version: 1
-  readonly turn: number
-  readonly pathId: ContextPathId
-  readonly parentSeq: number | null
-  readonly planRevision: number
-}
-
-/** Replay-derived causal metadata for one durable message event. */
-export interface ContextGraphNode {
-  readonly seq: number
-  readonly parentSeq: number | null
-  readonly pathId: ContextPathId
-  readonly turn: number | null
-  readonly role: 'user' | 'assistant'
-  readonly sourceKind: string
-  readonly locked: boolean
-}
-
-/** Detached graph and the latest validated plan. */
-export interface ContextGraph {
-  readonly plan: ContextPlanSnapshot
-  readonly nodes: readonly ContextGraphNode[]
+  readonly stateRevision: number
+  readonly history: {
+    readonly past: readonly number[]
+    readonly future: readonly number[]
+  }
+  readonly excluded: readonly ContextExcludedNode[]
+  readonly included: readonly ContextIncludedNode[]
 }
 
 /** Existing durable events and messages selected for one request. */
@@ -131,32 +97,39 @@ export interface ContextPlanRef { readonly revision: number }
 export interface ContextifyView {
   readonly plan: ContextPlanSnapshot
   readonly graphAsOfSeq: number
-  readonly activeTipSeq: number | null
   readonly selectedCount: number
   readonly totalNodeCount: number
+  readonly canUndo: boolean
+  readonly canRedo: boolean
 }
 
-/** One bounded page of graph nodes. */
-export interface ContextGraphPage {
+/** One bounded page of a native Session family's canonical message nodes. */
+export interface ContextFamilyGraphPage {
   readonly asOfSeq: number
-  readonly records: readonly ContextGraphRecord[]
-  readonly nextAfterSeq?: number
+  readonly rootSessionId: SessionId
+  readonly activeSessionId: SessionId
+  readonly sessions: readonly ContextFamilySession[]
+  readonly edges: readonly ContextFamilyGraphEdge[]
+  readonly records: readonly ContextFamilyGraphNode[]
+  readonly totalNodeCount: number
+  readonly nextAfter?: number
 }
 
-/** Browser-safe graph node plus a bounded text preview. */
-export interface ContextGraphRecord extends ContextGraphNode { readonly preview: string }
+/** One message-mode mutation from Chat or the Context Map. */
+export interface ContextNodeMutation {
+  readonly node: ContextMessageRef
+  readonly mode: 'natural' | 'include' | 'exclude'
+}
 
 /** Stable Contextify mutation failures. */
 export type ContextifyErrorCode =
   | 'CONTEXTIFY_AGENT_NOT_LIVE' | 'CONTEXTIFY_AGENT_BUSY' | 'CONTEXTIFY_STALE_REVISION'
-  | 'CONTEXTIFY_PATH_NOT_FOUND' | 'CONTEXTIFY_INVALID_ANCHOR' | 'CONTEXTIFY_INVALID_NODE'
-  | 'CONTEXTIFY_LOCKED_NODE' | 'CONTEXTIFY_INVALID_TRANSITION' | 'CONTEXTIFY_INVALID_LABEL'
+  | 'CONTEXTIFY_INVALID_NODE' | 'CONTEXTIFY_CROSS_FAMILY' | 'CONTEXTIFY_UNSUPPORTED_MESSAGE'
+  | 'CONTEXTIFY_INVALID_TRANSITION' | 'CONTEXTIFY_HISTORY_EMPTY'
 
 declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {
     /** Complete post-mutation Contextify plan. */
     'contextify/plan': ContextPlanSnapshot
-    /** Immutable assignment of one turn to a path and causal parent. */
-    'contextify/route': ContextRoute
   }
 }

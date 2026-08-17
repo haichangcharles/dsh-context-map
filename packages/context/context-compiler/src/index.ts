@@ -34,6 +34,13 @@ export interface ContextCompilerSnapshot {
   readonly id: string
   /** Exact model-visible message reconstructed from this durable event. */
   readonly message: Message
+  /** Optional provider-owned immutable origin used to audit copied content. */
+  readonly provenance?: {
+    readonly provider: string
+    readonly sourceId: string
+    readonly sourceSeq: number
+    readonly contentHash: string
+  }
 }
 
 /** Fully validated model input produced from selected durable events. */
