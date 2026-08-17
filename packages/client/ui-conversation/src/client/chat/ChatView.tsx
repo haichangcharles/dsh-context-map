@@ -12,7 +12,7 @@
 // ChatNodeSeat subscribes to one Node key, so Assistant deltas and Tool
 // lifecycle updates replace only their own row without remounting it.
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { ConversationTimelineSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
 import { IconChevronDownOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ChatViewSlotProps } from '../contract/slots.ts'
@@ -39,6 +39,14 @@ interface PagingAnchor {
 function anchorElement(list: HTMLElement, key: string): HTMLElement | null {
   for (const row of list.querySelectorAll<HTMLElement>('[data-chat-anchor-key]')) {
     if (row.dataset.chatAnchorKey === key) return row
+  }
+  return null
+}
+
+/** Find an exact durable message sequence without interpolating a selector. */
+function messageElement(list: HTMLElement, seq: number): HTMLElement | null {
+  for (const row of list.querySelectorAll<HTMLElement>('[data-chat-message-seq]')) {
+    if (Number(row.dataset.chatMessageSeq) === seq) return row
   }
   return null
 }
@@ -145,7 +153,7 @@ function TurnStatus({ startTime, t }: {
  */
 export function ChatView({
   useSession, useSessions, useStore, renderSlot, sessionId, openFile, loadOlder, loadImage, inspectCall, chatScroll, forkAt,
-  fileMentions, t,
+  fileMentions, messageReveal, t,
 }: ChatViewSlotProps) {
   const order = useSession(s => s.chat.order)
   const nodeStore = useSession(s => s.chat.nodes)
@@ -159,6 +167,11 @@ export function ChatView({
   const hasMore = useSession(s => s.hasMore)
   const loadingOlder = useSession(s => s.loadingOlder)
   const selectedCallId = useStore(s => s.selection?.callId)
+  const reveal = useSyncExternalStore(
+    messageReveal.subscribe,
+    messageReveal.getSnapshot,
+    messageReveal.getSnapshot,
+  )
 
   const pendingSteering = useMemo(
     () => inbox.filter(item => item.placement === 'steering'),
@@ -183,6 +196,9 @@ export function ChatView({
    *  scroll-driven at-bottom chrome re-render (which would snap inertial
    *  scrolls the rest of the way to the floor). */
   const followSigRef = useRef<string | null>(null)
+  const revealedRowRef = useRef<HTMLElement | null>(null)
+  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const revealPageRef = useRef<string | null>(null)
 
   const firstKey = order[0]
   const firstSeq = firstKey === undefined ? null : nodeStore.get(firstKey)?.anchorSeq ?? null
@@ -199,6 +215,39 @@ export function ChatView({
     setAtBottom(true)
     chatScroll.save(null)
   }
+
+  useEffect(() => {
+    if (reveal === null) return
+    const local = listRef.current
+    if (local === null) return
+    const row = messageElement(local, reveal.seq)
+    if (row === null) {
+      const pageKey = `${String(reveal.id)}:${String(firstSeq)}`
+      if (hasMore && !loadingOlder && revealPageRef.current !== pageKey) {
+        revealPageRef.current = pageKey
+        loadOlder()
+      }
+      return
+    }
+    revealPageRef.current = null
+    if (revealTimerRef.current !== null) clearTimeout(revealTimerRef.current)
+    revealedRowRef.current?.removeAttribute('data-chat-revealed')
+    revealedRowRef.current = row
+    row.setAttribute('data-chat-revealed', '')
+    /* v8 ignore next -- jsdom lacks scrollIntoView; browsers always provide it. */
+    if (typeof row.scrollIntoView === 'function') row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    messageReveal.consume(reveal.id)
+    revealTimerRef.current = setTimeout(() => {
+      row.removeAttribute('data-chat-revealed')
+      if (revealedRowRef.current === row) revealedRowRef.current = null
+      revealTimerRef.current = null
+    }, 1_500)
+  }, [firstSeq, hasMore, loadOlder, loadingOlder, messageReveal, order, reveal])
+
+  useEffect(() => () => {
+    if (revealTimerRef.current !== null) clearTimeout(revealTimerRef.current)
+    revealedRowRef.current?.removeAttribute('data-chat-revealed')
+  }, [])
 
   useLayoutEffect(() => {
     const local = listRef.current

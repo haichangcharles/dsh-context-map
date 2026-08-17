@@ -4,7 +4,7 @@
 // ObservableSnapshot fake, no wire or Tool presentation plugin.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
 import { useEffect } from 'react'
 import type {
   AssistantMessageNode, CommandNode, CompactionSummaryNode, ConversationNode, ConversationSnapshot,
@@ -23,6 +23,7 @@ import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import { createChatStore } from '../src/client/stores.ts'
 import { ChatView } from '../src/client/chat/ChatView.tsx'
+import { MessageRevealRegistry } from '../src/client/chat/message-reveal.ts'
 import { zh } from '../src/client/locales.ts'
 import { AssistantNodeView } from '../src/client/chat/AssistantNodeView.tsx'
 import { CommandNodeView, ManualCompactionNodeView } from '../src/client/chat/CommandNodeView.tsx'
@@ -162,6 +163,7 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
     read: () => savedScroll,
   }
   const forkAt = vi.fn()
+  const messageReveal = new MessageRevealRegistry()
   // Selection rides the REAL chat store (same construction path as
   // production; the view reads it through the PropsStore useStore share).
   const chat = createChatStore().create()
@@ -292,6 +294,7 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
     loadOlder,
     loadImage: vi.fn(() => Promise.reject(new Error('not used'))),
     inspectCall,
+    messageReveal: messageReveal.binding(SID),
     chatScroll,
     forkAt,
     // Absent-service default; mention tests override with a real resolver.
@@ -302,7 +305,7 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
   const setSelection = (next: SelectionTarget | null): void => { chat.actions.select(next) }
   return {
     set, ChatView, props, openDetails, openFile, loadOlder, inspectCall,
-    chatScroll, forkAt, setSelection, toolOwners,
+    chatScroll, forkAt, setSelection, toolOwners, messageReveal,
   }
 }
 
@@ -384,6 +387,20 @@ describe('Chat node rendering', () => {
 })
 
 describe('ChatView', () => {
+  it('reveals and highlights the exact durable message sequence', async () => {
+    const h = makeHarness({ nodes: [user(9, 'target'), user(10, 'other')] })
+    const view = render(<h.ChatView {...h.props} />)
+    const target = view.container.querySelector<HTMLElement>('[data-chat-message-seq="9"]')!
+    const scrollIntoView = vi.fn()
+    target.scrollIntoView = scrollIntoView
+
+    act(() => { h.messageReveal.request(SID, 9) })
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
+    })
+    expect(target.dataset.chatRevealed).toBe('')
+    expect(h.messageReveal.read(SID)).toBeNull()
+  })
   it('hands a windowless tool result to the Tool seat with an empty tool name', () => {
     const h = makeHarness({
       nodes: [{ ...toolResult(3, 'w1'), call: null }],

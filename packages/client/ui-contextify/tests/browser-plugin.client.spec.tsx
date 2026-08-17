@@ -56,6 +56,8 @@ async function bench() {
   const fork = vi.fn(async () => child)
   const open = vi.fn()
   ctx.provide('sessions', { fork, open })
+  const revealMessage = vi.fn()
+  ctx.provide('conversation', { revealMessage } as never)
   await ctx.plugin(SlotRegistry).await()
   ctx.slots.register({
     name: 'root',
@@ -73,7 +75,7 @@ async function bench() {
   const userAction = ctx.slots.entries('conversation.chat.user-actions')[0]
   const assistantAction = ctx.slots.entries('conversation.chat.assistant-actions')[0]
   return {
-    ctx, fiber, calls, closeDetails, openDetails, fork, open, record,
+    ctx, fiber, calls, closeDetails, openDetails, fork, open, revealMessage, record,
     panel: injectPanel(source),
     pinned,
     userAction,
@@ -107,7 +109,7 @@ describe('ui-contextify browser plugin', () => {
     await b.panel.mapActions.setNodeMode(b.record.owner, 'exclude')
     await b.panel.mapActions.branch(b.record)
     b.panel.mapActions.navigate(b.record)
-    b.panel.mapActions.locate(b.record.id)
+    b.panel.mapActions.locate(b.record)
     b.panel.mapActions.close()
 
     expect(b.calls.filter(call => call.method === 'setNodeMode')).toEqual([{
@@ -116,7 +118,8 @@ describe('ui-contextify browser plugin', () => {
     expect(b.fork).toHaveBeenCalledWith({ sessionId: source, atSeq: 9, increaseTitle: true })
     expect(b.open).toHaveBeenNthCalledWith(1, child)
     expect(b.open).toHaveBeenNthCalledWith(2, source)
-    expect(b.openDetails).toHaveBeenCalledOnce()
+    expect(b.revealMessage).toHaveBeenCalledWith(source, 7)
+    expect(b.openDetails).not.toHaveBeenCalled()
     expect(b.closeDetails).toHaveBeenCalledOnce()
   })
 

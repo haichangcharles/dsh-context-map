@@ -15,6 +15,12 @@ type RoutedChatNodeOwner = {
   [Kind in ChatNode['kind']]: ChatNodeOwnerProps & { readonly node: ChatNode<Kind> }
 }[ChatNode['kind']]
 
+function durableMessageSeq(node: ChatNode): number | undefined {
+  if (node.kind === 'user' || node.kind === 'steering') return node.data.seq
+  if (node.kind === 'assistant-step') return node.data.finalNode?.seq
+  return undefined
+}
+
 /** Subscribe and dispatch one stable Context key without observing sibling Nodes. */
 export const ChatNodeSeat = memo(function ChatNodeSeat({
   nodeKey, selectedCallId, cwd, openFile, inspectCall, forkAt,
@@ -22,6 +28,7 @@ export const ChatNodeSeat = memo(function ChatNodeSeat({
 }: ChatNodeSeatProps) {
   const node = useSession(snapshot => snapshot.chat.nodes.get(nodeKey))
   const routedNode = node as ChatNode | undefined
+  const messageSeq = routedNode === undefined ? undefined : durableMessageSeq(routedNode)
   const owner = useMemo<ChatNodeOwnerProps | null>(() => node === undefined
     ? null
     : {
@@ -44,6 +51,7 @@ export const ChatNodeSeat = memo(function ChatNodeSeat({
       data-chat-anchor-key={routedNode.key}
       data-chat-flow-key={routedNode.key}
       data-chat-flow-kind={routedNode.kind}
+      data-chat-message-seq={messageSeq}
     >
       {renderSlot('conversation.chat.node', routedOwner, {
         entryKey: routedNode.kind,

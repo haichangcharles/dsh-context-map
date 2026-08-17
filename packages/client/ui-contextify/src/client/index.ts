@@ -19,7 +19,7 @@ export type { ContextifyControllerSnapshot, ContextifyTransport } from './contro
 export { createContextMapStore } from './store.ts'
 
 /** Services required by the Contextify Remote adapter and details surface. */
-export const inject = ['slots', 'remote', 'remote.contextify', 'layout', 'sessions']
+export const inject = ['slots', 'remote', 'remote.contextify', 'layout', 'sessions', 'conversation']
 
 /** Convert a generated transport result into the component's ordinary promise contract. */
 function valueOf<T>(result: RemoteResult<T>): T {
@@ -96,7 +96,7 @@ export function apply(ctx: ClientContext): void {
             ctx.sessions.open(childId)
           },
           navigate: (node) => { ctx.sessions.open(node.owner.sessionId) },
-          locate: (node) => { controller.focus(node.id); ctx.layout.openDetails() },
+          locate: (node) => { ctx.conversation.revealMessage(node.owner.sessionId, node.owner.seq) },
           close: () => { ctx.layout.closeDetails() },
         },
       }

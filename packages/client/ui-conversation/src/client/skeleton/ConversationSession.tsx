@@ -21,6 +21,11 @@ interface Breadcrumb {
 }
 
 const DEFAULT_VIEW_ID = 'chat'
+const ABSENT_MESSAGE_REVEAL = {
+  getSnapshot: () => null,
+  subscribe: () => () => {},
+  consume: () => {},
+}
 
 /** Resolve by id and keep stale persisted selections on the stable Chat fallback. */
 function resolveActiveView(tabs: readonly ViewTab[], selectedId: string | null): ViewTab | undefined {
@@ -137,7 +142,7 @@ export function ConversationSessionHeader({
  */
 export function ConversationSession({
   sessionId, useSession, useInput, inputActions, useStore, actions,
-  renderSlot, views, bindDraftMirror, releaseSessionImages,
+  renderSlot, views, bindDraftMirror, releaseSessionImages, messageReveal,
 }: ConversationSessionProps) {
   useSyncExternalStore(views.subscribe, views.version)
   const tabs = views.list()
@@ -149,6 +154,18 @@ export function ConversationSession({
   const storedDraft = useStore(s => s.draft)
   // `?? null`: persisted snapshots from before the inspect field rehydrate without it.
   const inspect = useStore(s => s.inspect ?? null)
+  const revealSource = messageReveal ?? ABSENT_MESSAGE_REVEAL
+  const reveal = useSyncExternalStore(
+    revealSource.subscribe,
+    revealSource.getSnapshot,
+    revealSource.getSnapshot,
+  )
+
+  useEffect(() => {
+    if (reveal !== null && selectedId !== null && selectedId !== DEFAULT_VIEW_ID) {
+      actions.setView(DEFAULT_VIEW_ID)
+    }
+  }, [actions, reveal, selectedId])
 
   useEffect(() => {
     if (inputState.draft === '' && storedDraft !== '') inputActions.setDraft(storedDraft)

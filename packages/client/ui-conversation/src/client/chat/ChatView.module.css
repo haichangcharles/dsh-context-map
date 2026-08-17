@@ -50,6 +50,23 @@
   min-width: 0;
 }
 
+.flowItem[data-chat-revealed] {
+  border-radius: 10px;
+  animation: dsh-chat-reveal 1.5s ease-out;
+}
+
+@keyframes dsh-chat-reveal {
+  0%, 35% { box-shadow: 0 0 0 4px rgb(79 125 243 / 34%); }
+  100% { box-shadow: 0 0 0 0 rgb(79 125 243 / 0%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flowItem[data-chat-revealed] {
+    animation: none;
+    box-shadow: 0 0 0 3px rgb(79 125 243 / 32%);
+  }
+}
+
 /* A keyed renderer may intentionally decline its row after dispatch (the
    completed-turn tail does this when it owns neither actions nor extensions).
    An empty flex item must not consume the column gap. */
