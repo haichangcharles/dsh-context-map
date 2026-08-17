@@ -96,19 +96,19 @@ Reset to Natural appends a new empty Context Plan revision. Undo and Redo append
 
 The existing Context Compiler selects event sequences that already belong to the active Session. A sibling Session's message does not satisfy that rule, so the compiler contract must support a durable local representation rather than reading a sibling log during a model request.
 
-An Include mutation writes an immutable message snapshot into the active Session's Context Plan event. The snapshot records a stable item ID, source Session ID, source event sequence, source canonical message ID, role, content, timestamp, and content hash. Removing an Include changes the next full-plan revision but does not mutate older events.
+An Include mutation first writes an immutable `context/compiler-snapshot` event into the active Session log. The event records a stable item ID, source Session ID, source event sequence, source canonical message ID, role, message, timestamp, and content hash. The following Context Plan revision selects that local snapshot event. Removing an Include changes the next full-plan revision but does not mutate older events.
 
-The compiler result becomes a discriminated union while the existing event-sequence provider remains supported:
+The Context Compiler continues to return event sequences:
 
 ```ts
-type ContextSelectionItem =
-  | { kind: 'event'; seq: number }
-  | { kind: 'snapshot'; planSeq: number; itemId: string }
+interface ContextSelection {
+  readonly eventSeqs: readonly number[]
+}
 ```
 
-The Context Compiler registry validates that an `event` item is a selectable message event in the active Session and that a `snapshot` item exists in a durable Context Plan event in the same Session. It resolves both to model messages only after validation. This keeps every model-visible input reconstructable from the active Session log.
+The Context Compiler registry accepts ordinary surface message events and `context/compiler-snapshot` events. It resolves a snapshot from the message frozen inside that exact local event. The provider cannot select an in-memory message without a current-Session event sequence, so every model-visible input remains reconstructable from the active Session log.
 
-The Contextify compiler orders selected Natural events by active Session sequence. Included snapshots retain explicit plan order and are inserted at their configured positions. The first implementation defaults newly Included snapshots to the position chosen by their source timestamp among visible messages and lets the user reorder selected nodes with the existing Context Map ordering interaction.
+The Contextify compiler orders selected Natural events by active Session sequence. Included snapshot-event sequences retain explicit plan order and are inserted at their configured positions. The first implementation defaults newly Included snapshots to the position chosen by their source timestamp among visible messages and lets the user reorder selected nodes with the existing Context Map ordering interaction.
 
 ## Hidden tool and reasoning data
 
