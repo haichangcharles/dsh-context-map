@@ -96,7 +96,6 @@ function mount(snapshot = fixture()) {
     undo: vi.fn(async () => {}),
     redo: vi.fn(async () => {}),
     branch: vi.fn(async () => {}),
-    navigate: vi.fn(),
     locate: vi.fn(),
     close: vi.fn(),
   }
@@ -135,6 +134,7 @@ describe('ContextMapPanel', () => {
     const h = mount()
     fireEvent.click(screen.getByRole('button', { name: 'Selection mode' }))
     const canvas = h.view.container.querySelector<HTMLElement>('[data-context-map-canvas]')!
+    const pane = canvas.querySelector<HTMLElement>('.react-flow__pane')!
     const rootCard = await screen.findByLabelText('User message: root requirement')
     const branchCard = screen.getByLabelText('User message: branch follow-up')
     vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
@@ -150,10 +150,10 @@ describe('ContextMapPanel', () => {
       toJSON: () => ({}),
     })
 
-    fireEvent.pointerDown(canvas, { shiftKey: true, clientX: 10, clientY: 10, pointerId: 1 })
-    fireEvent.pointerMove(canvas, { shiftKey: true, clientX: 180, clientY: 180, pointerId: 1 })
+    fireEvent.pointerDown(pane, { shiftKey: true, clientX: 10, clientY: 10, pointerId: 1 })
+    fireEvent.pointerMove(pane, { shiftKey: true, clientX: 180, clientY: 180, pointerId: 1 })
     expect(screen.getByTestId('context-map-marquee').style.width).toBe('170px')
-    fireEvent.pointerUp(canvas, { shiftKey: true, clientX: 180, clientY: 180, pointerId: 1 })
+    fireEvent.pointerUp(pane, { shiftKey: true, clientX: 180, clientY: 180, pointerId: 1 })
     await waitFor(() => {
       expect(h.store.getSnapshot().selectedNodeIds).toEqual(['root:1'])
     })
@@ -169,7 +169,9 @@ describe('ContextMapPanel', () => {
     expect(within(menu).getByRole('menuitem', { name: 'Branch from Here' })).toBeTruthy()
     expect(within(menu).getByRole('menuitem', { name: 'Natural' })).toBeTruthy()
     expect(within(menu).getByRole('menuitem', { name: 'Include' })).toBeTruthy()
-    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Exclude' }))
+    const exclude = within(menu).getByRole('menuitem', { name: 'Exclude' })
+    fireEvent.pointerDown(exclude)
+    fireEvent.click(exclude)
     expect(h.mapActions.setNodeMode).toHaveBeenCalledWith({ sessionId: root, seq: 1 }, 'exclude')
     expect(screen.queryByRole('menu')).toBeNull()
 
@@ -178,21 +180,23 @@ describe('ContextMapPanel', () => {
     expect(h.mapActions.locate).toHaveBeenCalledWith(h.snapshot.graph!.nodes[0])
   })
 
-  it('renders the message graph and controls modes, branch, navigation, locate, and layouts', async () => {
+  it('renders the message graph and controls modes, branch, locate, and layouts', async () => {
     const h = mount()
     expect(await screen.findByLabelText('User message: root requirement')).toBeTruthy()
-    expect(screen.getByText('2 / 3 selected')).toBeTruthy()
+    expect(screen.getByText('3 / 3 selected')).toBeTruthy()
     expect(h.view.container.querySelectorAll('.react-flow__node')).toHaveLength(3)
     expect(h.view.container.querySelector('.react-flow__edges')).toBeTruthy()
 
     const rootCard = screen.getByLabelText('User message: root requirement')
-    fireEvent.click(rootCard.querySelector('button[aria-label="Exclude root requirement"]')!)
+    expect(within(rootCard).queryByRole('button')).toBeNull()
+    fireEvent.contextMenu(rootCard, { clientX: 120, clientY: 160 })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Exclude' }))
     expect(h.mapActions.setNodeMode).toHaveBeenCalledWith({ sessionId: root, seq: 1 }, 'exclude')
-    fireEvent.click(rootCard.querySelector('button[aria-label="Branch from root requirement"]')!)
+    fireEvent.contextMenu(rootCard, { clientX: 120, clientY: 160 })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Branch from Here' }))
     expect(h.mapActions.branch).toHaveBeenCalledWith(h.snapshot.graph!.nodes[0])
-    fireEvent.click(within(rootCard).getByText('Open'))
-    expect(h.mapActions.navigate).toHaveBeenCalledWith(h.snapshot.graph!.nodes[0])
-    fireEvent.click(within(rootCard).getByText('Locate'))
+    fireEvent.contextMenu(rootCard, { clientX: 120, clientY: 160 })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Locate in Chat' }))
     expect(h.mapActions.locate).toHaveBeenCalledWith(h.snapshot.graph!.nodes[0])
 
     fireEvent.click(screen.getByRole('button', { name: 'mindmap layout' }))

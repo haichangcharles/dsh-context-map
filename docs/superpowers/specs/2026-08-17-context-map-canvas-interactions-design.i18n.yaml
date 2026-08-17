@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/superpowers/specs/2026-08-17-context-map-canvas-interactions-design.md
-2026-08-17-context-map-canvas-interactions-design.md: b7d25cad560d5bbf431929be3603a05e79e10d70
-2026-08-17-context-map-canvas-interactions-design.zh.md: 6d0dcd3e432b3aabb0fc388b30a0d1861210fed3
+2026-08-17-context-map-canvas-interactions-design.md: 8ab639f6edcbe3d1a3c022d3105366034e90da70
+2026-08-17-context-map-canvas-interactions-design.zh.md: e19fc235bf01ac6a98c513f17939640015ea4331

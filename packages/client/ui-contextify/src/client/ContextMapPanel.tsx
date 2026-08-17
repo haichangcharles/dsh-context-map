@@ -27,7 +27,6 @@ export interface ContextMapActions {
   undo: () => Promise<void>
   redo: () => Promise<void>
   branch: (node: ContextFamilyGraphNode) => Promise<void>
-  navigate: (node: ContextFamilyGraphNode) => void
   locate: (node: ContextFamilyGraphNode) => void
   close: () => void
 }
@@ -81,10 +80,16 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
   const [interactionMode, setInteractionMode] = useState<'normal' | 'selection'>('normal')
   const [marquee, setMarquee] = useState<MarqueeState | null>(null)
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [transientPositions, setTransientPositions] = useState<Record<string, CanvasPoint>>({})
+  const [measurementVersion, setMeasurementVersion] = useState(0)
   const canvasRef = useRef<HTMLDivElement>(null)
   const graph = snapshot.graph
   const records = graph?.nodes ?? EMPTY_NODES
+  const visibleSelectedCount = graph === undefined ? 0 : records.filter((record) => {
+    const mode = modeOf(snapshot, record)
+    return record.sessionIds.includes(graph.activeSessionId) ? mode !== 'exclude' : mode === 'include'
+  }).length
   const normalizedQuery = query.trim().toLocaleLowerCase()
   const searchResultIds = useMemo(() => normalizedQuery === ''
     ? []
@@ -99,11 +104,6 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
   }, [actions, records])
   useEffect(() => { setResultIndex(0) }, [normalizedQuery])
   useEffect(() => {
-    const target = snapshot.focusedNodeId ?? activeSearchId
-    if (target === undefined || instance === null) return
-    void instance.fitView({ nodes: [{ id: target }], duration: 220, maxZoom: 1.2 })
-  }, [activeSearchId, instance, snapshot.focusedNodeId])
-  useEffect(() => {
     if (menu === null) return
     const closeOnEscape = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') setMenu(null)
@@ -111,6 +111,18 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
     window.addEventListener('keydown', closeOnEscape)
     return () => { window.removeEventListener('keydown', closeOnEscape) }
   }, [menu])
+  useEffect(() => {
+    if (measurementVersion === 0 || instance === null || records.length === 0) return
+    const timer = window.setTimeout(() => {
+      const target = snapshot.focusedNodeId ?? activeSearchId
+      if (target === undefined) {
+        void instance.fitView({ duration: 220 })
+        return
+      }
+      void instance.fitView({ nodes: [{ id: target }], duration: 220, maxZoom: 1.2 })
+    }, 300)
+    return () => { window.clearTimeout(timer) }
+  }, [activeSearchId, instance, layout, measurementVersion, records.length, snapshot.focusedNodeId])
 
   const flowNodes = useMemo(() => {
     if (graph === undefined) return []
@@ -127,10 +139,6 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
         active: record.sessionIds.includes(graph.activeSessionId),
         focused: snapshot.focusedNodeId === record.id || activeSearchId === record.id,
         searchMatch: searchMatches.has(record.id),
-        onMode: (ref, mode) => { ignoreHandledError(mapActions.setNodeMode(ref, mode)) },
-        onBranch: (candidate) => { ignoreHandledError(mapActions.branch(candidate)) },
-        onNavigate: mapActions.navigate,
-        onLocate: mapActions.locate,
         onActivate: (candidate) => {
           if (interactionMode === 'selection') {
             actions.setNodeSelected(candidate.id, !selected.has(candidate.id))
@@ -144,6 +152,7 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
         onContextMenu: (candidate, screenPoint) => {
           const bounds = canvasRef.current?.getBoundingClientRect()
           if (bounds === undefined) return
+          setActionError(null)
           setMenu({
             record: candidate,
             point: {
@@ -174,6 +183,9 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
   })), [graph])
 
   const onNodesChange = (changes: Array<NodeChange>): void => {
+    if (changes.some(change => change.type === 'dimensions')) {
+      setMeasurementVersion(version => version + 1)
+    }
     const positions = changes.flatMap(change => change.type === 'position' && change.position !== undefined
       ? [{ id: change.id, position: change.position, dragging: change.dragging === true }]
       : [])
@@ -207,9 +219,9 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
       <header className={css.header}>
         <div>
           <h2>Context Map</h2>
-          <p>{snapshot.view === undefined
+          <p>{snapshot.view === undefined || graph === undefined
             ? 'Loading context…'
-            : `${String(snapshot.view.selectedCount)} / ${String(snapshot.view.totalNodeCount)} selected`}</p>
+            : `${String(visibleSelectedCount)} / ${String(records.length)} selected`}</p>
         </div>
         <button type="button" className={css.iconButton} aria-label="Close Context Map" onClick={mapActions.close}>×</button>
       </header>
@@ -252,12 +264,14 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
         <button type="button" disabled={snapshot.pending || snapshot.view?.canRedo !== true} onClick={() => { ignoreHandledError(mapActions.redo()) }}>Redo</button>
       </div>
       {snapshot.error !== undefined && <div className={css.error} role="alert">{snapshot.error}</div>}
+      {actionError !== null && <div className={css.error} role="alert">{actionError}</div>}
       <div
         ref={canvasRef}
         className={css.canvas}
         data-layout={layout}
         data-context-map-canvas=""
-        onPointerDown={(event) => {
+        onPointerDownCapture={(event) => {
+          if (event.target instanceof Element && event.target.closest('[data-context-map-menu]') !== null) return
           setMenu(null)
           if (interactionMode !== 'selection' || !event.shiftKey) return
           if (event.target instanceof Element && event.target.closest('[data-context-node-id]') !== null) return
@@ -266,8 +280,9 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
           event.currentTarget.setPointerCapture?.(event.pointerId)
           setMarquee({ pointerId: event.pointerId, start: point, current: point })
           event.preventDefault()
+          event.stopPropagation()
         }}
-        onPointerMove={(event) => {
+        onPointerMoveCapture={(event) => {
           if (marquee === null || event.pointerId !== marquee.pointerId) return
           const bounds = event.currentTarget.getBoundingClientRect()
           setMarquee(value => value === null ? null : {
@@ -275,7 +290,7 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
             current: { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
           })
         }}
-        onPointerUp={(event) => {
+        onPointerUpCapture={(event) => {
           if (marquee === null || event.pointerId !== marquee.pointerId) return
           const bounds = event.currentTarget.getBoundingClientRect()
           const finished = {
@@ -298,7 +313,7 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
           event.currentTarget.releasePointerCapture?.(event.pointerId)
           setMarquee(null)
         }}
-        onPointerCancel={() => { setMarquee(null) }}
+        onPointerCancelCapture={() => { setMarquee(null) }}
       >
         {graph !== undefined && (
           <ReactFlow
@@ -307,10 +322,13 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
             edges={flowEdges}
             nodeTypes={nodeTypes}
             onNodesChange={onNodesChange}
+            onNodeClick={(_event, node) => {
+              const data = node.data as ContextMapNodeData
+              data.onActivate(data.record)
+            }}
             onInit={setInstance}
             onPaneClick={() => { setMenu(null) }}
             onMoveStart={() => { setMenu(null) }}
-            fitView
             minZoom={0.18}
             maxZoom={1.8}
             nodesDraggable={interactionMode === 'normal'}
@@ -345,6 +363,9 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
             locate={mapActions.locate}
             branch={mapActions.branch}
             setNodeMode={mapActions.setNodeMode}
+            reportError={(cause) => {
+              setActionError(cause instanceof Error ? cause.message : String(cause))
+            }}
           />
         )}
       </div>

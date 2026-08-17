@@ -22,8 +22,7 @@
 
 .iconButton,
 .toolbar button,
-.selectionBar button,
-.nodeActions button {
+.selectionBar button {
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 6px;
   background: var(--dsw-alias-bg-elevated);
@@ -45,7 +44,7 @@
 
 .toolbar button { padding: 4px 7px; font-size: 10px; white-space: nowrap; }
 .toolbar button[aria-pressed='true'] { border-color: #4f7df3; background: rgb(79 125 243 / 12%); }
-.toolbar button:disabled, .nodeActions button:disabled { cursor: default; opacity: 0.42; }
+.toolbar button:disabled { cursor: default; opacity: 0.42; }
 .toolbarSpacer { flex: 1; }
 
 .searchBox {
@@ -148,8 +147,6 @@
 .preview::before { content: attr(data-preview); }
 .nodeMeta { overflow: hidden; color: var(--dsw-alias-fg-secondary); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 
-.nodeActions { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 7px; }
-.nodeActions button { padding: 2px 4px; font-size: 8px; text-transform: capitalize; }
 .handle { width: 7px; height: 7px; border: 1px solid var(--dsw-alias-bg-elevated); background: #7890b8; }
 
 .selectionBar {

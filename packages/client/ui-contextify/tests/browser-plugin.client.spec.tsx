@@ -108,7 +108,6 @@ describe('ui-contextify browser plugin', () => {
     })
     await b.panel.mapActions.setNodeMode(b.record.owner, 'exclude')
     await b.panel.mapActions.branch(b.record)
-    b.panel.mapActions.navigate(b.record)
     b.panel.mapActions.locate(b.record)
     b.panel.mapActions.close()
 
@@ -117,7 +116,6 @@ describe('ui-contextify browser plugin', () => {
     }])
     expect(b.fork).toHaveBeenCalledWith({ sessionId: source, atSeq: 9, increaseTitle: true })
     expect(b.open).toHaveBeenNthCalledWith(1, child)
-    expect(b.open).toHaveBeenNthCalledWith(2, source)
     expect(b.revealMessage).toHaveBeenCalledWith(source, 7)
     expect(b.openDetails).not.toHaveBeenCalled()
     expect(b.closeDetails).toHaveBeenCalledOnce()

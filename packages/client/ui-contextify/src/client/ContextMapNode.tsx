@@ -1,7 +1,7 @@
 /** One message-level Context Map node rendered inside React Flow. */
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import type { ContextFamilyGraphNode, ContextMessageRef } from '@deepseek-ai/dsh-contextify/types'
+import type { ContextFamilyGraphNode } from '@deepseek-ai/dsh-contextify/types'
 import css from './ContextMapPanel.module.css'
 import type { CanvasPoint } from './canvas-interactions.ts'
 
@@ -15,10 +15,6 @@ export interface ContextMapNodeData extends Record<string, unknown> {
   readonly active: boolean
   readonly focused: boolean
   readonly searchMatch: boolean
-  readonly onMode: (ref: ContextMessageRef, mode: ContextNodeMode) => void
-  readonly onBranch: (record: ContextFamilyGraphNode) => void
-  readonly onNavigate: (record: ContextFamilyGraphNode) => void
-  readonly onLocate: (record: ContextFamilyGraphNode) => void
   readonly onActivate: (record: ContextFamilyGraphNode) => void
   readonly onContextMenu: (record: ContextFamilyGraphNode, point: CanvasPoint) => void
 }
@@ -39,7 +35,6 @@ export const ContextMapNode = memo(function ContextMapNode({ data, selected, sou
       data-search-match={value.searchMatch || undefined}
       data-selected={selected || undefined}
       data-context-node-id={record.id}
-      onClick={() => { value.onActivate(record) }}
       onContextMenu={(event) => {
         event.preventDefault()
         event.stopPropagation()
@@ -53,28 +48,6 @@ export const ContextMapNode = memo(function ContextMapNode({ data, selected, sou
       </header>
       <p className={css.preview} data-preview={preview} aria-hidden="true" />
       <div className={css.nodeMeta}>{value.sessionLabel}</div>
-      <div
-        className={`${css.nodeActions} nodrag nopan`}
-        onClick={(event) => { event.stopPropagation() }}
-      >
-        {(['natural', 'include', 'exclude'] as const).map(mode => (
-          <button
-            type="button"
-            key={mode}
-            disabled={value.mode === mode}
-            aria-label={`${mode.charAt(0).toUpperCase()}${mode.slice(1)} ${record.preview}`}
-            onClick={() => { value.onMode(record.owner, mode) }}
-          >{mode}</button>
-        ))}
-        <button type="button" onClick={() => { value.onNavigate(record) }}>Open</button>
-        <button type="button" onClick={() => { value.onLocate(record) }}>Locate</button>
-        <button
-          type="button"
-          disabled={record.branchAtSeq === null}
-          aria-label={`Branch from ${record.preview}`}
-          onClick={() => { value.onBranch(record) }}
-        >Branch</button>
-      </div>
       <Handle type="source" position={sourcePosition ?? Position.Bottom} className={css.handle} />
     </article>
   )

@@ -95,7 +95,6 @@ export function apply(ctx: ClientContext): void {
             })
             ctx.sessions.open(childId)
           },
-          navigate: (node) => { ctx.sessions.open(node.owner.sessionId) },
           locate: (node) => { ctx.conversation.revealMessage(node.owner.sessionId, node.owner.seq) },
           close: () => { ctx.layout.closeDetails() },
         },

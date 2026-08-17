@@ -51,6 +51,7 @@
   - button "tree layout" [pressed]: Tree
   - button "mindmap layout": Mind map
   - button "timeline layout": Timeline
+  - button "Selection mode": Select
   - button "Reset"
   - button "Undo" [disabled]
   - button "Redo" [disabled]

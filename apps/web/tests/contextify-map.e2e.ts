@@ -44,10 +44,11 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
 
     const map = page.getByRole('region', { name: 'Context Map' })
     await map.waitFor({ timeout: 15_000 })
-    await expect.poll(() => map.getByText(/3 \/ 3 selected/).count(), { timeout: 5_000 }).toBe(1)
-    await expect.poll(() => map.locator('.react-flow__node').count(), { timeout: 5_000 }).toBe(3)
+    await expect.poll(() => map.getByText(/2 \/ 2 selected/).count(), { timeout: 5_000 }).toBe(1)
+    await expect.poll(() => map.locator('.react-flow__node').count(), { timeout: 5_000 }).toBe(2)
 
-    await map.getByRole('button', { name: 'Branch from LIGHTHOUSE' }).click()
+    await map.getByRole('article', { name: 'Assistant message: LIGHTHOUSE' }).click({ button: 'right' })
+    await map.getByRole('menuitem', { name: 'Branch from Here' }).click()
     await expect.poll(
       () => scaffold.ctx.agents.list().find(agent => agent.session.header.parentSession === sessionId),
       { timeout: 15_000 },
@@ -55,10 +56,11 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
     const child = scaffold.ctx.agents.list()
       .find(agent => agent.session.header.parentSession === sessionId)
     if (child === undefined) throw new Error('Context Map did not create a native child Session')
-    await expect.poll(() => map.locator('.react-flow__node').count(), { timeout: 10_000 }).toBe(3)
+    await expect.poll(() => map.locator('.react-flow__node').count(), { timeout: 10_000 }).toBe(2)
     await expect.poll(() => page.locator('[role="treeitem"]').count(), { timeout: 10_000 }).toBe(3)
-    await map.getByRole('button', { name: `Exclude ${PROMPT}` }).click()
-    await expect.poll(() => map.getByText(/2 \/ 3 selected/).count(), { timeout: 5_000 }).toBe(1)
+    await map.getByRole('article', { name: `User message: ${PROMPT}` }).click({ button: 'right' })
+    await map.getByRole('menuitem', { name: 'Exclude' }).click()
+    await expect.poll(() => map.getByText(/1 \/ 2 selected/).count(), { timeout: 5_000 }).toBe(1)
     await expect.poll(() => scaffold.ctx.contextify.get(child).plan.excluded.length, { timeout: 5_000 }).toBe(1)
 
     const warningStart = tripwire.warnings.length
@@ -66,8 +68,8 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
     acknowledgeReloadConnectionLoss(tripwire, warningStart)
     const reloadedMap = page.getByRole('region', { name: 'Context Map' })
     await reloadedMap.waitFor({ timeout: 15_000 })
-    await expect.poll(() => reloadedMap.getByText(/2 \/ 3 selected/).count(), { timeout: 10_000 }).toBe(1)
-    await expect.poll(() => reloadedMap.locator('.react-flow__node').count(), { timeout: 10_000 }).toBe(3)
+    await expect.poll(() => reloadedMap.getByText(/1 \/ 2 selected/).count(), { timeout: 10_000 }).toBe(1)
+    await expect.poll(() => reloadedMap.locator('.react-flow__node').count(), { timeout: 10_000 }).toBe(2)
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])
   }, 90_000)

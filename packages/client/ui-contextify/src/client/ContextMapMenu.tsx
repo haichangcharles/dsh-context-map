@@ -11,15 +11,18 @@ export interface ContextMapMenuProps {
   readonly locate: (record: ContextFamilyGraphNode) => void
   readonly branch: (record: ContextFamilyGraphNode) => Promise<void>
   readonly setNodeMode: (node: ContextMessageRef, mode: ContextNodeMode) => Promise<void>
+  readonly reportError: (cause: unknown) => void
 }
 
 /** Pointer-positioned node actions backed only by Harness-native operations. */
 export function ContextMapMenu({
-  point, record, mode, close, locate, branch, setNodeMode,
+  point, record, mode, close, locate, branch, setNodeMode, reportError,
 }: ContextMapMenuProps) {
   const run = (action: () => void | Promise<void>): void => {
     try {
-      void Promise.resolve(action()).catch(() => {})
+      void Promise.resolve(action()).catch(reportError)
+    } catch (cause) {
+      reportError(cause)
     } finally {
       close()
     }
@@ -28,8 +31,10 @@ export function ContextMapMenu({
     <div
       role="menu"
       aria-label="Message actions"
+      data-context-map-menu=""
       className={`${css.contextMenu} nodrag nopan`}
       style={{ left: point.x, top: point.y }}
+      onPointerDown={(event) => { event.stopPropagation() }}
       onClick={(event) => { event.stopPropagation() }}
       onContextMenu={(event) => { event.preventDefault(); event.stopPropagation() }}
     >

@@ -48,7 +48,7 @@ Every rendered user and final assistant message exposes a stable anchor for its 
 
 ## Accessibility and input
 
-The Selection toggle and batch actions are keyboard reachable and expose pressed or disabled state. Escape closes the context menu or clears the active marquee. Context-menu actions remain available from each node's action controls for keyboard and touch users. Selection and context state use labels or icons in addition to color.
+The Selection toggle and batch actions are keyboard reachable and expose pressed or disabled state. Escape closes the context menu or clears the active marquee. Node cards expose their role, message preview, and state to assistive technology. Selection and context state use labels or icons in addition to color.
 
 ## Testing
 
