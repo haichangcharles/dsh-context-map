@@ -1,6 +1,6 @@
 # Agent Note: Native Session Context Map
 
-Status: proposed
+Status: implemented
 
 English | [中文](2026-08-17-native-session-context-map.zh.md)
 
@@ -8,13 +8,17 @@ English | [中文](2026-08-17-native-session-context-map.zh.md)
 
 Long-horizon conversations need two related capabilities: navigating branches and deciding which historical messages enter the next model request. Harness already owns durable Session forks, while the earlier Context Map prototype owned an incompatible in-Session path model. Keeping both branch systems would make navigation, persistence, naming, and model context disagree.
 
-## Proposal
+## Decision
 
 One native root Session and all descendants form one Context Map. A branch is always `sessions.fork` at a completed Turn boundary. The graph has one node per visible appended user or assistant message, de-duplicates copied prefixes, and excludes reasoning, tool, and runtime-only events.
 
 Every Session owns a durable Context Plan. A child inherits the event prefix but resets the plan to Natural. Natural follows its Session history; Exclude removes an active historical message; Include snapshots a message from another Session in the same family. Cross-map import and automatic include recommendations are deferred.
 
 The right-side React Flow map and per-message Chat controls share one controller. Both can apply Natural/Include/Exclude. The map additionally supports native Branch, Session navigation, search, three layouts, multi-select batch changes, and plan Reset/Undo/Redo. The Workspace sidebar shows the same Session ancestry as a recursive collapsible tree.
+
+The canvas ports the standalone prototype's interaction model without its domain store. Normal-mode node click cycles the one meaningful override, Selection mode owns additive click and visible Shift-marquee selection, and a floating action bar applies batch Context Plan changes. Right-click exposes Locate in Chat, Branch from Here, and explicit Natural/Include/Exclude actions. Node positions update in transient React state throughout a drag and enter the persisted viewing store only at drag completion.
+
+Locate in Chat delegates to the conversation package through a native Session ID and durable message sequence. The conversation service opens the owning Session, switches its native view ring back to Chat, loads older history pages until the message anchor is available, scrolls that row to the center, and marks it with a temporary highlight. Contextify never queries or owns conversation DOM.
 
 ## Alternatives considered
 
@@ -28,20 +32,14 @@ The right-side React Flow map and per-message Chat controls share one controller
 
 Context changes never edit or delete transcript events. Include writes `context/compiler-snapshot`; plan changes write complete revisioned `contextify/plan` events. The `contextify@2` compiler selects model messages at request time, restores current-turn messages, and leaves the ordinary Harness surface intact.
 
-## Acceptance criteria
+## Testing
 
-- Native Session lineage is the only branch identity.
-- User and assistant messages can branch only through a completed `turn/end`.
-- Reasoning and tool events never appear as map nodes.
-- Chat and map changes update one durable, revisioned plan.
-- Same-family sibling messages can be included; active-path historical messages can be excluded.
-- Child plans reset to Natural and changes survive reload with undo/redo.
-- The right map remains visible beside Chat, and the left Session tree is recursively collapsible.
+Pure projection and compiler tests cover canonical prefix de-duplication, native fork boundaries, Context Plan revisions, same-family snapshots, child reset, and runtime-context filtering. Client component tests cover Normal and Selection clicks, Shift marquee, batch mutations, right-click actions, transient and committed drag positions, Session-and-sequence reveal, native Chat-tab activation, history paging, exact scrolling, and temporary highlighting. Browser-plugin tests pin Contextify's delegation to native Session, conversation, layout, and Remote faces.
 
 ## Deferred
 
 Cross-map import, automatic recommendations, compaction shadow relationships, and a push projection channel are intentionally deferred.
 
-## Risks
+## Consequences
 
-Large Session families can make the graph and polling projection expensive; bounded paging and subscriber-only polling limit the first implementation, but a push projection may still be required. Explicitly changing older messages can reduce KV-cache prefix reuse, so the UI exposes every mode and preserves Natural as the default. Users may also confuse navigation with compilation state; the graph therefore displays both Session ownership and each message's Natural/Include/Exclude status.
+Harness has one branch authority and one context authority while the pinned canvas retains the standalone prototype's direct manipulation. Separating transient drag and selection state from Context Plan state prevents canvas gestures from creating durable model-input changes; routing message reveal through conversation keeps DOM ownership inside the package that renders it. This adds an in-memory reveal registry and exact message anchors to conversation, and a Locate request can page older history before it settles. Large Session families can still make the graph and polling projection expensive; bounded paging and subscriber-only polling limit that cost, but a push projection may still be required. Explicitly changing older messages can reduce KV-cache prefix reuse, so the UI exposes every mode and preserves Natural as the default.

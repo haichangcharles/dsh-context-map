@@ -6,9 +6,9 @@
 
 ## 用户体验
 
-右侧 panel 使用 React Flow 渲染相互连接的原生 Session family。每条可见 user 或 assistant 消息对应一个 card；复制的 Session 前缀会去重，reasoning 与 tool event 不进入图。Panel 支持缩放、平移、拖动位置、多选、搜索，以及 tree、mind-map、timeline 三种布局。布局、选择和拖动位置仅属于 viewing state，不会改变模型输入。
+右侧 panel 使用 React Flow 渲染相互连接的原生 Session family。每条可见 user 或 assistant 消息对应一个 card；复制的 Session 前缀会去重，reasoning 与 tool event 不进入图。Panel 支持缩放、平移、搜索，以及 tree、mind-map、timeline 三种布局。普通模式点击节点会循环切换唯一有意义的 Natural/Include/Exclude override；Selection 模式提供累加点击、可见的 Shift 拖动框选与批量操作。被拖动的节点会持续跟随指针，只在松开后持久化最终位置。布局、选择和拖动位置仅属于 viewing state，不会改变模型输入。
 
-每个节点在合法时提供 Natural、Include、Exclude、Open、Locate 和 Branch。Branch 会在消息对应的 completed Turn boundary 调用 Harness 原生 `sessions.fork`，并打开新的 child Session。Open 跳转到消息所属 Session，Locate 聚焦对应 graph node。Batch mode 会在一个 plan revision 中修改多个选中节点；Reset、Undo、Redo 操作持久 plan history。
+每个节点在合法时提供 Natural、Include、Exclude、Open、Locate 和 Branch。右键菜单会提供 Locate in Chat、Branch from Here 与显式 context mode，但不会增加另一套后端。Branch 会在消息对应的 completed Turn boundary 调用 Harness 原生 `sessions.fork`，并打开新的 child Session。Locate 会打开所属原生 Session、切换到 Chat、在需要时加载较早历史，并滚动和高亮准确的持久消息。Batch mode 会在一个 plan revision 中修改多个选中节点；Reset、Undo、Redo 操作持久 plan history。
 
 普通 Chat user 消息与已完成 assistant 消息旁提供紧凑的 Auto/Use/Skip/Map control。它们和 graph 使用同一个 controller，所以 Chat 侧修改会同步到 map，并在 reload 后保留。Steering、reasoning、tool 与仅 runtime 可见的 row 不会获得 Context Map control。
 
