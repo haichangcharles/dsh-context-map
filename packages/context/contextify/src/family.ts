@@ -43,7 +43,9 @@ interface MutableEdge {
 function visibleMessage(event: SessionEvent): { role: 'user' | 'assistant'; message: Message } | null {
   if (event.type !== 'user/message' && event.type !== 'assistant/message') return null
   if (event.surfaceOp !== 'append') return null
-  if (event.type === 'user/message') return { role: 'user', message: event.data }
+  if (event.type === 'user/message') {
+    return event.data.source.kind === 'user' ? { role: 'user', message: event.data } : null
+  }
   const visible = event.data.message.content.some(block => block.type === 'text' || block.type === 'image')
   return visible ? { role: 'assistant', message: event.data.message } : null
 }

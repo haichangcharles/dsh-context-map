@@ -25,6 +25,44 @@ function appendUserTurn(session: Session, turn: number, text: string): number {
 }
 
 describe('projectSessionFamily', () => {
+  it('projects only human inputs and visible model outputs', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const session = ctx.sessions.create(SessionId('human-conversation'))
+    session.append('turn/start', { turn: 1 })
+    session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: '你好' }],
+      source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+    session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'Current runtime context. Hidden from the map.' }],
+      source: { kind: 'plugin', plugin: '@deepseek-ai/dsh-system-prompt', form: 'snapshot', sections: [] },
+    }), { surfaceOp: 'append' })
+    session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: '<system-reminder>Hidden skill catalog</system-reminder>' }],
+      source: { kind: 'plugin', plugin: 'skill-catalog', form: 'catalog' },
+    }), { surfaceOp: 'append' })
+    session.append('assistant/message', {
+      turn: 1,
+      step: 1,
+      message: createAssistantMessage({
+        content: [{ type: 'text', text: '你好！' }],
+        source: { provider: 'mock', model: 'mock' },
+      }),
+    }, { surfaceOp: 'append' })
+    session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+
+    const graph = projectSessionFamily({
+      activeSessionId: session.id,
+      sessions: [inspect(session)],
+    })
+
+    expect(graph.nodes.map(node => [node.role, node.preview])).toEqual([
+      ['user', '你好'],
+      ['assistant', '你好！'],
+    ])
+  })
+
   it('deduplicates inherited messages and projects native fork edges', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)
