@@ -27,7 +27,7 @@ const compilation = ctx.contextCompiler.compile({ session, turn: 1, step: 1 })
 
 ## Provider 约定
 
-Provider 必须同步且纯净。它可以读取传入的 Session 与请求坐标，但禁止发起网络或模型调用、追加事件、读取时钟或修改外部状态。它只能返回现有的、不重复的非负安全整数 seq；这些 seq 必须指向 `user/message`、非空 `assistant/message` 或 `tool/result` 事件。Registry 保留 provider 返回的顺序，并在模型 I/O 之前拒绝所有非法选择。
+Provider 必须同步且纯净。它可以读取传入的 Session 与请求坐标，但禁止发起网络或模型调用、追加事件、读取时钟或修改外部状态。它只能返回现有的、不重复的非负安全整数 seq；这些 seq 必须指向 `user/message`、非空 `assistant/message`、`tool/result` 或 `context/compiler-snapshot` 事件。Snapshot 是只记录在日志中的事件，不会进入 `Session.surface`；只有 active compiler 选择这条确切事件时，模型才会看到其中冻结的消息。Registry 保留 provider 返回的顺序，并在模型 I/O 之前拒绝所有非法选择。
 
 Provider 不能注册保留 id `surface`。Id 必须是没有首尾空白的非空字符串，version 必须是正安全整数，重复 id 会失败。如果持久 descriptor 对应的 provider 缺失，或者其 version 与实时注册不一致，系统绝不会静默回退到 `surface`。
 
@@ -49,7 +49,7 @@ Provider 不能注册保留 id `surface`。Id 必须是没有首尾空白的非�
 
 ## 已知限制与暂缓事项
 
-- **只选择，不合成**——compiler 不能创建消息或摘要；其他插件必须先追加任何合成的持久消息，compiler 才能选择它。
+- **不能在请求内合成**——compiler 不能在 `select` 期间创建消息或摘要；其他插件必须先追加 `context/compiler-snapshot`，compiler 才能选择复制或合成的内容。
 - **同步执行**——依赖网络的检索和依赖模型的排序应发生在编译之前，而不是 provider 内部。
 - **要求精确 provider 可用**——恢复 Session 后，必须在下一个 Agent Loop 步骤之前注册被选中的 provider id 和 version。
-- **仅限 Session 事件**——非消息事件和调用方任意创建的 `Message` 对象不能进入 compilation。
+- **仅限 Session 事件**——非消息事件和只存在于内存中的任意 `Message` 对象不能进入 compilation。

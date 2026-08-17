@@ -27,7 +27,7 @@ const compilation = ctx.contextCompiler.compile({ session, turn: 1, step: 1 })
 
 ## Provider contract
 
-A provider must be synchronous and pure. It may inspect the supplied Session and request coordinates, but it must not perform network or model calls, append events, read the clock, or mutate external state. It returns only existing, unique, non-negative safe-integer seqs for `user/message`, non-empty `assistant/message`, or `tool/result` events. The registry preserves the returned order and rejects every invalid selection before model I/O.
+A provider must be synchronous and pure. It may inspect the supplied Session and request coordinates, but it must not perform network or model calls, append events, read the clock, or mutate external state. It returns only existing, unique, non-negative safe-integer seqs for `user/message`, non-empty `assistant/message`, `tool/result`, or `context/compiler-snapshot` events. A snapshot is log-only and does not join `Session.surface`; the model sees its frozen message only when the active compiler selects that exact event. The registry preserves the returned order and rejects every invalid selection before model I/O.
 
 Providers cannot register the reserved `surface` id. Ids are non-empty strings without surrounding whitespace, versions are positive safe integers, and duplicate ids fail. A durable descriptor whose provider is missing or whose version differs from the live registration never falls back to `surface`.
 
@@ -49,7 +49,7 @@ Preserving a stable selected prefix preserves the corresponding reusable request
 
 ## Known Limitations and Deferred Work
 
-- **Selection, not synthesis** — a compiler cannot create messages or summaries; another plugin must append any synthesized durable message before selecting it.
+- **Selection, not in-request synthesis** — a compiler cannot create messages or summaries during `select`; another plugin must append a `context/compiler-snapshot` before selecting copied or synthesized content.
 - **Synchronous execution** — network-backed retrieval and model-backed ranking belong before compilation, not inside a provider.
 - **Exact provider availability** — resuming a Session requires the selected provider id and version to be registered before the next Agent Loop step.
-- **Session events only** — non-message events and arbitrary caller-created `Message` objects cannot enter a compilation.
+- **Session events only** — non-message events and arbitrary in-memory `Message` objects cannot enter a compilation.

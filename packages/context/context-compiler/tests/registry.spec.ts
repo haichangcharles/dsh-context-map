@@ -60,6 +60,31 @@ describe('ContextCompilerRegistry', () => {
     expect(compilation.messages).toEqual(session.deriveMessages().toReversed())
   })
 
+  it('compiles a durable snapshot without adding it to the Session surface', async () => {
+    const ctx = new Context()
+    await ctx.plugin(ContextCompilerRegistry)
+    const session = Session.create(SessionId('snapshot-selection'))
+    const snapshot = session.append('context/compiler-snapshot', {
+      id: 'sibling:7',
+      message: createUserMessage({
+        content: [{ type: 'text', text: 'imported sibling fact' }],
+        source: { kind: 'runtime-context', provenance: 'contextify:sibling:7' },
+      }),
+    })
+    ctx.contextCompiler.register({
+      id: 'snapshot-provider',
+      version: 1,
+      select: () => ({ eventSeqs: [snapshot.seq] }),
+    })
+    ctx.contextCompiler.select(session, 'snapshot-provider')
+
+    expect(session.surface.nodes).toEqual([])
+    expect(ctx.contextCompiler.compile({ session, turn: 1, step: 1 })).toMatchObject({
+      eventSeqs: [snapshot.seq],
+      messages: [{ content: [{ type: 'text', text: 'imported sibling fact' }] }],
+    })
+  })
+
   it('rejects reserved, duplicate, blank, and invalid-version registrations', async () => {
     const ctx = new Context()
     await ctx.plugin(ContextCompilerRegistry)

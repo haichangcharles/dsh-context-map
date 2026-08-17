@@ -28,6 +28,14 @@ export interface ContextSelection {
   readonly eventSeqs: readonly number[]
 }
 
+/** One log-only message copied into a Session for compiler selection. */
+export interface ContextCompilerSnapshot {
+  /** Provider-owned stable identity used to correlate the copied message. */
+  readonly id: string
+  /** Exact model-visible message reconstructed from this durable event. */
+  readonly message: Message
+}
+
 /** Fully validated model input produced from selected durable events. */
 export interface ContextCompilation extends ContextCompilerDescriptor {
   readonly eventSeqs: readonly number[]
@@ -95,7 +103,24 @@ declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {
     /** Selects the context compiler for subsequent model requests. */
     'context/compiler': ContextCompilerDescriptor
+    /** Model-visible message copied into this Session for compiler selection. */
+    'context/compiler-snapshot': ContextCompilerSnapshot
   }
+}
+
+/** Resolve one validated selected event into its exact model message. */
+function selectedMessage(session: Session, seq: number): Message {
+  const event = session.events[seq]
+  if (event === undefined) throw invalidSelection(`event seq ${String(seq)} does not exist`)
+  if (event.type === 'context/compiler-snapshot') return event.data.message
+  if (event.type !== 'user/message'
+    && event.type !== 'assistant/message'
+    && event.type !== 'tool/result') {
+    throw invalidSelection(`event seq ${String(seq)} has non-message type "${event.type}"`)
+  }
+  const message = session.deriveEventMessage(event)
+  if (message === null) throw invalidSelection(`event seq ${String(seq)} does not derive a message`)
+  return message
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -207,19 +232,7 @@ export class ContextCompilerRegistry extends Service {
       )
     }
     const eventSeqs = selectedEventSeqs(request, definition)
-    const messages: Message[] = []
-    for (const seq of eventSeqs) {
-      const event = request.session.events[seq]
-      if (event === undefined) throw invalidSelection(`event seq ${String(seq)} does not exist`)
-      if (event.type !== 'user/message'
-        && event.type !== 'assistant/message'
-        && event.type !== 'tool/result') {
-        throw invalidSelection(`event seq ${String(seq)} has non-message type "${event.type}"`)
-      }
-      const message = request.session.deriveEventMessage(event)
-      if (message === null) throw invalidSelection(`event seq ${String(seq)} does not derive a message`)
-      messages.push(message)
-    }
+    const messages = eventSeqs.map(seq => selectedMessage(request.session, seq))
     return Object.freeze({
       ...descriptor,
       eventSeqs: Object.freeze(eventSeqs),
