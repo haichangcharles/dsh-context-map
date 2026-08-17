@@ -402,7 +402,18 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 'context/compiler': ContextCompilerDescriptor
 ```
 
-来源：[`packages/context/context-compiler/src/index.ts:97`](../packages/context/context-compiler/src/index.ts)
+来源：[`packages/context/context-compiler/src/index.ts:112`](../packages/context/context-compiler/src/index.ts)
+
+<a id="contextcompiler-snapshot--log-only"></a>
+
+#### `context/compiler-snapshot` — log-only
+
+```ts persistence-catalog
+/** Model-visible message copied into this Session for compiler selection. */
+'context/compiler-snapshot': ContextCompilerSnapshot
+```
+
+来源：[`packages/context/context-compiler/src/index.ts:114`](../packages/context/context-compiler/src/index.ts)
 
 ### `contextify/*`
 
@@ -415,18 +426,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 'contextify/plan': ContextPlanSnapshot
 ```
 
-来源：[`packages/context/contextify/src/types.ts:108`](../packages/context/contextify/src/types.ts)
-
-<a id="contextifyroute--log-only"></a>
-
-#### `contextify/route` — log-only
-
-```ts persistence-catalog
-/** Immutable assignment of one turn to a path and causal parent. */
-'contextify/route': ContextRoute
-```
-
-来源：[`packages/context/contextify/src/types.ts:110`](../packages/context/contextify/src/types.ts)
+来源：[`packages/context/contextify/src/types.ts:135`](../packages/context/contextify/src/types.ts)
 
 ### `feedback/*`
 

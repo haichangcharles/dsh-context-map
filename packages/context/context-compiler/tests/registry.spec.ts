@@ -68,7 +68,7 @@ describe('ContextCompilerRegistry', () => {
       id: 'sibling:7',
       message: createUserMessage({
         content: [{ type: 'text', text: 'imported sibling fact' }],
-        source: { kind: 'runtime-context', provenance: 'contextify:sibling:7' },
+        source: { kind: 'plugin', plugin: 'contextify' },
       }),
     })
     ctx.contextCompiler.register({

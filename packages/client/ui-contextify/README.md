@@ -2,20 +2,25 @@
 
 English | [中文](README.zh.md)
 
-`dsh-client-ui-contextify` places the Context Map in the conversation's pinned right details column. It opens that column once when the Web client starts, loads the current session's durable Contextify view and bounded graph pages through `ctx.remote.contextify`, and refreshes while mounted so newly appended chat messages appear without leaving the conversation.
+`dsh-client-ui-contextify` keeps an interactive Context Map beside Chat in the pinned right details column. The map and message-level Chat controls share one Session-scoped controller and therefore operate on the same durable Context Plan.
 
-Each node shows its event sequence, role, path, and bounded preview. A user can keep natural selection, force inclusion, force exclusion, or create a lightweight branch from that node. Path chips switch the active branch, and the mainline control returns without creating a new Session. Every mutation carries the displayed plan revision; stale edits fail safely and the panel shows the Remote error.
+## User experience
 
-## Model Experience
+The right panel renders the connected native Session family with React Flow. Each visible user or assistant message is one card; copied Session prefixes are de-duplicated, while reasoning and tool events stay out of the graph. The panel supports zoom, pan, drag position overrides, multi-selection, search, and tree, mind-map, or timeline layouts. Layout, selection, and dragged positions are viewing state only and do not affect model input.
 
-Indirectly, through the `contextify/*` Remote methods its controls invoke: each accepted mutation updates the durable Contextify plan, and the next admitted model request contains the active causal path plus explicit inclusions, minus explicit exclusions. Tool exchanges remain closed groups. The panel itself adds no prompt prose.
+Each node offers Natural, Include, Exclude, Open, Locate, and Branch actions where valid. Branch calls Harness native `sessions.fork` at the message's completed Turn boundary and opens the new child Session. Open navigates to the owning Session. Locate focuses the corresponding graph node. Batch mode changes multiple selected nodes in one plan revision; Reset, Undo, and Redo operate on durable plan history.
 
-#### KV Cache effect
+Ordinary Chat user and finalized assistant messages expose compact Auto/Use/Skip/Map controls. They use the same controller as the graph, so a change made beside Chat appears in the map and survives reload. Steering, reasoning, tool, and runtime-only rows do not receive Context Map controls.
 
-None until a later model request uses the changed plan. Keeping the same selected prefix preserves its reusable cache prefix; switching paths or changing an earlier override can invalidate reuse from the first changed message.
+The Workspace sidebar separately renders native Session ancestry as a recursive collapsible tree. The map remains the richer navigation surface for dense branch families.
 
-## Known Limitations and Deferred Work
+## Model effect
 
-- The first version uses a compact card graph rather than freeform zoom and pan.
-- Live updates use a bounded 1.5-second refresh until a dedicated projection channel is added.
-- Compaction replacement relationships are not yet expandable in the graph.
+The UI adds no prompt prose. Auto follows the active Session history, Skip excludes one historical message, and Use includes a same-family off-path message through a durable compiler snapshot. The changed plan takes effect on the next admitted model request and can change token count and KV-cache prefix reuse.
+
+## Known limitations and deferred work
+
+- Family updates use bounded 1.5-second polling while Chat or the map is subscribed.
+- Include/exclude recommendations are manual; automatic progression is deferred.
+- Cross-map import is not exposed.
+- Compaction replacement relationships are not expandable in the graph.

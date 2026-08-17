@@ -393,7 +393,7 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork
         flat && !showStatus && css.flatSessionRowWithoutStatus,
         drag?.marker === 'before' && css.dropBefore, drag?.marker === 'after' && css.dropAfter,
       )}
-      style={{ '--session-depth': node.depth } as React.CSSProperties}
+      style={{ '--session-depth': node.depth ?? 0 } as React.CSSProperties}
       role="treeitem"
       aria-selected={selected}
       aria-expanded={node.hasChildren ? node.expanded : undefined}

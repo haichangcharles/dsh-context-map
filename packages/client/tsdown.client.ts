@@ -2,11 +2,12 @@
  * Shared tsdown preset for UI plugin client bundles. Emits a closure-factory
  * artifact: the bundle calls window.__ModuleLoader__.load({id, factory})
  * and resolves externals through the injected require (loader module table —
- * cordis DI entities, no globals, no import map). CSS Modules are compiled by
- * lightningcss inside the bundle: importing `x.module.css` yields the
- * hashed class map, and the css text auto-injects a <style data-plugin="<id>">
- * tag at factory execution (the loader removes plugin-owned tags on unload).
- * The virtual loader registers each real stylesheet as a watch dependency.
+ * cordis DI entities, no globals, no import map). CSS Modules and explicitly
+ * imported global dependency styles are compiled by lightningcss inside the
+ * bundle. Modules yield the hashed class map; every stylesheet auto-injects a
+ * <style data-plugin="<id>"> tag at factory execution (the loader removes
+ * plugin-owned tags on unload). The virtual loader registers each physical
+ * stylesheet as a watch dependency.
  */
 import { readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
@@ -224,10 +225,13 @@ function clientConfig(id: string, entry: string): UserConfig {
         )
       },
     }, {
-      name: 'dsh-css-modules-inline',
-      resolveId(source: string, importer: string | undefined) {
-        if (!source.endsWith('.module.css')) return null
-        const abs = importer !== undefined ? sourceAssetPath(source, importer) : source
+      name: 'dsh-css-inline',
+      async resolveId(source: string, importer: string | undefined) {
+        if (!source.endsWith('.css')) return null
+        const resolved = source.endsWith('.module.css')
+          ? undefined
+          : await this.resolve(source, importer, { skipSelf: true })
+        const abs = resolved?.id ?? (importer !== undefined ? sourceAssetPath(source, importer) : source)
         return CSS_VIRTUAL_PREFIX + abs + CSS_VIRTUAL_SUFFIX
       },
       async load(virtualId: string) {
@@ -236,10 +240,11 @@ function clientConfig(id: string, entry: string): UserConfig {
         // The virtual id otherwise hides the physical stylesheet from Rolldown's watch graph.
         this.addWatchFile(fileId)
         const source = await readFile(fileId)
+        const modules = fileId.endsWith('.module.css')
         const { code, exports: cssExports } = transform({
           filename: fileId,
           code: source,
-          cssModules: { pattern: '[hash]_[local]' },
+          cssModules: modules ? { pattern: '[hash]_[local]' } : false,
           minify: true,
         })
         const classMap: Record<string, string> = {}

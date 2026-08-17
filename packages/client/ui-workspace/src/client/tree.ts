@@ -30,12 +30,12 @@ export interface SessionNode {
   /** Finished running while not selected and not yet opened (the green "done" reminder dot). */
   completed: boolean
   updatedAt: number
-  /** Native Session-fork nesting level inside its Workspace family. */
-  depth: number
+  /** Native Session-fork nesting level inside its Workspace family; omitted means a flat root. */
+  depth?: number
   /** At least one visible native fork directly descends from this Session. */
-  hasChildren: boolean
+  hasChildren?: boolean
   /** Descendants are projected into this group. Meaningful only when children exist. */
-  expanded: boolean
+  expanded?: boolean
 }
 
 /** Session order selected by the Workspace browser. */

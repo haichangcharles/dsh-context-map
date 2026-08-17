@@ -200,7 +200,11 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
     )
     switch (nodeOwner.node.kind) {
       case 'user':
-        return <UserMessageNodeView {...nodeProps<'user'>()} renderSlot={renderUserActions} />
+        return <UserMessageNodeView
+          {...nodeProps<'user'>()}
+          renderSlot={renderUserActions}
+          SessionProvider={props.SessionProvider}
+        />
       case 'steering':
         return <SteeringMessageNodeView {...nodeProps<'steering'>()} />
       case 'context':

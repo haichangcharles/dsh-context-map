@@ -763,70 +763,76 @@ compile(request: ContextCompileRequest): ContextCompilation
 
 Types: [Session](session.md)
 
-Source: [`packages/context/context-compiler/src/index.ts:108`](../../packages/context/context-compiler/src/index.ts)
+Source: [`packages/context/context-compiler/src/index.ts:140`](../../packages/context/context-compiler/src/index.ts)
 
 <a id="ctxcontextify--contextifyservice"></a>
 
 ### `ctx.contextify` — `ContextifyService`
 
-Durable Contextify state, mutations, routing, graph reads, and compiler registration.
+Durable Context Plan mutations and native Session-family graph reads.
 
 ```ts cordis-catalog
 /**
- * Read the current detached view for one live Agent.
- * @param agent - Live Agent whose Session owns the Contextify plan.
- * @returns A transport-safe snapshot of the current plan and selection counts.
+ * Read the active Session's current Context Plan.
+ * @param agent - Live Agent whose Session owns the plan.
+ * @returns A detached plan and compilation summary.
  */
 @Remote('get') get(agent: Agent): ContextifyView
 
 /**
- * Create and select a child path anchored at an existing node.
- * @param agent - Live Agent whose Session will receive the durable plan event.
- * @param ref - Expected plan revision used for compare-and-swap safety.
- * @param anchorSeq - Message event sequence from which the new path diverges.
- * @param label - Optional human-readable path label.
- * @returns The view after committing and selecting the child path.
+ * Read one bounded page of the active Session's native fork family.
+ * @param agent - Live Agent selecting the family root and active path.
+ * @param after - Zero-based node offset; omitted starts at the first node.
+ * @param limit - Maximum records from 1 through 500.
+ * @returns Family metadata, all edges, and the requested canonical node page.
  */
-@Remote('createBranch') createBranch(agent: Agent, ref: ContextPlanRef, anchorSeq: number, label?: string): ContextifyView
+@Remote('familyPage') async familyPage(agent: Agent, after?: number, limit?: number): Promise<ContextFamilyGraphPage>
 
 /**
- * Select one active path without creating another Session.
- * @param agent - Live Agent whose Contextify plan will change.
- * @param ref - Expected plan revision used for compare-and-swap safety.
- * @param pathId - Existing active path to select.
- * @returns The view after selecting the requested path.
+ * Set or clear one message's explicit context mode.
+ * @param agent - Live Agent whose Session receives durable events.
+ * @param ref - Expected current plan revision.
+ * @param node - Message location in one Session in the active family.
+ * @param mode - Natural behavior or the meaningful on-path/off-path override.
+ * @returns The view after the mutation commits.
  */
-@Remote('selectPath') selectPath(agent: Agent, ref: ContextPlanRef, pathId: ContextPathId): ContextifyView
+@Remote('setNodeMode') async setNodeMode( agent: Agent, ref: ContextPlanRef, node: ContextMessageRef, mode: 'natural' | 'include' | 'exclude', ): Promise<ContextifyView>
 
 /**
- * Select the durable mainline path.
- * @param agent - Live Agent whose Contextify plan will change.
- * @param ref - Expected plan revision used for compare-and-swap safety.
- * @returns The current view, after switching when necessary.
+ * Apply several node-mode changes as one Context Plan revision.
+ * @param agent - Live Agent whose Session receives durable events.
+ * @param ref - Expected current plan revision.
+ * @param mutations - Ordered message-mode replacements.
+ * @returns The view after one complete plan commits.
  */
-@Remote('returnToMainline') returnToMainline(agent: Agent, ref: ContextPlanRef): ContextifyView
+@Remote('setNodeModes') async setNodeModes( agent: Agent, ref: ContextPlanRef, mutations: readonly ContextNodeMutation[], ): Promise<ContextifyView>
 
 /**
- * Set or clear one explicit message selection override.
- * @param agent - Live Agent whose Contextify plan will change.
- * @param ref - Expected plan revision used for compare-and-swap safety.
- * @param seq - Message event sequence whose selection mode will change.
- * @param mode - Natural path behavior or an explicit include/exclude override.
- * @returns The view after committing the new override set.
+ * Reset every explicit choice to Natural behavior.
+ * @param agent - Live Agent whose plan changes.
+ * @param ref - Expected current plan revision.
+ * @returns The committed Natural view.
  */
-@Remote('setNodeMode') setNodeMode(agent: Agent, ref: ContextPlanRef, seq: number, mode: 'natural' | 'include' | 'exclude'): ContextifyView
+@Remote('reset') reset(agent: Agent, ref: ContextPlanRef): ContextifyView
 
 /**
- * Return a bounded detached graph page.
- * @param agent - Live Agent whose Session graph will be read.
- * @param afterSeq - Exclusive event-sequence cursor; omitted to read from the start.
- * @param limit - Maximum records to return, from 1 through 500.
- * @returns A transport-safe page of graph nodes and previews.
+ * Restore the prior Context Plan state as a new durable revision.
+ * @param agent - Live Agent whose plan changes.
+ * @param ref - Expected current plan revision.
+ * @returns The committed prior-state view.
  */
-@Remote('graphPage') graphPage(agent: Agent, afterSeq?: number, limit?: number): ContextGraphPage
+@Remote('undo') undo(agent: Agent, ref: ContextPlanRef): ContextifyView
+
+/**
+ * Restore the next Context Plan state as a new durable revision.
+ * @param agent - Live Agent whose plan changes.
+ * @param ref - Expected current plan revision.
+ * @returns The committed next-state view.
+ */
+@Remote('redo') redo(agent: Agent, ref: ContextPlanRef): ContextifyView
 ```
 
-Source: [`packages/context/contextify/src/index.ts:236`](../../packages/context/contextify/src/index.ts)
+Source: [`packages/context/contextify/src/index.ts:92`](../../packages/context/contextify/src/index.ts)
 
 <a id="agent-events"></a>
 

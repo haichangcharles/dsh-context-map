@@ -73,8 +73,7 @@ function MessageItem({ node, t: translate }: MessageItemProps) {
   switch (node.kind) {
     case 'user':
       return <UserMessageNodeView
-        {...props as ChatNodeViewProps<'user'>}
-        renderSlot={() => null}
+        {...props as React.ComponentProps<typeof UserMessageNodeView>}
       />
     case 'steering':
       return <SteeringMessageNodeView {...props as ChatNodeViewProps<'steering'>} />

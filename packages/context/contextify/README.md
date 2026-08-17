@@ -2,34 +2,39 @@
 
 English | [中文](README.zh.md)
 
-`dsh-contextify` stores a lightweight conversation graph inside one Harness Session and registers the `contextify@1` Context Compiler provider. A branch is a durable causal path, not a new Session: messages, tool facts, and request headers remain in the original append-only log.
+`dsh-contextify` turns a connected family of native Harness Session forks into one message-level Context Map and registers the `contextify@2` Context Compiler. It does not create a second branch model: every branch is an ordinary Session whose `parentSession` and `seedLength` remain owned by Harness.
 
 ## Current behavior
 
-On `agent/session-start`, the plugin creates the initial root plan when absent and selects the Contextify compiler. Each plan snapshot records path ancestry, the active and mainline paths, and explicit include/exclude overrides. Each route assigns one turn to a path and parent node. Compilation walks the active path to its root, applies overrides, and always restores messages from the current turn.
+On `agent/session-start`, the plugin selects the Contextify compiler and creates a Natural plan when no plan exists. A newly forked child inherits the parent's event prefix but starts with its own Natural plan; context edits are never silently inherited.
 
-The `contextify` service exposes generated Remote reads and compare-and-set mutations for graph paging, branch creation, path selection, returning to mainline, and natural/include/exclude node modes. Mutations are accepted only for the exact live idle Agent and the current plan revision. Assistant tool calls and their tool results form one closed selection group, so an override can never send a broken tool exchange to the model.
+The family projector walks from the native root Session through every descendant. It de-duplicates copied prefix messages by their earliest owning Session and emits one node for each visible appended `user/message` or text/image `assistant/message`. Reasoning-only assistant events, tool calls, tool results, context injections, and other runtime events are intentionally absent from the map. Both user and assistant nodes resolve to their enclosing completed `turn/end`, which is the boundary accepted by native Session fork.
 
-The compiler rejects non-monotonic plans, duplicate or cyclic paths, missing active paths, duplicate routes, stale route revisions, missing route parents, and overrides that reference no message node. Root-only histories remain equivalent to the ordinary Harness surface.
+The durable plan has three modes:
 
-## Model Experience
+- **Natural** keeps a message when it belongs to the active Session's inherited or local history.
+- **Exclude** omits one Natural historical message from the next compilation.
+- **Include** copies a message from another Session in the same native family into a local `context/compiler-snapshot` event and inserts it at a stable position.
 
-### Selected conversation history
+Every plan mutation is compare-and-set by revision and records complete undo/redo state. Reset returns to Natural. Cross-family references, unavailable messages, stale revisions, unsupported transitions, and non-idle Agents fail without a partial plan change. Cross-map import is deliberately out of scope.
 
-#### What the model sees
+The `contextify` Remote namespace exposes `get`, paged `familyPage`, `setNodeMode`, batched `setNodeModes`, `reset`, `undo`, and `redo`.
 
-The model sees messages on the active causal path plus messages marked `include`. Historical messages marked `exclude` are omitted. Messages already written for the current turn remain visible regardless of an imported or stale override.
+## Context Compiler contract
 
-#### Token effect
+The ordinary Harness transcript remains append-only. Contextify changes only the message list compiled for a later model request:
 
-Branching and exclusion can reduce input tokens by omitting unrelated history. Explicit inclusion increases input tokens by restoring selected durable messages. The plugin adds no prompt prose.
+- active-family messages are selected in their existing order;
+- explicit exclusions are removed;
+- included sibling messages are read from durable compiler snapshots; and
+- messages from the current turn are restored so an old plan cannot hide the request being answered.
 
-#### KV Cache effect
+The compiler adds no prompt prose. Exclusion can reduce input tokens; sibling inclusion increases them. Any earlier change to the selected prefix can reduce KV-cache reuse from the first changed message.
 
-Staying on a path preserves its stable prefix. Switching paths or changing an earlier override can invalidate cache reuse from the first changed message.
+## Known limitations and deferred work
 
-## Known Limitations and Deferred Work
-
-- **Bounded refresh latency** — the Web panel refreshes the graph at a 1.5-second interval while mounted; a dedicated Contextify projection/event channel can replace this polling later.
-- **Compaction projection pending** — replacement events are not yet represented as expandable shadow relationships.
-- **In-repository incubation** — the package currently lives in the Harness fork so its compiler seam, Remote boundary, and replay rules can be verified together; it can be extracted to a plugin repository after the API stabilizes.
+- The Web client polls the family at 1.5-second intervals while a surface is subscribed; a dedicated projection event can replace this later.
+- Automatic recommendations for which messages to include or exclude are deferred.
+- Cross-map import is deferred; only Sessions connected to the same native root are addressable.
+- Compaction replacement relationships are not expanded into shadow nodes.
+- The package remains in this Harness fork while its compiler, Remote, replay, and UI seams stabilize.

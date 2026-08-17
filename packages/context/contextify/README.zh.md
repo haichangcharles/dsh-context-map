@@ -2,34 +2,39 @@
 
 [English](README.md) | 中文
 
-`dsh-contextify` 在同一个 Harness Session 内保存轻量对话图，并注册 `contextify@1` Context Compiler provider。Branch 是持久的因果路径，而不是新 Session：消息、工具事实和请求 header 都保留在原 append-only 日志中。
+`dsh-contextify` 把一组由 Harness 原生 Session fork 连接起来的对话投影成消息级 Context Map，并注册 `contextify@2` Context Compiler。它不再创造第二套 branch 概念：每条 branch 都是普通 Session，`parentSession` 与 `seedLength` 完全由 Harness 管理。
 
 ## 当前行为
 
-在 `agent/session-start` 时，插件会在缺少初始计划时创建 root plan，并选择 Contextify compiler。每个 plan snapshot 记录路径祖先关系、active/mainline path 和显式 include/exclude override。每个 route 把一个 turn 归属到某条 path 及其父节点。编译会从 active path 回溯到 root、应用 override，并无条件恢复当前 turn 的消息。
+在 `agent/session-start` 时，插件会选择 Contextify compiler；若计划不存在，则创建 Natural plan。新 fork 的 child 会继承 parent 的事件前缀，但拥有自己的 Natural plan，因此 context 修改不会被静默继承。
 
-`contextify` service 提供生成式 Remote 读取和 compare-and-set mutation，用于 graph paging、创建 branch、选择 path、返回 mainline，以及设置节点的 natural/include/exclude 模式。只有针对当前 live idle Agent 和当前 plan revision 的 mutation 才会被接受。Assistant tool call 及其 tool result 会组成不可拆分的 selection group，因此 override 不会向模型发送残缺的 tool exchange。
+Family projector 从原生 root Session 遍历全部后代，并按最早拥有它的 Session 对复制前缀消息去重。每条可见、append 的 `user/message`，以及含文本或图片的 `assistant/message`，各自成为一个节点。纯 reasoning assistant event、tool call、tool result、context injection 和其他 runtime event 都不会进入图。User 与 assistant 节点都会解析到所在 completed `turn/end`，Branch 因而使用 Harness 原生 Session fork 接受的边界。
 
-Compiler 会拒绝非单调 plan、重复或循环 path、缺失的 active path、重复 route、引用旧 plan 的 route、缺失 route parent，以及引用不到消息节点的 override。只有 root 的历史与 Harness 原始 surface 保持等价。
+持久计划包含三种模式：
 
-## 模型体验
+- **Natural**：消息属于当前 Session 的继承或本地历史时，保持默认输入。
+- **Exclude**：从下一次 compilation 中移除一条 Natural 历史消息。
+- **Include**：把同一原生 family 内其他 Session 的消息复制到本地 `context/compiler-snapshot` 事件，并按稳定位置插入。
 
-### 选中的对话历史
+每次 plan mutation 都按 revision 做 compare-and-set，并记录完整 undo/redo 状态；Reset 回到 Natural。跨 family 引用、不可用消息、旧 revision、不支持的状态变化以及非 idle Agent 都会失败，不会产生部分更新。跨 Map import 暂不在范围内。
 
-#### 模型看到的内容
+`contextify` Remote namespace 提供 `get`、分页 `familyPage`、`setNodeMode`、批量 `setNodeModes`、`reset`、`undo` 和 `redo`。
 
-模型会看到 active 因果路径上的消息和标记为 `include` 的消息。标记为 `exclude` 的历史消息会被省略。当前 turn 已经写入的消息不会因导入或过期 override 而消失。
+## Context Compiler 契约
 
-#### Token 影响
+Harness 原始 transcript 仍然是 append-only。Contextify 只改变后续模型请求所编译出的 message list：
 
-Branch 和 exclude 可以通过省略无关历史来减少输入 token。显式 include 会恢复指定的持久消息并增加输入 token。本插件不添加提示词文本。
+- 当前 family 的消息保持已有顺序；
+- 显式 exclude 的消息被移除；
+- sibling include 从持久 compiler snapshot 读取；
+- 当前 turn 的消息会被恢复，因此旧 plan 无法隐藏正在回答的请求。
 
-#### KV Cache 影响
-
-停留在同一路径时会保留稳定前缀。切换路径或修改较早的 override，可能从第一条变化消息开始使缓存复用失效。
+Compiler 不添加任何提示词文本。Exclude 可以减少 input token；引入 sibling 会增加 input token。只要更改了更早的选中前缀，KV cache 就可能从第一条变化消息开始失去复用。
 
 ## 已知限制与暂缓事项
 
-- **刷新存在短暂延迟**——Web panel 挂载期间每 1.5 秒刷新一次 graph；以后可以用专用 Contextify projection/event channel 取代 polling。
-- **Compaction 投影待完成**——replacement event 尚未表示成可展开的 shadow 关系。
-- **暂在仓库内孵化**——package 当前位于 Harness fork 内，以便一起验证 compiler seam、Remote boundary 和 replay 规则；API 稳定后可以抽取到独立 plugin repository。
+- Web surface 有订阅者时每 1.5 秒轮询 family；后续可改为专用 projection event。
+- 自动推荐 include/exclude 节点暂缓。
+- 跨 Map import 暂缓；目前只能引用连接到同一原生 root 的 Session。
+- Compaction replacement relationship 尚未展开成 shadow node。
+- 在 compiler、Remote、replay 与 UI seam 稳定前，package 继续保留在本 Harness fork 中。

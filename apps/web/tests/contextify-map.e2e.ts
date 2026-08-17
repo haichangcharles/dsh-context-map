@@ -33,7 +33,7 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
     await scaffold?.close()
   })
 
-  it('opens beside chat, mutates a node, branches, and reopens after reload', async () => {
+  it('opens beside Chat, forks a native child, mutates its plan, and survives reload', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-contextify-map'))
     const settled = scaffold.whenTurnSettled()
     const input = page.locator('textarea').first()
@@ -44,24 +44,30 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
 
     const map = page.getByRole('region', { name: 'Context Map' })
     await map.waitFor({ timeout: 15_000 })
-    // The replay contains the user and assistant messages plus one locked
-    // runtime-context insertion. Contextify exposes all three but prevents
-    // mutation of the policy-owned middle node.
     await expect.poll(() => map.getByText(/3 \/ 3 selected/).count(), { timeout: 5_000 }).toBe(1)
+    await expect.poll(() => map.locator('.react-flow__node').count(), { timeout: 5_000 }).toBe(3)
 
     await map.getByRole('button', { name: 'Branch from LIGHTHOUSE' }).click()
-    const agent = scaffold.ctx.agents.get(sessionId)
-    if (agent === undefined) throw new Error('Contextify e2e lost its live Agent')
-    await expect.poll(() => scaffold.ctx.contextify.get(agent).plan.paths.length, { timeout: 5_000 }).toBe(2)
-    await map.getByRole('button', { name: 'New branch', exact: true }).waitFor({ timeout: 5_000 })
+    await expect.poll(
+      () => scaffold.ctx.agents.list().find(agent => agent.session.header.parentSession === sessionId),
+      { timeout: 15_000 },
+    ).toBeDefined()
+    const child = scaffold.ctx.agents.list()
+      .find(agent => agent.session.header.parentSession === sessionId)
+    if (child === undefined) throw new Error('Context Map did not create a native child Session')
+    await expect.poll(() => map.locator('.react-flow__node').count(), { timeout: 10_000 }).toBe(3)
+    await expect.poll(() => page.locator('[role="treeitem"]').count(), { timeout: 10_000 }).toBe(3)
     await map.getByRole('button', { name: `Exclude ${PROMPT}` }).click()
     await expect.poll(() => map.getByText(/2 \/ 3 selected/).count(), { timeout: 5_000 }).toBe(1)
+    await expect.poll(() => scaffold.ctx.contextify.get(child).plan.excluded.length, { timeout: 5_000 }).toBe(1)
 
     const warningStart = tripwire.warnings.length
     await page.reload({ waitUntil: 'load' })
     acknowledgeReloadConnectionLoss(tripwire, warningStart)
-    await page.getByRole('region', { name: 'Context Map' }).waitFor({ timeout: 15_000 })
-    await page.getByRole('button', { name: 'New branch', exact: true }).waitFor({ timeout: 5_000 })
+    const reloadedMap = page.getByRole('region', { name: 'Context Map' })
+    await reloadedMap.waitFor({ timeout: 15_000 })
+    await expect.poll(() => reloadedMap.getByText(/2 \/ 3 selected/).count(), { timeout: 10_000 }).toBe(1)
+    await expect.poll(() => reloadedMap.locator('.react-flow__node').count(), { timeout: 10_000 }).toBe(3)
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])
   }, 90_000)

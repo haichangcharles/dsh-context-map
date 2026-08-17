@@ -62,7 +62,7 @@ describe('native Contextify plan compiler', () => {
       id: 'sibling:8',
       message: createUserMessage({
         content: [{ type: 'text', text: 'sibling discovery' }],
-        source: { kind: 'runtime-context', provenance: 'contextify:sibling:8' },
+        source: { kind: 'plugin', plugin: 'contextify' },
       }),
     })
     session.append('contextify/plan', nextPlan(initial, {

@@ -3,14 +3,7 @@ import { useEffect } from 'react'
 import type { ClientContext, SessionId, SessionListState } from '@deepseek-ai/dsh-client-runtime/client'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import type {
-  ContextFamilyGraphNode,
-  ContextFamilyGraphPage,
-  ContextMessageRef,
-  ContextNodeMutation,
-  ContextPlanRef,
-  ContextifyView,
-} from '@deepseek-ai/dsh-contextify/types'
+import type { ContextFamilyGraphNode } from '@deepseek-ai/dsh-contextify/types'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
@@ -27,29 +20,6 @@ export { createContextMapStore } from './store.ts'
 
 /** Services required by the Contextify Remote adapter and details surface. */
 export const inject = ['slots', 'remote', 'remote.contextify', 'layout', 'sessions']
-
-interface ContextifyRemote {
-  get: (sessionId: SessionId) => Promise<RemoteResult<ContextifyView>>
-  familyPage: (
-    sessionId: SessionId,
-    after?: number,
-    limit?: number,
-  ) => Promise<RemoteResult<ContextFamilyGraphPage>>
-  setNodeMode: (
-    sessionId: SessionId,
-    ref: ContextPlanRef,
-    node: ContextMessageRef,
-    mode: ContextNodeMutation['mode'],
-  ) => Promise<RemoteResult<ContextifyView>>
-  setNodeModes: (
-    sessionId: SessionId,
-    ref: ContextPlanRef,
-    mutations: readonly ContextNodeMutation[],
-  ) => Promise<RemoteResult<ContextifyView>>
-  reset: (sessionId: SessionId, ref: ContextPlanRef) => Promise<RemoteResult<ContextifyView>>
-  undo: (sessionId: SessionId, ref: ContextPlanRef) => Promise<RemoteResult<ContextifyView>>
-  redo: (sessionId: SessionId, ref: ContextPlanRef) => Promise<RemoteResult<ContextifyView>>
-}
 
 /** Convert a generated transport result into the component's ordinary promise contract. */
 function valueOf<T>(result: RemoteResult<T>): T {
@@ -74,7 +44,7 @@ function DetailsOpener({ open, useSessions }: {
 
 /** Register the pinned map and one shared controller per native Session. */
 export function apply(ctx: ClientContext): void {
-  const remote = ctx.remote.contextify as unknown as ContextifyRemote
+  const remote = ctx.remote.contextify
   const controllers = new Map<SessionId, ContextifyController>()
   const controllerFor = (sessionId: SessionId): ContextifyController => {
     const existing = controllers.get(sessionId)

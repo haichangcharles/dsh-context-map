@@ -400,7 +400,18 @@ Source: [`packages/compaction/compaction/src/types.ts:33`](../packages/compactio
 'context/compiler': ContextCompilerDescriptor
 ```
 
-Source: [`packages/context/context-compiler/src/index.ts:97`](../packages/context/context-compiler/src/index.ts)
+Source: [`packages/context/context-compiler/src/index.ts:112`](../packages/context/context-compiler/src/index.ts)
+
+<a id="contextcompiler-snapshot--log-only"></a>
+
+#### `context/compiler-snapshot` — log-only
+
+```ts persistence-catalog
+/** Model-visible message copied into this Session for compiler selection. */
+'context/compiler-snapshot': ContextCompilerSnapshot
+```
+
+Source: [`packages/context/context-compiler/src/index.ts:114`](../packages/context/context-compiler/src/index.ts)
 
 ### `contextify/*`
 
@@ -413,18 +424,7 @@ Source: [`packages/context/context-compiler/src/index.ts:97`](../packages/contex
 'contextify/plan': ContextPlanSnapshot
 ```
 
-Source: [`packages/context/contextify/src/types.ts:108`](../packages/context/contextify/src/types.ts)
-
-<a id="contextifyroute--log-only"></a>
-
-#### `contextify/route` — log-only
-
-```ts persistence-catalog
-/** Immutable assignment of one turn to a path and causal parent. */
-'contextify/route': ContextRoute
-```
-
-Source: [`packages/context/contextify/src/types.ts:110`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:135`](../packages/context/contextify/src/types.ts)
 
 ### `feedback/*`
 
