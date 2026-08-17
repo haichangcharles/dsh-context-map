@@ -96,7 +96,7 @@ export function apply(ctx: ClientContext): void {
             ctx.sessions.open(childId)
           },
           navigate: (node) => { ctx.sessions.open(node.owner.sessionId) },
-          locate: (nodeId) => { controller.focus(nodeId); ctx.layout.openDetails() },
+          locate: (node) => { controller.focus(node.id); ctx.layout.openDetails() },
           close: () => { ctx.layout.closeDetails() },
         },
       }

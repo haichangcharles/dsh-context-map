@@ -3,6 +3,7 @@ import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import type { ContextFamilyGraphNode, ContextMessageRef } from '@deepseek-ai/dsh-contextify/types'
 import css from './ContextMapPanel.module.css'
+import type { CanvasPoint } from './canvas-interactions.ts'
 
 export type ContextNodeMode = 'natural' | 'include' | 'exclude'
 
@@ -18,6 +19,8 @@ export interface ContextMapNodeData extends Record<string, unknown> {
   readonly onBranch: (record: ContextFamilyGraphNode) => void
   readonly onNavigate: (record: ContextFamilyGraphNode) => void
   readonly onLocate: (record: ContextFamilyGraphNode) => void
+  readonly onActivate: (record: ContextFamilyGraphNode) => void
+  readonly onContextMenu: (record: ContextFamilyGraphNode, point: CanvasPoint) => void
 }
 
 /** Compact role, preview, Session, status, and direct actions card. */
@@ -35,6 +38,13 @@ export const ContextMapNode = memo(function ContextMapNode({ data, selected, sou
       data-focused={value.focused || undefined}
       data-search-match={value.searchMatch || undefined}
       data-selected={selected || undefined}
+      data-context-node-id={record.id}
+      onClick={() => { value.onActivate(record) }}
+      onContextMenu={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        value.onContextMenu(record, { x: event.clientX, y: event.clientY })
+      }}
     >
       <Handle type="target" position={targetPosition ?? Position.Top} className={css.handle} />
       <header className={css.nodeHeader}>
@@ -43,7 +53,10 @@ export const ContextMapNode = memo(function ContextMapNode({ data, selected, sou
       </header>
       <p className={css.preview} data-preview={preview} aria-hidden="true" />
       <div className={css.nodeMeta}>{value.sessionLabel}</div>
-      <div className={`${css.nodeActions} nodrag nopan`}>
+      <div
+        className={`${css.nodeActions} nodrag nopan`}
+        onClick={(event) => { event.stopPropagation() }}
+      >
         {(['natural', 'include', 'exclude'] as const).map(mode => (
           <button
             type="button"

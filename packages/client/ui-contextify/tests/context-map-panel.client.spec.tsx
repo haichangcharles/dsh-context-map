@@ -12,6 +12,9 @@ import {
 } from '../src/client/controller.ts'
 import { createContextMapStore } from '../src/client/store.ts'
 import { ContextMessageAction } from '../src/client/ContextMessageAction.tsx'
+import {
+  intersects, nextNodeMode, reducePositionChanges,
+} from '../src/client/canvas-interactions.ts'
 
 class ResizeObserverStub {
   observe(): void {}
@@ -111,6 +114,70 @@ function mount(snapshot = fixture()) {
 }
 
 describe('ContextMapPanel', () => {
+  it('cycles the meaningful context override when a node card is clicked', async () => {
+    const h = mount()
+    fireEvent.click(await screen.findByLabelText('User message: root requirement'))
+    expect(h.mapActions.setNodeMode).toHaveBeenCalledWith({ sessionId: root, seq: 1 }, 'exclude')
+  })
+
+  it('uses node clicks for additive selection while Selection mode is active', async () => {
+    const h = mount()
+    fireEvent.click(screen.getByRole('button', { name: 'Selection mode' }))
+    fireEvent.click(await screen.findByLabelText('User message: root requirement'))
+    fireEvent.click(screen.getByLabelText('User message: branch follow-up'))
+    await waitFor(() => {
+      expect(h.store.getSnapshot().selectedNodeIds).toEqual(['root:1', 'child:8'])
+    })
+    expect(h.mapActions.setNodeMode).not.toHaveBeenCalled()
+  })
+
+  it('shows a live Shift marquee and toggles every intersecting node', async () => {
+    const h = mount()
+    fireEvent.click(screen.getByRole('button', { name: 'Selection mode' }))
+    const canvas = h.view.container.querySelector<HTMLElement>('[data-context-map-canvas]')!
+    const rootCard = await screen.findByLabelText('User message: root requirement')
+    const branchCard = screen.getByLabelText('User message: branch follow-up')
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
+      x: 0, y: 0, left: 0, top: 0, right: 600, bottom: 600, width: 600, height: 600,
+      toJSON: () => ({}),
+    })
+    vi.spyOn(rootCard, 'getBoundingClientRect').mockReturnValue({
+      x: 30, y: 30, left: 30, top: 30, right: 130, bottom: 130, width: 100, height: 100,
+      toJSON: () => ({}),
+    })
+    vi.spyOn(branchCard, 'getBoundingClientRect').mockReturnValue({
+      x: 300, y: 300, left: 300, top: 300, right: 400, bottom: 400, width: 100, height: 100,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerDown(canvas, { shiftKey: true, clientX: 10, clientY: 10, pointerId: 1 })
+    fireEvent.pointerMove(canvas, { shiftKey: true, clientX: 180, clientY: 180, pointerId: 1 })
+    expect(screen.getByTestId('context-map-marquee').style.width).toBe('170px')
+    fireEvent.pointerUp(canvas, { shiftKey: true, clientX: 180, clientY: 180, pointerId: 1 })
+    await waitFor(() => {
+      expect(h.store.getSnapshot().selectedNodeIds).toEqual(['root:1'])
+    })
+    expect(screen.queryByTestId('context-map-marquee')).toBeNull()
+  })
+
+  it('opens the original-style node menu and delegates durable actions', async () => {
+    const h = mount()
+    const card = await screen.findByLabelText('User message: root requirement')
+    fireEvent.contextMenu(card, { clientX: 120, clientY: 160 })
+    const menu = screen.getByRole('menu', { name: 'Message actions' })
+    expect(within(menu).getByRole('menuitem', { name: 'Locate in Chat' })).toBeTruthy()
+    expect(within(menu).getByRole('menuitem', { name: 'Branch from Here' })).toBeTruthy()
+    expect(within(menu).getByRole('menuitem', { name: 'Natural' })).toBeTruthy()
+    expect(within(menu).getByRole('menuitem', { name: 'Include' })).toBeTruthy()
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Exclude' }))
+    expect(h.mapActions.setNodeMode).toHaveBeenCalledWith({ sessionId: root, seq: 1 }, 'exclude')
+    expect(screen.queryByRole('menu')).toBeNull()
+
+    fireEvent.contextMenu(card, { clientX: 120, clientY: 160 })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Locate in Chat' }))
+    expect(h.mapActions.locate).toHaveBeenCalledWith(h.snapshot.graph!.nodes[0])
+  })
+
   it('renders the message graph and controls modes, branch, navigation, locate, and layouts', async () => {
     const h = mount()
     expect(await screen.findByLabelText('User message: root requirement')).toBeTruthy()
@@ -126,7 +193,7 @@ describe('ContextMapPanel', () => {
     fireEvent.click(within(rootCard).getByText('Open'))
     expect(h.mapActions.navigate).toHaveBeenCalledWith(h.snapshot.graph!.nodes[0])
     fireEvent.click(within(rootCard).getByText('Locate'))
-    expect(h.mapActions.locate).toHaveBeenCalledWith('root:1')
+    expect(h.mapActions.locate).toHaveBeenCalledWith(h.snapshot.graph!.nodes[0])
 
     fireEvent.click(screen.getByRole('button', { name: 'mindmap layout' }))
     expect(h.store.getSnapshot().layout).toBe('mindmap')
@@ -143,6 +210,7 @@ describe('ContextMapPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next search result' }))
     expect(screen.getByText('2 / 3')).toBeTruthy()
 
+    fireEvent.click(screen.getByRole('button', { name: 'Selection mode' }))
     h.store.actions.setNodeSelected('root:1', true)
     h.store.actions.setNodeSelected('child:8', true)
     await waitFor(() => { expect(screen.getByText('2 selected')).toBeTruthy() })
@@ -153,6 +221,40 @@ describe('ContextMapPanel', () => {
     ])
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
     expect(h.mapActions.undo).toHaveBeenCalledOnce()
+  })
+})
+
+describe('canvas interaction rules', () => {
+  it('cycles only the meaningful override for active and off-path nodes', () => {
+    expect(nextNodeMode(true, 'natural')).toBe('exclude')
+    expect(nextNodeMode(true, 'exclude')).toBe('natural')
+    expect(nextNodeMode(false, 'natural')).toBe('include')
+    expect(nextNodeMode(false, 'include')).toBe('natural')
+  })
+
+  it('detects rectangles that overlap at an edge', () => {
+    expect(intersects(
+      { x: 0, y: 0, width: 20, height: 20 },
+      { x: 20, y: 5, width: 10, height: 10 },
+    )).toBe(true)
+    expect(intersects(
+      { x: 0, y: 0, width: 20, height: 20 },
+      { x: 21, y: 5, width: 10, height: 10 },
+    )).toBe(false)
+  })
+
+  it('keeps drag coordinates transient until the final position change', () => {
+    const moving = reducePositionChanges({}, [{
+      id: 'root:1', position: { x: 40, y: 50 }, dragging: true,
+    }])
+    expect(moving.transient).toEqual({ 'root:1': { x: 40, y: 50 } })
+    expect(moving.committed).toEqual([])
+
+    const stopped = reducePositionChanges(moving.transient, [{
+      id: 'root:1', position: { x: 70, y: 80 }, dragging: false,
+    }])
+    expect(stopped.transient).toEqual({})
+    expect(stopped.committed).toEqual([{ id: 'root:1', position: { x: 70, y: 80 } }])
   })
 })
 
