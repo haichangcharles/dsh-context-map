@@ -1,6 +1,56 @@
 /** Client-safe Contextify domain and Remote-boundary vocabulary. */
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { Message } from '@deepseek-ai/dsh-llm'
+import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session/types'
+
+/** Immutable Session data consumed by the native family projection. */
+export interface ContextFamilyInspection {
+  readonly meta: SessionHeader
+  readonly events: readonly SessionEvent[]
+}
+
+/** Durable location of one message inside its owning native Session. */
+export interface ContextMessageRef {
+  readonly sessionId: SessionId
+  readonly seq: number
+}
+
+/** One native Session rendered in a connected Context Map family. */
+export interface ContextFamilySession {
+  readonly id: SessionId
+  readonly parentSessionId?: SessionId
+  readonly seedLength: number
+  readonly depth: number
+  readonly tipNodeId: string | null
+}
+
+/** One canonical visible message shared by every Session that inherited it. */
+export interface ContextFamilyGraphNode {
+  readonly id: string
+  readonly owner: ContextMessageRef
+  readonly role: 'user' | 'assistant'
+  readonly preview: string
+  readonly time: number
+  readonly sessionIds: readonly SessionId[]
+  readonly activeEventSeq: number | null
+}
+
+/** One causal visible-message edge shared by every Session that traverses it. */
+export interface ContextFamilyGraphEdge {
+  readonly id: string
+  readonly source: string
+  readonly target: string
+  readonly sessionIds: readonly SessionId[]
+}
+
+/** Complete graph projection for one native root Session and its descendants. */
+export interface ContextFamilyGraph {
+  readonly rootSessionId: SessionId
+  readonly activeSessionId: SessionId
+  readonly sessions: readonly ContextFamilySession[]
+  readonly nodes: readonly ContextFamilyGraphNode[]
+  readonly edges: readonly ContextFamilyGraphEdge[]
+}
 
 /** Opaque identity of one lightweight path inside a Session. */
 export type ContextPathId = Branded<'ContextPathId'>
