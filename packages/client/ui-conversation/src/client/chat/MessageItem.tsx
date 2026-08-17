@@ -236,9 +236,30 @@ export function PendingSteeringBubble({ content, loadImage, t }: {
 
 /** User and admitted-steering keyed Chat renderer. */
 export const UserMessageNodeView = memo(function UserMessageNodeView({
-  node, loadImage, t,
+  node, loadImage, forkAt, useSession, t,
 }: ChatNodeViewProps<'user' | 'steering'>) {
   const data = node.data
+  const branchBoundary = useSession((snapshot) => {
+    const current = snapshot.chat.nodes.get(node.key)
+    const location = current?.location
+    const locatedTurn = location?.kind === 'turn' || location?.kind === 'step'
+      ? location.turn
+      : snapshot.chat.timeline.turnOrder
+        .map(turnNumber => snapshot.chat.timeline.turns.get(turnNumber))
+        .find((turn) => {
+          if (turn === undefined) return false
+          const endSeq = turn.end?.seq ?? snapshot.chat.legacy.turnEnds.get(turn.turn)
+          return endSeq !== undefined && data.seq < endSeq
+        })
+    if (locatedTurn === undefined) return undefined
+    const boundary = locatedTurn.end?.seq ?? snapshot.chat.legacy.turnEnds.get(locatedTurn.turn)
+    if (boundary === undefined) return undefined
+    const tail = locatedTurn.data.get('turn-tail')
+    if (tail?.branchUnavailable !== false) return undefined
+    const last = snapshot.chat.locations.getTurn(locatedTurn.turn).at(-1)
+    if (last === undefined || snapshot.chat.nodes.get(last)?.kind !== 'turn-tail') return undefined
+    return boundary
+  })
   return (
     <UserStyleBubble
       content={data.content}
@@ -249,6 +270,7 @@ export const UserMessageNodeView = memo(function UserMessageNodeView({
           text={text}
           time={data.time}
           clock="start"
+          onBranch={branchBoundary === undefined ? undefined : () => { forkAt(branchBoundary) }}
           className={css.actions}
           t={t}
         />

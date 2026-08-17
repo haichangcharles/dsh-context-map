@@ -62,7 +62,12 @@ function MessageItem({ node, t: translate }: MessageItemProps) {
     visibility: 'visible',
     data: node.kind === 'model-retry' ? { attempts: [node], current: node } : node,
   }
-  const props = { node: viewNode, t: translate } as ChatNodeViewProps
+  const snapshot = { chat: chatSnapshotFixture({ nodes: [node] }) }
+  const useSession = bindSnapshotSelector({
+    getSnapshot: () => snapshot,
+    subscribe: () => () => {},
+  })
+  const props = { node: viewNode, t: translate, useSession, forkAt: vi.fn() } as unknown as ChatNodeViewProps
   switch (node.kind) {
     case 'user':
     case 'steering':
