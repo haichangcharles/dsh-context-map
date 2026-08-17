@@ -10,6 +10,12 @@
 - text: Render adjacent CJK strong emphasis. {{clock}}
 - button "Copy":
   - img
+- button "natural context for Render adjacent CJK strong emphasis." [disabled]: Auto
+- button "include context for Render adjacent CJK strong emphasis.": Use
+- button "exclude context for Render adjacent CJK strong emphasis.": Skip
+- button "Locate Render adjacent CJK strong emphasis. in Context Map": Map
+- button "Branch into a new conversation":
+  - img
 - heading "CJK strong emphasis" [level=2]
 - paragraph:
   - strong: 注意：
@@ -42,6 +48,10 @@
   - img
 - button "Bad response":
   - img
+- 'button "natural context for ## CJK strong emphasis **注意：**内容 **Notice:**内容 **事件中间件（waterfall）**实现 **事件中间件(waterfall)**实现 **句号。**后续 **Period.**后续 **提醒！**继续 **Warning!**继续 CJK_STRONG_DONE" [disabled]': Auto
+- 'button "include context for ## CJK strong emphasis **注意：**内容 **Notice:**内容 **事件中间件（waterfall）**实现 **事件中间件(waterfall)**实现 **句号。**后续 **Period.**后续 **提醒！**继续 **Warning!**继续 CJK_STRONG_DONE"': Use
+- 'button "exclude context for ## CJK strong emphasis **注意：**内容 **Notice:**内容 **事件中间件（waterfall）**实现 **事件中间件(waterfall)**实现 **句号。**后续 **Period.**后续 **提醒！**继续 **Warning!**继续 CJK_STRONG_DONE"': Skip
+- 'button "Locate ## CJK strong emphasis **注意：**内容 **Notice:**内容 **事件中间件（waterfall）**实现 **事件中间件(waterfall)**实现 **句号。**后续 **Period.**后续 **提醒！**继续 **Warning!**继续 CJK_STRONG_DONE in Context Map"': Map
 - button "Branch into a new conversation":
   - img
 - text: {{clock}} Ran for {{duration}}

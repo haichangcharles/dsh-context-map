@@ -20,18 +20,23 @@ Every plan mutation is compare-and-set by revision and records complete undo/red
 
 The `contextify` Remote namespace exposes `get`, paged `familyPage`, `setNodeMode`, batched `setNodeModes`, `reset`, `undo`, and `redo`.
 
-## Context Compiler contract
+## Model Experience
 
-The ordinary Harness transcript remains append-only. Contextify changes only the message list compiled for a later model request:
+### Compiled Context Plan
 
-- active-family messages are selected in their existing order;
-- explicit exclusions are removed;
-- included sibling messages are read from durable compiler snapshots; and
-- messages from the current turn are restored so an old plan cannot hide the request being answered.
+#### What the model sees
 
-The compiler adds no prompt prose. Exclusion can reduce input tokens; sibling inclusion increases them. Any earlier change to the selected prefix can reduce KV-cache reuse from the first changed message.
+The ordinary Harness transcript remains append-only. Contextify selects active-family messages in their existing order, removes explicit exclusions, reads included sibling messages from durable `context/compiler-snapshot` events, and restores current-turn messages so an old plan cannot hide the request being answered.
 
-## Known limitations and deferred work
+#### Token effect
+
+The compiler adds no prompt prose. Exclusion can reduce conversation-history input tokens; sibling inclusion increases them by the selected snapshot content.
+
+#### KV Cache effect
+
+Any earlier change to the selected message prefix can reduce KV-cache reuse from the first changed message onward. Leaving every node Natural preserves the ordinary Session message order.
+
+## Known Limitations and Deferred Work
 
 - The Web client polls the family at 1.5-second intervals while a surface is subscribed; a dedicated projection event can replace this later.
 - Automatic recommendations for which messages to include or exclude are deferred.

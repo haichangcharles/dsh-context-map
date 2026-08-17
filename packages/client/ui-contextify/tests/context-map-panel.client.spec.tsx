@@ -113,13 +113,12 @@ function mount(snapshot = fixture()) {
 describe('ContextMapPanel', () => {
   it('renders the message graph and controls modes, branch, navigation, locate, and layouts', async () => {
     const h = mount()
-    expect(await screen.findByText('root requirement')).toBeTruthy()
-    expect(screen.getByText('branch follow-up')).toBeTruthy()
+    expect(await screen.findByLabelText('User message: root requirement')).toBeTruthy()
     expect(screen.getByText('2 / 3 selected')).toBeTruthy()
     expect(h.view.container.querySelectorAll('.react-flow__node')).toHaveLength(3)
     expect(h.view.container.querySelector('.react-flow__edges')).toBeTruthy()
 
-    const rootCard = screen.getByText('root requirement').closest('article')!
+    const rootCard = screen.getByLabelText('User message: root requirement')
     fireEvent.click(rootCard.querySelector('button[aria-label="Exclude root requirement"]')!)
     expect(h.mapActions.setNodeMode).toHaveBeenCalledWith({ sessionId: root, seq: 1 }, 'exclude')
     fireEvent.click(rootCard.querySelector('button[aria-label="Branch from root requirement"]')!)

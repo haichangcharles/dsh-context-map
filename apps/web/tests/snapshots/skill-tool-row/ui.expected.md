@@ -10,6 +10,12 @@
 - text: Load the snapshot-skill skill with the skill tool, then reply DONE. {{date}} {{clock}}
 - button "Copy":
   - img
+- button "natural context for Load the snapshot-skill skill with the skill tool, then reply DONE." [disabled]: Auto
+- button "include context for Load the snapshot-skill skill with the skill tool, then reply DONE.": Use
+- button "exclude context for Load the snapshot-skill skill with the skill tool, then reply DONE.": Skip
+- button "Locate Load the snapshot-skill skill with the skill tool, then reply DONE. in Context Map": Map
+- button "Branch into a new conversation":
+  - img
 - button "Context injection @deepseek-ai/dsh-system-prompt":
   - img
   - img
@@ -38,6 +44,10 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for DONE" [disabled]: Auto
+- button "include context for DONE": Use
+- button "exclude context for DONE": Skip
+- button "Locate DONE in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: {{date}} {{clock}} Ran for {{duration}} TTFT {{duration}} {{throughput}} tok/s

@@ -12,6 +12,12 @@
 - text: Reply with a one-sentence description of event sourcing, then stop. {{clock}}
 - button "Copy":
   - img
+- button "natural context for Reply with a one-sentence description of event sourcing, then stop." [disabled]: Auto
+- button "include context for Reply with a one-sentence description of event sourcing, then stop.": Use
+- button "exclude context for Reply with a one-sentence description of event sourcing, then stop.": Skip
+- button "Locate Reply with a one-sentence description of event sourcing, then stop. in Context Map": Map
+- button "Branch into a new conversation":
+  - img
 - button "Context injection @deepseek-ai/dsh-system-prompt":
   - img
   - img

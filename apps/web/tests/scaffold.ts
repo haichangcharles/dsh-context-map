@@ -794,6 +794,11 @@ function normalizeAria(snapshot: string, workspaceCwd: string): string {
     .split(workspaceCwd).join('{{cwd}}')
     .split(base).join('{{workspace}}')
     .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '{{uuid}}')
+    // Loopback fixture servers bind an ephemeral port. Context Map controls
+    // expose message source text through their accessible names, so URLs that
+    // were previously hidden from aria snapshots now need the same stability
+    // treatment as clocks, UUIDs, and throughput.
+    .replace(/((?:https?:\/\/)?(?:127\.0\.0\.1|localhost)):\d+/gi, '$1:{{port}}')
     // The optional space in `\d+m ?\d+s` covers both minute spellings: the
     // stats line's compact `2m42s` and the message-chrome template's `2m 42s`.
     .replace(

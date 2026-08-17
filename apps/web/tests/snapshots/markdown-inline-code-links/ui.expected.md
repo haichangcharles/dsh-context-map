@@ -10,6 +10,12 @@
 - text: Show the local preview URL. {{clock}}
 - button "Copy":
   - img
+- button "natural context for Show the local preview URL." [disabled]: Auto
+- button "include context for Show the local preview URL.": Use
+- button "exclude context for Show the local preview URL.": Skip
+- button "Locate Show the local preview URL. in Context Map": Map
+- button "Branch into a new conversation":
+  - img
 - heading "Inline code links" [level=2]
 - paragraph:
   - text: "Preview:"
@@ -33,6 +39,10 @@
   - img
 - button "Bad response":
   - img
+- 'button "natural context for ## Inline code links Preview: `{{linkUrl}}` Standard: [Open preview]({{linkUrl}}) Command: `curl {{linkUrl}}` Unsafe: `javascript:alert(1)` INLINE_CODE_LINK_DONE" [disabled]': Auto
+- 'button "include context for ## Inline code links Preview: `{{linkUrl}}` Standard: [Open preview]({{linkUrl}}) Command: `curl {{linkUrl}}` Unsafe: `javascript:alert(1)` INLINE_CODE_LINK_DONE"': Use
+- 'button "exclude context for ## Inline code links Preview: `{{linkUrl}}` Standard: [Open preview]({{linkUrl}}) Command: `curl {{linkUrl}}` Unsafe: `javascript:alert(1)` INLINE_CODE_LINK_DONE"': Skip
+- 'button "Locate ## Inline code links Preview: `{{linkUrl}}` Standard: [Open preview]({{linkUrl}}) Command: `curl {{linkUrl}}` Unsafe: `javascript:alert(1)` INLINE_CODE_LINK_DONE in Context Map"': Map
 - button "Branch into a new conversation":
   - img
 - text: {{clock}} Ran for {{duration}}

@@ -38,6 +38,28 @@
   - text: DeepSeek-V4-Flash
   - img
 - button "Send message" [disabled]
-- text: Details
-- button "Close details"
-- text: Click a tool row in the message flow to view its details
+- region "Context Map":
+  - heading "Context Map" [level=2]
+  - paragraph: 0 / 0 selected
+  - button "Close Context Map": ×
+  - text: Search Context Map
+  - textbox "Search Context Map":
+    - /placeholder: Search messages
+  - text: 0 / 0
+  - button "Previous search result": ↑
+  - button "Next search result": ↓
+  - button "tree layout" [pressed]: Tree
+  - button "mindmap layout": Mind map
+  - button "timeline layout": Timeline
+  - button "Reset"
+  - button "Undo" [disabled]
+  - button "Redo" [disabled]
+  - application:
+    - img
+    - button "Zoom In":
+      - img
+    - button "Zoom Out":
+      - img
+    - button "Fit View":
+      - img
+  - text: No message nodes yet.

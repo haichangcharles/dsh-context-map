@@ -4,7 +4,9 @@ import { Position, type Node } from '@xyflow/react'
 import type { ContextFamilyGraphEdge, ContextFamilyGraphNode } from '@deepseek-ai/dsh-contextify/types'
 import type { ContextMapLayout } from './store.ts'
 
+/** Width reserved for every deterministic Context Map message card. */
 export const CONTEXT_MAP_NODE_WIDTH = 224
+/** Height reserved for every deterministic Context Map message card. */
 export const CONTEXT_MAP_NODE_HEIGHT = 116
 
 /** Data-independent node position used before renderer callbacks are attached. */

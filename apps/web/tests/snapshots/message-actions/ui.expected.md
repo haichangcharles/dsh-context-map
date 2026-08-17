@@ -11,6 +11,10 @@
 - button "Copy":
   - img
 - tooltip "Copy"
+- 'button "natural context for Use the read tool twice in one assistant message: read a.txt and b.txt. Then reply with the single word DONE and stop." [disabled]': Auto
+- 'button "include context for Use the read tool twice in one assistant message: read a.txt and b.txt. Then reply with the single word DONE and stop."': Use
+- 'button "exclude context for Use the read tool twice in one assistant message: read a.txt and b.txt. Then reply with the single word DONE and stop."': Skip
+- 'button "Locate Use the read tool twice in one assistant message: read a.txt and b.txt. Then reply with the single word DONE and stop. in Context Map"': Map
 - button "Think The user wants me to read a.txt and b.txt, then reply with \"DONE\". Let me do both reads in parallel.":
   - img
   - img
@@ -22,6 +26,10 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for I will read both files before answering." [disabled]: Auto
+- button "include context for I will read both files before answering.": Use
+- button "exclude context for I will read both files before answering.": Skip
+- button "Locate I will read both files before answering. in Context Map": Map
 - button "Branch into a new conversation" [disabled]:
   - img
 - text: Available only on the last message of a completed turn 7/25 {{clock}} Ran for {{duration}} TTFT {{duration}} {{throughput}} tok/s
@@ -42,6 +50,12 @@
 - text: Stopped Now give the final answer. 7/25 {{clock}}
 - button "Copy":
   - img
+- button "natural context for Now give the final answer." [disabled]: Auto
+- button "include context for Now give the final answer.": Use
+- button "exclude context for Now give the final answer.": Skip
+- button "Locate Now give the final answer. in Context Map": Map
+- button "Branch into a new conversation":
+  - img
 - paragraph: DONE
 - button "Copy":
   - img
@@ -49,6 +63,10 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for DONE" [disabled]: Auto
+- button "include context for DONE": Use
+- button "exclude context for DONE": Skip
+- button "Locate DONE in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}}

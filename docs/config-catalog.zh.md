@@ -3068,7 +3068,7 @@ export interface Config {
 - `@deepseek-ai/dsh-command-goal` — 需要 `commands` · `goals`（[`packages/goal/command-goal/src/index.ts`](../packages/goal/command-goal/src/index.ts)）
 - `@deepseek-ai/dsh-commands`（[`packages/interaction/commands/src/index.ts`](../packages/interaction/commands/src/index.ts)）
 - `@deepseek-ai/dsh-context-compiler`（[`packages/context/context-compiler/src/index.ts`](../packages/context/context-compiler/src/index.ts)）
-- `@deepseek-ai/dsh-contextify`——依赖 `agents` · `contextCompiler`（[`packages/context/contextify/src/index.ts`](../packages/context/contextify/src/index.ts)）
+- `@deepseek-ai/dsh-contextify`——依赖 `agents` · `sessions` · `sessionPersistence` · `contextCompiler`（[`packages/context/contextify/src/index.ts`](../packages/context/contextify/src/index.ts)）
 - `@deepseek-ai/dsh-cordis-client-runner`（[`packages/extensions/cordis-client-runner/src/index.ts`](../packages/extensions/cordis-client-runner/src/index.ts)）
 - `@deepseek-ai/dsh-fs-e2b` — 需要 `e2b`（[`packages/e2b/fs-e2b/src/index.ts`](../packages/e2b/fs-e2b/src/index.ts)）
 - `@deepseek-ai/dsh-fs-observation-policy`（[`packages/fs/fs-observation-policy/src/index.ts`](../packages/fs/fs-observation-policy/src/index.ts)）

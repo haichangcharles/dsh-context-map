@@ -10,6 +10,12 @@
 - text: m1 7/25 {{clock}}
 - button "Copy":
   - img
+- button "natural context for m1" [disabled]: Auto
+- button "include context for m1": Use
+- button "exclude context for m1": Skip
+- button "Locate m1 in Context Map": Map
+- button "Branch into a new conversation":
+  - img
 - paragraph: r1
 - button "Copy":
   - img
@@ -17,10 +23,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r1" [disabled]: Auto
+- button "include context for r1": Use
+- button "exclude context for r1": Skip
+- button "Locate r1 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m2 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m2" [disabled]: Auto
+- button "include context for m2": Use
+- button "exclude context for m2": Skip
+- button "Locate m2 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r2
 - button "Copy":
@@ -29,10 +45,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r2" [disabled]: Auto
+- button "include context for r2": Use
+- button "exclude context for r2": Skip
+- button "Locate r2 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m3 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m3" [disabled]: Auto
+- button "include context for m3": Use
+- button "exclude context for m3": Skip
+- button "Locate m3 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r3
 - button "Copy":
@@ -41,10 +67,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r3" [disabled]: Auto
+- button "include context for r3": Use
+- button "exclude context for r3": Skip
+- button "Locate r3 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m4 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m4" [disabled]: Auto
+- button "include context for m4": Use
+- button "exclude context for m4": Skip
+- button "Locate m4 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r4
 - button "Copy":
@@ -53,10 +89,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r4" [disabled]: Auto
+- button "include context for r4": Use
+- button "exclude context for r4": Skip
+- button "Locate r4 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m5 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m5" [disabled]: Auto
+- button "include context for m5": Use
+- button "exclude context for m5": Skip
+- button "Locate m5 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r5
 - button "Copy":
@@ -65,10 +111,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r5" [disabled]: Auto
+- button "include context for r5": Use
+- button "exclude context for r5": Skip
+- button "Locate r5 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m6 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m6" [disabled]: Auto
+- button "include context for m6": Use
+- button "exclude context for m6": Skip
+- button "Locate m6 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r6
 - button "Copy":
@@ -77,10 +133,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r6" [disabled]: Auto
+- button "include context for r6": Use
+- button "exclude context for r6": Skip
+- button "Locate r6 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m7 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m7" [disabled]: Auto
+- button "include context for m7": Use
+- button "exclude context for m7": Skip
+- button "Locate m7 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r7
 - button "Copy":
@@ -89,10 +155,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r7" [disabled]: Auto
+- button "include context for r7": Use
+- button "exclude context for r7": Skip
+- button "Locate r7 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m8 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m8" [disabled]: Auto
+- button "include context for m8": Use
+- button "exclude context for m8": Skip
+- button "Locate m8 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r8
 - button "Copy":
@@ -101,10 +177,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r8" [disabled]: Auto
+- button "include context for r8": Use
+- button "exclude context for r8": Skip
+- button "Locate r8 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m9 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m9" [disabled]: Auto
+- button "include context for m9": Use
+- button "exclude context for m9": Skip
+- button "Locate m9 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r9
 - button "Copy":
@@ -113,10 +199,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r9" [disabled]: Auto
+- button "include context for r9": Use
+- button "exclude context for r9": Skip
+- button "Locate r9 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m10 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m10" [disabled]: Auto
+- button "include context for m10": Use
+- button "exclude context for m10": Skip
+- button "Locate m10 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r10
 - button "Copy":
@@ -125,10 +221,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r10" [disabled]: Auto
+- button "include context for r10": Use
+- button "exclude context for r10": Skip
+- button "Locate r10 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m11 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m11" [disabled]: Auto
+- button "include context for m11": Use
+- button "exclude context for m11": Skip
+- button "Locate m11 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r11
 - button "Copy":
@@ -137,10 +243,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r11" [disabled]: Auto
+- button "include context for r11": Use
+- button "exclude context for r11": Skip
+- button "Locate r11 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m12 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m12" [disabled]: Auto
+- button "include context for m12": Use
+- button "exclude context for m12": Skip
+- button "Locate m12 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r12
 - button "Copy":
@@ -149,10 +265,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r12" [disabled]: Auto
+- button "include context for r12": Use
+- button "exclude context for r12": Skip
+- button "Locate r12 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m13 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m13" [disabled]: Auto
+- button "include context for m13": Use
+- button "exclude context for m13": Skip
+- button "Locate m13 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r13
 - button "Copy":
@@ -161,10 +287,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r13" [disabled]: Auto
+- button "include context for r13": Use
+- button "exclude context for r13": Skip
+- button "Locate r13 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m14 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m14" [disabled]: Auto
+- button "include context for m14": Use
+- button "exclude context for m14": Skip
+- button "Locate m14 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r14
 - button "Copy":
@@ -173,10 +309,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r14" [disabled]: Auto
+- button "include context for r14": Use
+- button "exclude context for r14": Skip
+- button "Locate r14 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m15 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m15" [disabled]: Auto
+- button "include context for m15": Use
+- button "exclude context for m15": Skip
+- button "Locate m15 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r15
 - button "Copy":
@@ -185,10 +331,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r15" [disabled]: Auto
+- button "include context for r15": Use
+- button "exclude context for r15": Skip
+- button "Locate r15 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m16 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m16" [disabled]: Auto
+- button "include context for m16": Use
+- button "exclude context for m16": Skip
+- button "Locate m16 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r16
 - button "Copy":
@@ -197,10 +353,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r16" [disabled]: Auto
+- button "include context for r16": Use
+- button "exclude context for r16": Skip
+- button "Locate r16 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m17 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m17" [disabled]: Auto
+- button "include context for m17": Use
+- button "exclude context for m17": Skip
+- button "Locate m17 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r17
 - button "Copy":
@@ -209,10 +375,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r17" [disabled]: Auto
+- button "include context for r17": Use
+- button "exclude context for r17": Skip
+- button "Locate r17 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m18 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m18" [disabled]: Auto
+- button "include context for m18": Use
+- button "exclude context for m18": Skip
+- button "Locate m18 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r18
 - button "Copy":
@@ -221,10 +397,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r18" [disabled]: Auto
+- button "include context for r18": Use
+- button "exclude context for r18": Skip
+- button "Locate r18 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m19 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m19" [disabled]: Auto
+- button "include context for m19": Use
+- button "exclude context for m19": Skip
+- button "Locate m19 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r19
 - button "Copy":
@@ -233,10 +419,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r19" [disabled]: Auto
+- button "include context for r19": Use
+- button "exclude context for r19": Skip
+- button "Locate r19 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m20 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m20" [disabled]: Auto
+- button "include context for m20": Use
+- button "exclude context for m20": Skip
+- button "Locate m20 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r20
 - button "Copy":
@@ -245,10 +441,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r20" [disabled]: Auto
+- button "include context for r20": Use
+- button "exclude context for r20": Skip
+- button "Locate r20 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m21 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m21" [disabled]: Auto
+- button "include context for m21": Use
+- button "exclude context for m21": Skip
+- button "Locate m21 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r21
 - button "Copy":
@@ -257,10 +463,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r21" [disabled]: Auto
+- button "include context for r21": Use
+- button "exclude context for r21": Skip
+- button "Locate r21 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m22 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m22" [disabled]: Auto
+- button "include context for m22": Use
+- button "exclude context for m22": Skip
+- button "Locate m22 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r22
 - button "Copy":
@@ -269,10 +485,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r22" [disabled]: Auto
+- button "include context for r22": Use
+- button "exclude context for r22": Skip
+- button "Locate r22 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m23 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m23" [disabled]: Auto
+- button "include context for m23": Use
+- button "exclude context for m23": Skip
+- button "Locate m23 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r23
 - button "Copy":
@@ -281,10 +507,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r23" [disabled]: Auto
+- button "include context for r23": Use
+- button "exclude context for r23": Skip
+- button "Locate r23 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m24 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m24" [disabled]: Auto
+- button "include context for m24": Use
+- button "exclude context for m24": Skip
+- button "Locate m24 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r24
 - button "Copy":
@@ -293,10 +529,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r24" [disabled]: Auto
+- button "include context for r24": Use
+- button "exclude context for r24": Skip
+- button "Locate r24 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m25 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m25" [disabled]: Auto
+- button "include context for m25": Use
+- button "exclude context for m25": Skip
+- button "Locate m25 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r25
 - button "Copy":
@@ -305,10 +551,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r25" [disabled]: Auto
+- button "include context for r25": Use
+- button "exclude context for r25": Skip
+- button "Locate r25 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m26 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m26" [disabled]: Auto
+- button "include context for m26": Use
+- button "exclude context for m26": Skip
+- button "Locate m26 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r26
 - button "Copy":
@@ -317,10 +573,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r26" [disabled]: Auto
+- button "include context for r26": Use
+- button "exclude context for r26": Skip
+- button "Locate r26 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m27 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m27" [disabled]: Auto
+- button "include context for m27": Use
+- button "exclude context for m27": Skip
+- button "Locate m27 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r27
 - button "Copy":
@@ -329,10 +595,20 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r27" [disabled]: Auto
+- button "include context for r27": Use
+- button "exclude context for r27": Skip
+- button "Locate r27 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}} m28 7/25 {{clock}}
 - button "Copy":
+  - img
+- button "natural context for m28" [disabled]: Auto
+- button "include context for m28": Use
+- button "exclude context for m28": Skip
+- button "Locate m28 in Context Map": Map
+- button "Branch into a new conversation":
   - img
 - paragraph: r28
 - button "Copy":
@@ -341,6 +617,10 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for r28" [disabled]: Auto
+- button "include context for r28": Use
+- button "exclude context for r28": Skip
+- button "Locate r28 in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: 7/25 {{clock}} Ran for {{duration}}

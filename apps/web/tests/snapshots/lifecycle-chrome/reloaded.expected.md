@@ -12,6 +12,12 @@
 - text: Reply with the single word LIGHTHOUSE and stop. {{clock}}
 - button "Copy":
   - img
+- button "natural context for Reply with the single word LIGHTHOUSE and stop." [disabled]: Auto
+- button "include context for Reply with the single word LIGHTHOUSE and stop.": Use
+- button "exclude context for Reply with the single word LIGHTHOUSE and stop.": Skip
+- button "Locate Reply with the single word LIGHTHOUSE and stop. in Context Map": Map
+- button "Branch into a new conversation":
+  - img
 - button "Context injection @deepseek-ai/dsh-system-prompt":
   - img
   - img
@@ -27,6 +33,10 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for LIGHTHOUSE" [disabled]: Auto
+- button "include context for LIGHTHOUSE": Use
+- button "exclude context for LIGHTHOUSE": Skip
+- button "Locate LIGHTHOUSE in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: {{clock}} Ran for {{duration}} TTFT {{duration}} {{throughput}} tok/s

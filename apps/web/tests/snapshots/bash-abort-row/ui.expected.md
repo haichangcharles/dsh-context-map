@@ -10,6 +10,10 @@
 - text: "Run two shell commands: wait for cancellation, then write skipped.txt. {{date}} {{clock}}"
 - button "Copy":
   - img
+- 'button "natural context for Run two shell commands: wait for cancellation, then write skipped.txt." [disabled]': Auto
+- 'button "include context for Run two shell commands: wait for cancellation, then write skipped.txt."': Use
+- 'button "exclude context for Run two shell commands: wait for cancellation, then write skipped.txt."': Skip
+- 'button "Locate Run two shell commands: wait for cancellation, then write skipped.txt. in Context Map"': Map
 - button "Context injection @deepseek-ai/dsh-system-prompt":
   - img
   - img

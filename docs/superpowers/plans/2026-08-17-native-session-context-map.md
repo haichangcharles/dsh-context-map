@@ -1,5 +1,7 @@
 # Native Session Context Map Implementation Plan
 
+English | [中文](2026-08-17-native-session-context-map.zh.md)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace Contextify's same-Session virtual branches with a real graph of native Session forks and let Chat and Context Map control one durable message-level Context Plan.
@@ -39,7 +41,7 @@
 
 Add tests which append and select a local snapshot event, and reject a missing or duplicate selected event sequence:
 
-```ts
+```text
 it('compiles a durable compiler snapshot without adding it to the Session surface', async () => {
   const ctx = new Context()
   await ctx.plugin(ContextCompilerRegistry)
@@ -75,7 +77,7 @@ Expected: TypeScript or runtime failure because `context/compiler-snapshot` is n
 
 Add this declaration and resolve it in `compile()` beside the three surface message types:
 
-```ts
+```text
 export interface ContextCompilerSnapshot {
   readonly id: string
   readonly message: Message
@@ -129,7 +131,7 @@ git commit -m "feat: add durable context compiler snapshots"
 
 Create fixtures for root, two children, one grandchild, and an empty child. Assert inherited messages share a node ID, local messages are child-owned, reasoning and tools create no nodes, and the two child edges leave the canonical fork message:
 
-```ts
+```text
 const graph = projectSessionFamily({
   activeSessionId: childA.meta.id,
   sessions: [root, childA, childB, grandchild, emptyChild],
@@ -155,7 +157,7 @@ Expected: import failure for the missing `family.ts` projection.
 
 Replace `ContextPath`, `ContextRoute`, and `pathId` graph types with:
 
-```ts
+```text
 export interface ContextMessageRef {
   readonly sessionId: SessionId
   readonly seq: number
@@ -199,7 +201,7 @@ export interface ContextFamilyGraph {
 
 Implement `projectSessionFamily({ activeSessionId, sessions })` over `SessionInspection[]` with these rules:
 
-```ts
+```text
 const visible = (event: SessionEvent): event is SessionEvent<'user/message' | 'assistant/message'> =>
   (event.type === 'user/message' || event.type === 'assistant/message')
   && event.surfaceOp === 'append'
@@ -242,7 +244,7 @@ git commit -m "feat: project native Session families"
 
 Cover Natural selection, current-path Exclude, sibling snapshot Include, current-turn protection, reset, undo, redo, and removal of every virtual path event:
 
-```ts
+```text
 expect(compileContextify({ session: child, turn: 3, step: 1 }).eventSeqs)
   .toEqual([inheritedUserSeq, localUserSeq])
 
@@ -268,7 +270,7 @@ Expected: failures because the current compiler still derives same-Session virtu
 
 - [ ] **Step 3: Define the version-two plan**
 
-```ts
+```text
 export interface ContextExcludedNode {
   readonly nodeId: string
   readonly eventSeq: number
@@ -299,7 +301,7 @@ export interface ContextPlanSnapshot {
 
 The mutation helper uses this exact history update:
 
-```ts
+```text
 export function nextPlan(current: ContextPlanSnapshot, state: ContextPlanState): ContextPlanSnapshot {
   const revision = current.revision + 1
   return freezePlan({
@@ -335,7 +337,7 @@ git commit -m "feat: compile revisioned native context plans"
 
 Build a real `SessionStore`, Context Compiler registry, Agent registry, and fake `SessionPersistence` containing a root and two children. Assert `familyPage()` returns one de-duplicated family, Include appends snapshot then plan, cross-family Include appends nothing, stale revisions append nothing, and a new fork child resets inherited choices on `agent/session-start`.
 
-```ts
+```text
 const before = active.session.seq
 const included = await ctx.contextify.setNodeMode(
   active.agent,
@@ -365,7 +367,7 @@ Expected: failures because the current service exposes virtual-path RPC methods 
 
 Use `static inject = ['agents', 'sessions', 'sessionPersistence', 'contextCompiler']`. Replace `createBranch`, `selectPath`, and `returnToMainline` with:
 
-```ts
+```text
 @Remote('get')
 get(agent: Agent): ContextifyView
 
@@ -399,7 +401,7 @@ redo(agent: Agent, ref: ContextPlanRef): ContextifyView
 
 On `agent/session-start`, append the initial version-two plan when absent. For a child, append a reset plan when the newest plan event lies before `session.header.seedLength`. Select the `contextify` compiler without appending any route event or pre-step listener.
 
-```ts
+```text
 const latestPlan = agent.session.events.findLast(event => event.type === 'contextify/plan')
 const inherited = agent.session.header.parentSession !== undefined
   && latestPlan !== undefined
@@ -438,7 +440,7 @@ git commit -m "feat: manage context across native Session families"
 
 Assert `root → child → grandchild` ordering, depth values `0, 1, 2`, sibling ordering from the Workspace account, collapsed-child omission, and preservation of unrelated roots:
 
-```ts
+```text
 const groups = deriveGroups(list(root, child, grandchild, sibling, otherRoot), [project], [], {
   expandedGroups: ['project'], collapsedSessionIds: [child.id],
 })
@@ -487,7 +489,7 @@ git commit -m "feat: nest native Session forks in Workspace tree"
 
 Replace the old assertion that user bubbles have no Branch action. Click Branch on the user message and assert `forkAt()` receives the completed `turn/end` sequence, while the assistant button receives the same boundary.
 
-```ts
+```text
 const buttons = view.getAllByRole('button', { name: '在新对话中分支' })
 expect(buttons).toHaveLength(2)
 fireEvent.click(buttons[0]!)
@@ -540,7 +542,7 @@ Expected: the vertical card panel has no React Flow canvas, layout switcher, sea
 
 Implement:
 
-```ts
+```text
 export type ContextMapLayout = 'tree' | 'mindmap' | 'timeline'
 
 export function layoutContextMap(
@@ -594,7 +596,7 @@ Expected: the plugin still calls virtual `createBranch/selectPath` RPC methods a
 
 Extend conversation slots with:
 
-```ts
+```text
 'conversation.chat.user-actions': {
   kind: 'list'; scope: 'session'; owner: { seq: number }
 }

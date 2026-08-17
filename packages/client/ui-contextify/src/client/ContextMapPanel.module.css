@@ -107,6 +107,7 @@
 .role { color: var(--dsw-alias-fg-secondary); font-size: 10px; font-weight: 650; text-transform: uppercase; }
 .modeBadge { border-radius: 999px; padding: 2px 6px; background: rgb(127 140 165 / 12%); font-size: 9px; text-transform: capitalize; }
 .preview { min-height: 34px; margin: 7px 0 4px; overflow: hidden; font-size: 11px; line-height: 17px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.preview::before { content: attr(data-preview); }
 .nodeMeta { overflow: hidden; color: var(--dsw-alias-fg-secondary); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 
 .nodeActions { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 7px; }

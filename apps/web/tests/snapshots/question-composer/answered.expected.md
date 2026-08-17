@@ -12,6 +12,12 @@
 - text: "Use the ask_user_question tool to ask me exactly one multi-select question with id \"color\", question \"Which color do you prefer?\", header \"Pick one\", and two options: label \"Blue\" with description \"A cool recessive hue that reads as calm and trustworthy in long reading sessions and dense dashboards.\", and label \"Green\" with description \"A restful mid-spectrum hue with the highest perceived brightness, easiest on the eye over long sessions.\" Set multi_select to true. After I answer, reply with the single word DONE and stop. {{clock}}"
 - button "Copy":
   - img
+- 'button "natural context for Use the ask_user_question tool to ask me exactly one multi-select question with id \"color\", question \"Which color do you prefer?\", header \"Pick one\", and two options: label \"Blue\" with description \"A cool recessive hue that reads as calm an" [disabled]': Auto
+- 'button "include context for Use the ask_user_question tool to ask me exactly one multi-select question with id \"color\", question \"Which color do you prefer?\", header \"Pick one\", and two options: label \"Blue\" with description \"A cool recessive hue that reads as calm an"': Use
+- 'button "exclude context for Use the ask_user_question tool to ask me exactly one multi-select question with id \"color\", question \"Which color do you prefer?\", header \"Pick one\", and two options: label \"Blue\" with description \"A cool recessive hue that reads as calm an"': Skip
+- 'button "Locate Use the ask_user_question tool to ask me exactly one multi-select question with id \"color\", question \"Which color do you prefer?\", header \"Pick one\", and two options: label \"Blue\" with description \"A cool recessive hue that reads as calm an in Context Map"': Map
+- button "Branch into a new conversation":
+  - img
 - button "Context injection @deepseek-ai/dsh-system-prompt":
   - img
   - img
@@ -35,6 +41,10 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for DONE" [disabled]: Auto
+- button "include context for DONE": Use
+- button "exclude context for DONE": Skip
+- button "Locate DONE in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: {{clock}} Ran for {{duration}} TTFT {{duration}} {{throughput}} tok/s

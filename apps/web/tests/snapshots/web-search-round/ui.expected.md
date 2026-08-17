@@ -12,6 +12,8 @@
 - text: Use web_search to search exactly "DeepSeek Harness snapshot search". Then reply exactly SEARCH_DONE and stop. {{clock}}
 - button "Copy":
   - img
+- button "Branch into a new conversation":
+  - img
 - button "Context injection @deepseek-ai/dsh-system-prompt":
   - img
   - img

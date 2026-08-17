@@ -14,11 +14,15 @@ Ordinary Chat user and finalized assistant messages expose compact Auto/Use/Skip
 
 The Workspace sidebar separately renders native Session ancestry as a recursive collapsible tree. The map remains the richer navigation surface for dense branch families.
 
-## Model effect
+## Model Experience
 
-The UI adds no prompt prose. Auto follows the active Session history, Skip excludes one historical message, and Use includes a same-family off-path message through a durable compiler snapshot. The changed plan takes effect on the next admitted model request and can change token count and KV-cache prefix reuse.
+Indirectly, through the host-owned Contextify plan and compiler selected by the controls.
 
-## Known limitations and deferred work
+#### KV Cache effect
+
+The UI adds no prompt prose. Auto follows the active Session history, Skip excludes one historical message, and Use includes a same-family off-path message; changing an earlier selected message can reduce prefix reuse from that message onward.
+
+## Known Limitations and Deferred Work
 
 - Family updates use bounded 1.5-second polling while Chat or the map is subscribed.
 - Include/exclude recommendations are manual; automatic progression is deferred.

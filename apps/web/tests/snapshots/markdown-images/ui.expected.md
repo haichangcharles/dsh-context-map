@@ -10,6 +10,12 @@
 - text: Show the Markdown image policy. {{clock}}
 - button "Copy":
   - img
+- button "natural context for Show the Markdown image policy." [disabled]: Auto
+- button "include context for Show the Markdown image policy.": Use
+- button "exclude context for Show the Markdown image policy.": Skip
+- button "Locate Show the Markdown image policy. in Context Map": Map
+- button "Branch into a new conversation":
+  - img
 - heading "Markdown images" [level=2]
 - paragraph:
   - img "Remote test image"
@@ -21,6 +27,10 @@
   - img
 - button "Bad response":
   - img
+- 'button "natural context for ## Markdown images ![Remote test image](http://127.0.0.1:{{port}}/image.png) ![Local test image](./local-image.png) REMOTE_IMAGE_DONE" [disabled]': Auto
+- 'button "include context for ## Markdown images ![Remote test image](http://127.0.0.1:{{port}}/image.png) ![Local test image](./local-image.png) REMOTE_IMAGE_DONE"': Use
+- 'button "exclude context for ## Markdown images ![Remote test image](http://127.0.0.1:{{port}}/image.png) ![Local test image](./local-image.png) REMOTE_IMAGE_DONE"': Skip
+- 'button "Locate ## Markdown images ![Remote test image](http://127.0.0.1:{{port}}/image.png) ![Local test image](./local-image.png) REMOTE_IMAGE_DONE in Context Map"': Map
 - button "Branch into a new conversation":
   - img
 - text: {{clock}} Ran for {{duration}}

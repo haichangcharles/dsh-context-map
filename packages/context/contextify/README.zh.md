@@ -20,16 +20,21 @@ Family projector 从原生 root Session 遍历全部后代，并按最早拥有�
 
 `contextify` Remote namespace 提供 `get`、分页 `familyPage`、`setNodeMode`、批量 `setNodeModes`、`reset`、`undo` 和 `redo`。
 
-## Context Compiler 契约
+## 模型体验
 
-Harness 原始 transcript 仍然是 append-only。Contextify 只改变后续模型请求所编译出的 message list：
+### 编译后的 Context Plan
 
-- 当前 family 的消息保持已有顺序；
-- 显式 exclude 的消息被移除；
-- sibling include 从持久 compiler snapshot 读取；
-- 当前 turn 的消息会被恢复，因此旧 plan 无法隐藏正在回答的请求。
+#### 模型看到的内容
 
-Compiler 不添加任何提示词文本。Exclude 可以减少 input token；引入 sibling 会增加 input token。只要更改了更早的选中前缀，KV cache 就可能从第一条变化消息开始失去复用。
+Harness 原始 transcript 仍然是 append-only。Contextify 按现有顺序选择 active-family 消息、移除显式 exclusion、从持久 `context/compiler-snapshot` event 读取已 include 的 sibling 消息，并恢复当前 turn 的消息，因此旧 plan 无法隐藏正在回答的请求。
+
+#### Token 影响
+
+Compiler 不添加任何提示词文本。Exclude 可以减少对话历史的 input token；引入 sibling 会按所选 snapshot 内容增加 token。
+
+#### KV Cache 影响
+
+只要更改了更早的选中消息前缀，KV cache 就可能从第一条变化消息开始失去复用。所有节点保持 Natural 时，普通 Session 消息顺序不变。
 
 ## 已知限制与暂缓事项
 

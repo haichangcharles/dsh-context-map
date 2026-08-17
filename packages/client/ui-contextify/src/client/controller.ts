@@ -44,7 +44,9 @@ export class ContextifyController {
 
   constructor(private readonly transport: ContextifyTransport) {}
 
-  /** @returns The current cache-stable immutable publication. */
+  /** Read the cache-stable publication shared by every mounted Contextify surface.
+   * @returns The current immutable controller snapshot.
+   */
   getSnapshot = (): ContextifyControllerSnapshot => this.snapshot
 
   /** Subscribe and keep bounded graph polling alive while at least one surface is mounted. */
@@ -73,22 +75,42 @@ export class ContextifyController {
     return task
   }
 
-  /** Publish a graph focus target without changing durable context. */
+  /** Publish a graph focus target without changing durable context.
+   * @param nodeId - Graph node to focus, or `undefined` to clear the focus target.
+   */
   focus(nodeId: string | undefined): void {
     const { focusedNodeId: _focusedNodeId, ...snapshot } = this.snapshot
     this.publish({ ...snapshot, ...(nodeId === undefined ? {} : { focusedNodeId: nodeId }) })
   }
 
+  /** Change one message's durable Context Plan mode.
+   * @param node - Native Session message to change.
+   * @param mode - Natural, included, or excluded compilation behavior.
+   * @returns A promise that settles after the shared view refreshes.
+   */
   async setNodeMode(node: ContextMessageRef, mode: ContextNodeMutation['mode']): Promise<void> {
     await this.mutate(ref => this.transport.setNodeMode(ref, node, mode))
   }
 
+  /** Change several message modes in one durable plan revision.
+   * @param mutations - Message-mode changes committed atomically by the Remote.
+   * @returns A promise that settles after the shared view refreshes.
+   */
   async setNodeModes(mutations: readonly ContextNodeMutation[]): Promise<void> {
     await this.mutate(ref => this.transport.setNodeModes(ref, mutations))
   }
 
+  /** Reset all explicit modes to Natural.
+   * @returns A promise that settles after the shared view refreshes.
+   */
   async reset(): Promise<void> { await this.mutate(ref => this.transport.reset(ref)) }
+  /** Restore the previous durable Context Plan revision.
+   * @returns A promise that settles after the shared view refreshes.
+   */
   async undo(): Promise<void> { await this.mutate(ref => this.transport.undo(ref)) }
+  /** Reapply the next durable Context Plan revision.
+   * @returns A promise that settles after the shared view refreshes.
+   */
   async redo(): Promise<void> { await this.mutate(ref => this.transport.redo(ref)) }
 
   private async load(): Promise<void> {

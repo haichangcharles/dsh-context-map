@@ -4,10 +4,18 @@
 
 .dock {
   box-sizing: border-box;
+  flex: none;
   width: calc(
     100% -
     var(--dsh-composer-side-clearance) -
     var(--dsh-composer-side-clearance) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset)
+  );
+  max-width: calc(
+    var(--dsh-composer-card-max-width) -
     var(--dsh-composer-dock-inset) -
     var(--dsh-composer-dock-inset) -
     var(--dsh-composer-dock-inset) -
@@ -22,9 +30,7 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  max-width: calc(var(--dsh-composer-card-max-width) - 4 * var(--dsh-composer-dock-inset));
   height: 36px;
-  margin: 0 auto;
   padding: 4px 5px 4px 12px;
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 12px;

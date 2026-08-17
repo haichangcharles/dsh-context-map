@@ -10,6 +10,12 @@
 - text: Render this mathematical proof. {{clock}}
 - button "Copy":
   - img
+- button "natural context for Render this mathematical proof." [disabled]: Auto
+- button "include context for Render this mathematical proof.": Use
+- button "exclude context for Render this mathematical proof.": Skip
+- button "Locate Render this mathematical proof. in Context Map": Map
+- button "Branch into a new conversation":
+  - img
 - heading "Math rendering" [level=2]
 - paragraph:
   - text: Inline dollar
@@ -37,6 +43,10 @@
   - img
 - button "Bad response":
   - img
+- 'button "natural context for ## Math rendering Inline dollar $\\theta$ and backslash \\(\\frac{1}{5}\\). \\[\\frac{\\pi}{4} < \\theta < \\frac{\\pi}{2}\\] $$\\theta \\in \\left(\\frac{\\pi}{4}, \\frac{\\pi}{2}\\right). \\tag{1}$$ | Symbol | Value | | --- | --- | | $\\theta$ | \\(\\frac{1" [disabled]': Auto
+- 'button "include context for ## Math rendering Inline dollar $\\theta$ and backslash \\(\\frac{1}{5}\\). \\[\\frac{\\pi}{4} < \\theta < \\frac{\\pi}{2}\\] $$\\theta \\in \\left(\\frac{\\pi}{4}, \\frac{\\pi}{2}\\right). \\tag{1}$$ | Symbol | Value | | --- | --- | | $\\theta$ | \\(\\frac{1"': Use
+- 'button "exclude context for ## Math rendering Inline dollar $\\theta$ and backslash \\(\\frac{1}{5}\\). \\[\\frac{\\pi}{4} < \\theta < \\frac{\\pi}{2}\\] $$\\theta \\in \\left(\\frac{\\pi}{4}, \\frac{\\pi}{2}\\right). \\tag{1}$$ | Symbol | Value | | --- | --- | | $\\theta$ | \\(\\frac{1"': Skip
+- 'button "Locate ## Math rendering Inline dollar $\\theta$ and backslash \\(\\frac{1}{5}\\). \\[\\frac{\\pi}{4} < \\theta < \\frac{\\pi}{2}\\] $$\\theta \\in \\left(\\frac{\\pi}{4}, \\frac{\\pi}{2}\\right). \\tag{1}$$ | Symbol | Value | | --- | --- | | $\\theta$ | \\(\\frac{1 in Context Map"': Map
 - button "Branch into a new conversation":
   - img
 - text: {{clock}} Ran for {{duration}}

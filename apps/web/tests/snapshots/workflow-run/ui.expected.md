@@ -1,6 +1,12 @@
 - text: "Use the workflow tool exactly once, with args omitted, meta set to { \"name\": \"snapshot-flow\", \"description\": \"one child for the snapshot\" }, and this EXACT script body (copy it verbatim): phase('Run') const reply = await agent('Reply with exactly the word WF_CHILD_OK and nothing else.') return { reply } After the workflow returns, reply with the single word WORKFLOW_DONE and stop. Do not use any other tool. {{clock}}"
 - button "Copy":
   - img
+- 'button "natural context for Use the workflow tool exactly once, with args omitted, meta set to { \"name\": \"snapshot-flow\", \"description\": \"one child for the snapshot\" }, and this EXACT script body (copy it verbatim): phase(''Run'') const reply = await agent(''Reply with e" [disabled]': Auto
+- 'button "include context for Use the workflow tool exactly once, with args omitted, meta set to { \"name\": \"snapshot-flow\", \"description\": \"one child for the snapshot\" }, and this EXACT script body (copy it verbatim): phase(''Run'') const reply = await agent(''Reply with e"': Use
+- 'button "exclude context for Use the workflow tool exactly once, with args omitted, meta set to { \"name\": \"snapshot-flow\", \"description\": \"one child for the snapshot\" }, and this EXACT script body (copy it verbatim): phase(''Run'') const reply = await agent(''Reply with e"': Skip
+- 'button "Locate Use the workflow tool exactly once, with args omitted, meta set to { \"name\": \"snapshot-flow\", \"description\": \"one child for the snapshot\" }, and this EXACT script body (copy it verbatim): phase(''Run'') const reply = await agent(''Reply with e in Context Map"': Map
+- button "Branch into a new conversation":
+  - img
 - button "Context injection @deepseek-ai/dsh-system-prompt":
   - img
   - img
@@ -31,6 +37,10 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for WORKFLOW_DONE" [disabled]: Auto
+- button "include context for WORKFLOW_DONE": Use
+- button "exclude context for WORKFLOW_DONE": Skip
+- button "Locate WORKFLOW_DONE in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - text: {{clock}} Ran for {{duration}} TTFT {{duration}} {{throughput}} tok/s

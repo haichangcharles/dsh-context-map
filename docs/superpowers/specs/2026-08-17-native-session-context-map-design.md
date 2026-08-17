@@ -1,5 +1,7 @@
 # Native Session Context Map Design
 
+English | [中文](2026-08-17-native-session-context-map-design.zh.md)
+
 **Status:** Approved for implementation
 
 **Scope:** Replace Contextify's same-Session virtual paths with a graph projected from native Harness Session forks, and let the active Session compile its model context from message nodes in that graph.

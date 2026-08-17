@@ -14,9 +14,13 @@
 
 Workspace 左侧栏会另外用递归可折叠 tree 展示原生 Session 祖先关系。在 branch family 很密集时，Map 是信息更完整的导航入口。
 
-## 对模型的影响
+## 模型体验
 
-UI 不添加提示词文本。Auto 跟随 active Session 历史，Skip 排除一条历史消息，Use 通过持久 compiler snapshot 引入同 family 的 off-path 消息。修改会在下一次获准的模型请求生效，并可能改变 token 数量和 KV cache 前缀复用。
+通过这些控件修改的 Host-owned Contextify plan 与 compiler 间接影响模型体验。
+
+#### KV Cache 影响
+
+UI 不添加提示词文本。Auto 跟随 active Session 历史，Skip 排除一条历史消息，Use 引入同 family 的 off-path 消息；改变更早的已选消息可能从该消息开始降低前缀复用。
 
 ## 已知限制与暂缓事项
 

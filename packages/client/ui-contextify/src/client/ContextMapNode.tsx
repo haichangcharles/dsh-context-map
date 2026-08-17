@@ -24,9 +24,11 @@ export interface ContextMapNodeData extends Record<string, unknown> {
 export const ContextMapNode = memo(function ContextMapNode({ data, selected, sourcePosition, targetPosition }: NodeProps) {
   const value = data as ContextMapNodeData
   const record = value.record
+  const preview = record.preview || '(empty message)'
   return (
     <article
       className={css.mapNode}
+      aria-label={`${record.role === 'user' ? 'User' : 'Assistant'} message: ${preview}`}
       data-role={record.role}
       data-mode={value.mode}
       data-active={value.active || undefined}
@@ -39,7 +41,7 @@ export const ContextMapNode = memo(function ContextMapNode({ data, selected, sou
         <span className={css.role}>{record.role === 'user' ? 'User' : 'Assistant'}</span>
         <span className={css.modeBadge}>{value.mode}</span>
       </header>
-      <p className={css.preview}>{record.preview || '(empty message)'}</p>
+      <p className={css.preview} data-preview={preview} aria-hidden="true" />
       <div className={css.nodeMeta}>{value.sessionLabel}</div>
       <div className={`${css.nodeActions} nodrag nopan`}>
         {(['natural', 'include', 'exclude'] as const).map(mode => (
