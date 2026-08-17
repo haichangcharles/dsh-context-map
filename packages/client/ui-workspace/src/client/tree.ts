@@ -30,6 +30,12 @@ export interface SessionNode {
   /** Finished running while not selected and not yet opened (the green "done" reminder dot). */
   completed: boolean
   updatedAt: number
+  /** Native Session-fork nesting level inside its Workspace family. */
+  depth: number
+  /** At least one visible native fork directly descends from this Session. */
+  hasChildren: boolean
+  /** Descendants are projected into this group. Meaningful only when children exist. */
+  expanded: boolean
 }
 
 /** Session order selected by the Workspace browser. */
@@ -78,6 +84,8 @@ export interface SearchResultSet {
 /** Viewing state consumed by the derivation. */
 export interface TreeView {
   expandedGroups: readonly string[]
+  /** Native Session rows whose descendants are hidden. */
+  collapsedSessionIds?: readonly string[]
   /** Browser-local order for Sessions without a backing Workspace account. */
   ungroupedOrder?: readonly string[]
 }
@@ -214,6 +222,9 @@ function groupByWorkspace(
 function sessionNode(
   s: SessionSummary,
   descendants: ReadonlyMap<SessionId, SubagentDescendantSummary>,
+  depth = 0,
+  hasChildren = false,
+  expanded = true,
 ): SessionNode {
   return {
     id: s.id,
@@ -223,8 +234,56 @@ function sessionNode(
     runningSubagentCount: descendants.get(s.id)?.runningCount ?? 0,
     completed: s.completed === true,
     updatedAt: s.updatedAt,
+    depth,
+    hasChildren,
+    expanded,
     ...(s.pendingInteraction === undefined ? {} : { pendingInteraction: s.pendingInteraction }),
   }
+}
+
+/** Project visible ordinary native forks in stable Workspace-account order. */
+function projectSessionTree(
+  sessions: readonly SessionSummary[],
+  descendants: ReadonlyMap<SessionId, SubagentDescendantSummary>,
+  collapsedSessionIds: ReadonlySet<string>,
+): SessionNode[] {
+  const byId = new Map(sessions.map(session => [session.id, session]))
+  const children = new Map<SessionId, SessionSummary[]>()
+  const roots: SessionSummary[] = []
+  for (const session of sessions) {
+    const parentId = session.parentId
+    if (parentId === undefined || parentId === session.id || !byId.has(parentId)) {
+      roots.push(session)
+      continue
+    }
+    const siblings = children.get(parentId) ?? []
+    siblings.push(session)
+    children.set(parentId, siblings)
+  }
+  const emitted = new Set<SessionId>()
+  const rows: SessionNode[] = []
+  const suppress = (session: SessionSummary): void => {
+    if (emitted.has(session.id)) return
+    emitted.add(session.id)
+    for (const child of children.get(session.id) ?? []) suppress(child)
+  }
+  const emit = (session: SessionSummary, depth: number): void => {
+    if (emitted.has(session.id)) return
+    emitted.add(session.id)
+    const childSessions = children.get(session.id) ?? []
+    const expanded = !collapsedSessionIds.has(session.id)
+    rows.push(sessionNode(session, descendants, depth, childSessions.length > 0, expanded))
+    if (!expanded) {
+      for (const child of childSessions) suppress(child)
+      return
+    }
+    for (const child of childSessions) emit(child, depth + 1)
+  }
+  for (const root of roots) emit(root, 0)
+  // A malformed cycle has no structural root. Preserve every row exactly
+  // once and break the cycle at the first Workspace-ordered member.
+  for (const session of sessions) emit(session, 0)
+  return rows
 }
 
 /**
@@ -249,6 +308,7 @@ export function deriveGroups(
 ): GroupNode[] {
   const archived = new Set(archivedSessionIds)
   const expandedGroups = new Set(view.expandedGroups)
+  const collapsedSessionIds = new Set(view.collapsedSessionIds ?? [])
   const descendants = indexSubagentDescendants(list.byId)
   const currentGroup = list.current === undefined
     ? undefined
@@ -266,7 +326,11 @@ export function deriveGroups(
       sessionCount: g.sessions.length,
       expanded,
       containsCurrent: g.key === currentGroup,
-      sessions: expanded ? g.sessions.map(session => sessionNode(session, descendants)) : [],
+      sessions: !expanded
+        ? []
+        : g.workspaceId === undefined
+          ? g.sessions.map(session => sessionNode(session, descendants))
+          : projectSessionTree(g.sessions, descendants, collapsedSessionIds),
     })
   }
   return groups

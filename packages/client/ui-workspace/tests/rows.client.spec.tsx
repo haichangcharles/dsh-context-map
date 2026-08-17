@@ -147,6 +147,27 @@ describe('workspace browser rows', () => {
     expect(onOpen).toHaveBeenCalledWith(node.id)
   })
 
+  it('indents native fork children and toggles descendants without opening the Session', () => {
+    const node: SessionNode = {
+      id: sid('child'), title: 'Child Session', blank: false, running: false,
+      runningSubagentCount: 0, completed: false, updatedAt: 0,
+      depth: 2, hasChildren: true, expanded: false,
+    }
+    const onOpen = vi.fn()
+    const onToggle = vi.fn()
+    render(
+      <SessionNodeItem node={node} currentId={undefined} now={0} onOpen={onOpen}
+        onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} onToggle={onToggle} t={t} />,
+    )
+
+    const row = screen.getByRole('treeitem')
+    expect(row.getAttribute('aria-expanded')).toBe('false')
+    expect(row.getAttribute('style')).toContain('--session-depth: 2')
+    fireEvent.click(screen.getByRole('button', { name: '展开“Child Session”的分支' }))
+    expect(onToggle).toHaveBeenCalledOnce()
+    expect(onOpen).not.toHaveBeenCalled()
+  })
+
   it('shows the green done dot only on a finished, unviewed session (live activity wins the slot)', () => {
     const renderRow = (over: Partial<SessionNode>) => render(
       <SessionNodeItem

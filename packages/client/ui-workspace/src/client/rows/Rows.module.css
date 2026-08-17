@@ -108,9 +108,28 @@
 .sessionRow {
   height: 32px;
   gap: 0;
+  padding-left: calc(8px + var(--session-depth, 0) * 16px);
   /* Mount fade: session rows appear by unfolding a group (or the tree
      mounting). Stable row keys keep already-visible rows from replaying it. */
   animation: row-in 150ms var(--ds-ease-in-out);
+}
+
+.sessionChevronSlot {
+  width: 16px;
+}
+
+.sessionChevronButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
 }
 
 .sessionRow .title {

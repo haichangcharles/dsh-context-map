@@ -24,14 +24,43 @@ const workspace = (id: string, sessionIds: string[], title = id): WorkspaceView 
   workspaceId: wid(id), path: `/projects/${id}`, title,
   sessionIds: sessionIds.map(sid), createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
 })
-const view = (expandedGroups: readonly string[] = [], ungroupedOrder?: readonly string[]) => ({
+const view = (
+  expandedGroups: readonly string[] = [],
+  ungroupedOrder?: readonly string[],
+  collapsedSessionIds: readonly string[] = [],
+) => ({
   expandedGroups,
+  collapsedSessionIds,
   ...(ungroupedOrder === undefined ? {} : { ungroupedOrder }),
 })
 const noArchive: readonly SessionId[] = []
 const archived = (...ids: string[]): readonly SessionId[] => ids.map(sid)
 
 describe('deriveGroups', () => {
+  it('projects native fork lineage recursively and omits descendants of collapsed Sessions', () => {
+    const root = summary('root', 1)
+    const child = { ...summary('child', 2), parentId: root.id }
+    const grandchild = { ...summary('grandchild', 3), parentId: child.id }
+    const sibling = { ...summary('sibling', 4), parentId: root.id }
+    const otherRoot = summary('other-root', 5)
+    const sessions = list(root, child, grandchild, sibling, otherRoot)
+
+    const groups = deriveGroups(
+      sessions,
+      [workspace('project', ['root', 'child', 'grandchild', 'sibling', 'other-root'])],
+      noArchive,
+      view(['project'], undefined, ['child']),
+    )
+
+    expect(groups[0]!.sessions.map(node => [node.id, node.depth, node.hasChildren, node.expanded]))
+      .toEqual([
+        [root.id, 0, true, true],
+        [child.id, 1, true, false],
+        [sibling.id, 1, false, true],
+        [otherRoot.id, 0, false, true],
+      ])
+  })
+
   it('keeps Host Workspace and sessionIds order without Client recency sorting', () => {
     const sessions = list(summary('newer', 20), summary('older', 10))
     const workspaces = [workspace('first', ['older', 'newer']), workspace('empty', [])]
@@ -399,12 +428,14 @@ describe('createWorkspaceViewStore', () => {
     store.actions.setGroupBy('flat')
     store.actions.setOrderBy('updated')
     store.actions.setGroupExpanded('alpha', true)
+    store.actions.setSessionExpanded('child', false)
     store.actions.syncSessionOrderAccount('alpha', ['two', 'one'], { one: 1, two: 2 })
     store.actions.setSessionOrder('alpha', ['one', 'two'])
     expect(store.getSnapshot().groupBy).toBe('flat')
     expect(store.getSnapshot()).toMatchObject({
       orderBy: 'updated',
       groupExpansion: { alpha: true },
+      collapsedSessionIds: ['child'],
       sessionOrderByAccount: { alpha: ['one', 'two'] },
       sessionUpdatedAtByAccount: { alpha: { one: 1, two: 2 } },
     })
@@ -417,11 +448,15 @@ describe('createWorkspaceViewStore', () => {
     store.actions.setGroupExpanded('deleted', true)
     store.actions.syncSessionOrderAccount('alpha', ['alpha-session'], { 'alpha-session': 2 })
     store.actions.syncSessionOrderAccount('deleted', ['deleted-session'], { 'deleted-session': 1 })
+    store.actions.setSessionExpanded('alpha-session', false)
+    store.actions.setSessionExpanded('deleted-session', false)
 
     store.actions.retainAccountKeys(['', 'alpha'])
+    store.actions.retainSessionIds(['alpha-session'])
 
     const snapshot = store.getSnapshot()
     expect(snapshot.groupExpansion).toEqual({ '': true, alpha: true })
+    expect(snapshot.collapsedSessionIds).toEqual(['alpha-session'])
     expect(snapshot.sessionOrderByAccount).toEqual({ alpha: ['alpha-session'] })
     expect(snapshot.sessionUpdatedAtByAccount).toEqual({ alpha: { 'alpha-session': 2 } })
   })

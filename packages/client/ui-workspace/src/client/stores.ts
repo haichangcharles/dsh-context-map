@@ -21,6 +21,8 @@ type WorkspaceViewState = {
   orderBy: SessionOrderBy
   /** Explicit zero-or-five-session state keyed by Workspace group identity. */
   groupExpansion: Record<string, boolean>
+  /** Native Session rows whose fork descendants are collapsed. */
+  collapsedSessionIds: string[]
   /** Shared editable order per Workspace group plus the browser-local flat-list account. */
   sessionOrderByAccount: Record<string, string[]>
   /** Last observed update timestamps per order account for one-time promotion events. */
@@ -35,6 +37,8 @@ type WorkspaceViewActions = {
   setGroupBy: (draft: WorkspaceViewState, mode: SessionGroupBy) => void
   setOrderBy: (draft: WorkspaceViewState, mode: SessionOrderBy) => void
   setGroupExpanded: (draft: WorkspaceViewState, key: string, expanded: boolean) => void
+  setSessionExpanded: (draft: WorkspaceViewState, sessionId: string, expanded: boolean) => void
+  retainSessionIds: (draft: WorkspaceViewState, sessionIds: readonly string[]) => void
   retainAccountKeys: (draft: WorkspaceViewState, workspaceKeys: readonly string[]) => void
   syncSessionOrderAccount: (
     draft: WorkspaceViewState,
@@ -55,14 +59,25 @@ export function createWorkspaceViewStore(): EngineStoreHandle<WorkspaceViewState
       groupBy: 'workspace',
       orderBy: 'updated',
       groupExpansion: {},
+      collapsedSessionIds: [],
       sessionOrderByAccount: {},
       sessionUpdatedAtByAccount: {},
     }),
-    persist: 'dsh.workspace.view.v5',
+    persist: 'dsh.workspace.view.v6',
     actions: {
       setGroupBy: (d, mode: SessionGroupBy) => { d.groupBy = mode },
       setOrderBy: (d, mode: SessionOrderBy) => { d.orderBy = mode },
       setGroupExpanded: (d, key: string, expanded: boolean) => { d.groupExpansion[key] = expanded },
+      setSessionExpanded: (d, sessionId: string, expanded: boolean) => {
+        const collapsed = new Set(d.collapsedSessionIds)
+        if (expanded) collapsed.delete(sessionId)
+        else collapsed.add(sessionId)
+        d.collapsedSessionIds = [...collapsed]
+      },
+      retainSessionIds: (d, sessionIds: readonly string[]) => {
+        const retained = new Set(sessionIds)
+        d.collapsedSessionIds = d.collapsedSessionIds.filter(id => retained.has(id))
+      },
       retainAccountKeys: (d, workspaceKeys: readonly string[]) => {
         const retained = new Set(workspaceKeys)
         d.groupExpansion = Object.fromEntries(

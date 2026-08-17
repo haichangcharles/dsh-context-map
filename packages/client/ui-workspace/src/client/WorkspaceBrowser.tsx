@@ -223,6 +223,12 @@ type SessionTreeProps = Pick<
   groupExpansion: Readonly<Record<string, boolean>>
   /** Persist one Workspace group's zero-or-five-session state. */
   setGroupExpanded: (key: string, expanded: boolean) => void
+  /** Native Sessions whose fork descendants are collapsed. */
+  collapsedSessionIds: readonly string[]
+  /** Persist one native Session's fork expansion state. */
+  setSessionExpanded: (sessionId: string, expanded: boolean) => void
+  /** Remove collapse keys after their Sessions disappear. */
+  retainSessionIds: (sessionIds: readonly string[]) => void
   /** Shared editable orders used by Workspace groups and the flat-list account. */
   sessionOrderByAccount: Readonly<Record<string, readonly string[]>>
   /** Last update timestamps observed for one-time recent-update promotions. */
@@ -251,6 +257,7 @@ function SessionTree({
   onRenameRequest, onDeleteRequest, onSessionRename, onSessionArchive,
   insertWorkspaceBefore, insertSessionBefore, orderBy,
   groupExpansion, setGroupExpanded,
+  collapsedSessionIds, setSessionExpanded, retainSessionIds,
   sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, t,
 }: SessionTreeProps) {
   const list = useSessions(s => s)
@@ -264,6 +271,9 @@ function SessionTree({
   const previousOrderBy = useRef(orderBy)
   const nativeDragActive = drag !== null || workspaceDrag !== null
   useNativeDragAcceptance(nativeDragActive)
+  useEffect(() => {
+    if (list.phase === 'ready') retainSessionIds(list.ids)
+  }, [list.ids, list.phase, retainSessionIds])
   const currentGroup = current === undefined
     ? undefined
     : (workspaces.find(w => w.sessionIds.includes(current))?.workspaceId as string | undefined)
@@ -321,11 +331,12 @@ function SessionTree({
   const groups = useMemo(
     () => deriveGroups(list, orderedWorkspaces, archivedSessionIds, {
       expandedGroups,
+      collapsedSessionIds,
       ...(sessionOrderByAccount[UNGROUPED_KEY] === undefined
         ? {}
         : { ungroupedOrder: sessionOrderByAccount[UNGROUPED_KEY] }),
     }),
-    [list, orderedWorkspaces, archivedSessionIds, expandedGroups, sessionOrderByAccount],
+    [list, orderedWorkspaces, archivedSessionIds, expandedGroups, collapsedSessionIds, sessionOrderByAccount],
   )
   const now = Date.now()
   const commitSessionDrag = (activeDrag: DragState, over: NonNullable<DragState['over']>): void => {
@@ -516,6 +527,7 @@ function SessionTree({
                     onRename={onSessionRename}
                     onFork={forkSession}
                     onArchive={onSessionArchive}
+                    onToggle={() => { setSessionExpanded(node.id, !node.expanded) }}
                     drag={dragProps}
                     t={t}
                   />
@@ -770,6 +782,7 @@ export function WorkspaceBrowser({
   const groupBy = useStore(s => s.groupBy)
   const orderBy = useStore(s => s.orderBy)
   const groupExpansion = useStore(s => s.groupExpansion)
+  const collapsedSessionIds = useStore(s => s.collapsedSessionIds)
   const sessionOrderByAccount = useStore(s => s.sessionOrderByAccount)
   const sessionUpdatedAtByAccount = useStore(s => s.sessionUpdatedAtByAccount)
   useEffect(() => {
@@ -1142,6 +1155,9 @@ export function WorkspaceBrowser({
                 workspaces={workspaces}
                 groupExpansion={groupExpansion}
                 setGroupExpanded={actions.setGroupExpanded}
+                collapsedSessionIds={collapsedSessionIds}
+                setSessionExpanded={actions.setSessionExpanded}
+                retainSessionIds={actions.retainSessionIds}
                 sessionOrderByAccount={sessionOrderByAccount}
                 sessionUpdatedAtByAccount={sessionUpdatedAtByAccount}
                 syncSessionOrderAccount={actions.syncSessionOrderAccount}

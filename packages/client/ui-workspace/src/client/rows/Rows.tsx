@@ -350,7 +350,7 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
  * @param props.t - the browser root's locale seat.
  * @returns the session row.
  */
-export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork, onArchive, drag, flat = false, t }: {
+export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork, onArchive, onToggle, drag, flat = false, t }: {
   node: SessionNode
   currentId: string | undefined
   now: number
@@ -361,6 +361,8 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork
   onFork: (id: SessionNode['id']) => void
   /** Archive this session (row menu action; commits without a dialog). */
   onArchive: (id: SessionNode['id']) => void
+  /** Expand or collapse this native Session's visible fork descendants. */
+  onToggle?: (() => void) | undefined
   /** Present only on draggable rows (workspace-group sessions outside search). */
   drag?: RowDragProps | undefined
   /** The row is rendered without a parent Workspace header. */
@@ -391,8 +393,10 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork
         flat && !showStatus && css.flatSessionRowWithoutStatus,
         drag?.marker === 'before' && css.dropBefore, drag?.marker === 'after' && css.dropAfter,
       )}
+      style={{ '--session-depth': node.depth } as React.CSSProperties}
       role="treeitem"
       aria-selected={selected}
+      aria-expanded={node.hasChildren ? node.expanded : undefined}
       onClick={() => { onOpen(node.id) }}
       draggable={drag !== undefined}
       onDragStart={drag === undefined
@@ -419,6 +423,20 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork
           drag.drop(rowHalf(e))
         }}
     >
+      {!flat && (
+        <span className={clsx(css.slot, css.sessionChevronSlot)}>
+          {node.hasChildren && (
+            <button
+              type="button"
+              className={css.sessionChevronButton}
+              aria-label={t(node.expanded ? 'session.branch.collapse' : 'session.branch.expand', { name: title })}
+              onClick={(event) => { event.stopPropagation(); onToggle?.() }}
+            >
+              <IconTriangleRightFill14 className={clsx(css.arrow, node.expanded && css.arrowOpen)} />
+            </button>
+          )}
+        </span>
+      )}
       {/* Pending interaction and own or descendant activity outrank the
           finished-but-unviewed reminder, which returns after activity stops
           and is cleared by opening the session. */}

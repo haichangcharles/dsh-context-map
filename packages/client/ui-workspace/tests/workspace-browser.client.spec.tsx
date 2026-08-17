@@ -357,16 +357,23 @@ describe('WorkspaceBrowser', () => {
     }
   })
 
-  it('renders a fork child as a top-level row without a session twist', () => {
+  it('renders a fork child under its parent and persists the parent collapse control', () => {
     const parent = summary('parent-s', 2)
     const child = { ...summary('child-s', 1), parentId: parent.id }
-    mount({
+    const b = mount({
       useSessions: hook(sessionState([parent, child])),
       useWorkspaces: hook(workspaceState([workspace('alpha', ['parent-s', 'child-s'])])),
     })
     fireEvent.click(screen.getByText('alpha'))
     expect(screen.getByText('child-s')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /展开|收起/ })).toBeNull()
+    const childRow = screen.getByText('child-s').closest('[role="treeitem"]')
+    expect(childRow?.getAttribute('style')).toContain('--session-depth: 1')
+    fireEvent.click(screen.getByRole('button', { name: '收起“parent-s”的分支' }))
+    expect(screen.queryByText('child-s')).toBeNull()
+    expect(b.store.getSnapshot().collapsedSessionIds).toEqual(['parent-s'])
+    expect(b.props.open).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '展开“parent-s”的分支' }))
+    expect(screen.getByText('child-s')).toBeTruthy()
     expect(screen.getByText('child-s').closest('[role="treeitem"]')?.getAttribute('draggable')).toBe('true')
   })
 
