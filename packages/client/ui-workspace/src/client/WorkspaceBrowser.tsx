@@ -13,7 +13,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
   Button, IconCloseFill14, IconPersonalizationOutline16,
-  IconProjectAddOutline16, IconSearchOutline16, Menu, Modal, Tooltip,
+  IconArchiveOutline20, IconChevronLeftOutline14, IconProjectAddOutline16,
+  IconSearchOutline16, Menu, Modal, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   SessionId, SessionListState, SessionSearchResultItem, WorkspaceId, WorkspaceView,
@@ -24,6 +25,7 @@ import { deriveFlat, deriveGroups, deriveSearchResults, UNGROUPED_KEY } from './
 import { ProjectRowItem, SearchResultItem, SessionNodeItem } from './rows/Rows.tsx'
 import { FLAT_SESSION_ORDER_KEY } from './stores.ts'
 import { WorkspacePickFlow } from './WorkspacePicker.tsx'
+import { ArchivedSessionsView } from './ArchivedSessionsView.tsx'
 import css from './WorkspaceBrowser.module.css'
 
 /**
@@ -765,6 +767,7 @@ export function WorkspaceBrowser({
   deleteWorkspace,
   insertWorkspaceBefore,
   archiveSession,
+  unarchiveSession,
   insertSessionBefore,
   createWorkspace,
   searchSessions,
@@ -776,6 +779,7 @@ export function WorkspaceBrowser({
   const workspaces = useWorkspaces(state => state.items)
   const workspacePhase = useWorkspaces(state => state.phase)
   const archivedSessionIds = useWorkspaces(state => state.archivedSessionIds)
+  const [showArchived, setShowArchived] = useState(false)
   // Live occupancy of this surface's directory-flow hole (the same source the
   // flow reads): a composition without a picking affordance can add nothing.
   const directoryFlowAvailable = useDirectoryFlow(occupied => occupied)
@@ -988,12 +992,25 @@ export function WorkspaceBrowser({
   return (
     <div className={clsx(css.root, !wide && css.rail)}>
       <div className={css.sectionHeader}>
-        {wide && (
+        {wide && showArchived && (
+          <>
+            <button
+              type="button"
+              className={css.archiveBack}
+              aria-label={t('archive.back')}
+              onClick={() => { setShowArchived(false) }}
+            >
+              <IconChevronLeftOutline14 />
+            </button>
+            <span className={css.archiveTitle}>{t('archive.title')}</span>
+          </>
+        )}
+        {wide && !showArchived && (
           <span className={clsx(css.sectionLabel, css.wide, searchExpanded && css.sectionLabelHidden)}>
             {groupBy === 'flat' ? t('section.sessions') : t('section.workspaces')}
           </span>
         )}
-        {wide && (
+        {wide && !showArchived && (
           <div className={clsx(css.searchSlot, searchExpanded && css.searchSlotExpanded)}>
             <div
               ref={searchRoot}
@@ -1050,7 +1067,24 @@ export function WorkspaceBrowser({
             </div>
           </div>
         )}
-        <div className={clsx(css.headerActions, wide && searchExpanded && css.headerActionsHidden)}>
+        {!showArchived && <div className={clsx(css.headerActions, wide && searchExpanded && css.headerActionsHidden)}>
+          {wide && archivedSessionIds.length > 0 && (
+            <Tooltip label={t('archive.open', { n: archivedSessionIds.length })} side="bottom" delayMs={500}>
+              <button
+                type="button"
+                className={clsx(css.iconButton, css.archiveButton)}
+                aria-label={t('archive.open', { n: archivedSessionIds.length })}
+                onClick={() => {
+                  setWsPickerOpen(false)
+                  setSearchExpanded(false)
+                  setShowArchived(true)
+                }}
+              >
+                <IconArchiveOutline20 size={16} />
+                <span className={css.archiveCount} aria-hidden="true">{archivedSessionIds.length}</span>
+              </button>
+            </Tooltip>
+          )}
           {wide && (
             <ViewOptionsMenu
               groupBy={groupBy}
@@ -1078,9 +1112,9 @@ export function WorkspaceBrowser({
               </button>
             </Tooltip>
           )}
-        </div>
+        </div>}
         {/* Add flow + its error dialog (same package — direct composition). */}
-        <WorkspacePickFlow
+        {!showArchived && <WorkspacePickFlow
           t={t}
           open={wsPickerOpen}
           anchorRef={wsPlusRef}
@@ -1095,7 +1129,7 @@ export function WorkspaceBrowser({
             startSession(workspaceId)
           }}
           onClose={() => { setWsPickerOpen(false) }}
-        />
+        />}
       </div>
 
       {/* The collapsed rail keeps search as its own 36px control. */}
@@ -1119,67 +1153,77 @@ export function WorkspaceBrowser({
       {/* Always-mounted seat keeps the region's flex slot while the list
           itself is wide-only. */}
       <div className={css.listArea}>
-        {wide && (normalizedQuery !== ''
+        {wide && (showArchived
           ? (
-            <SearchResults
+            <ArchivedSessionsView
               useSessions={useSessions}
-              open={open}
               workspaces={workspaces}
               archivedSessionIds={archivedSessionIds}
-              query={normalizedQuery}
-              remote={remoteSearch}
-              resultLimit={searchResultLimit}
+              unarchiveSession={unarchiveSession}
               t={t}
             />
           )
-          : groupBy === 'flat'
+          : normalizedQuery !== ''
             ? (
-              <FlatList
-                useSessions={useSessions} open={open} forkSession={forkSession}
-                onSessionRename={onSessionRename} onSessionArchive={onSessionArchive}
+              <SearchResults
+                useSessions={useSessions}
+                open={open}
+                workspaces={workspaces}
                 archivedSessionIds={archivedSessionIds}
-                orderBy={orderBy}
-                sessionOrderByAccount={sessionOrderByAccount}
-                sessionUpdatedAtByAccount={sessionUpdatedAtByAccount}
-                syncSessionOrderAccount={actions.syncSessionOrderAccount}
-                setSessionOrder={actions.setSessionOrder}
+                query={normalizedQuery}
+                remote={remoteSearch}
+                resultLimit={searchResultLimit}
                 t={t}
               />
             )
-            : (
-              <SessionTree
-                useSessions={useSessions}
-                onSessionRename={onSessionRename}
-                onSessionArchive={onSessionArchive}
-                forkSession={forkSession}
-                workspaces={workspaces}
-                groupExpansion={groupExpansion}
-                setGroupExpanded={actions.setGroupExpanded}
-                collapsedSessionIds={collapsedSessionIds}
-                setSessionExpanded={actions.setSessionExpanded}
-                retainSessionIds={actions.retainSessionIds}
-                sessionOrderByAccount={sessionOrderByAccount}
-                sessionUpdatedAtByAccount={sessionUpdatedAtByAccount}
-                syncSessionOrderAccount={actions.syncSessionOrderAccount}
-                setSessionOrder={actions.setSessionOrder}
-                archivedSessionIds={archivedSessionIds}
-                startSession={startSession}
-                open={open}
-                insertWorkspaceBefore={insertWorkspaceBefore}
-                insertSessionBefore={insertSessionBefore}
-                orderBy={orderBy}
-                t={t}
-                onRenameRequest={(workspaceId, currentTitle) => {
-                  setRenameTarget({ workspaceId, currentTitle })
-                  setRenameDraft(currentTitle)
-                  setRenameError(null)
-                }}
-                onDeleteRequest={(workspaceId, title) => {
-                  setDeleteTarget({ workspaceId, title })
-                  setDeleteError(null)
-                }}
-              />
-            ))}
+            : groupBy === 'flat'
+              ? (
+                <FlatList
+                  useSessions={useSessions} open={open} forkSession={forkSession}
+                  onSessionRename={onSessionRename} onSessionArchive={onSessionArchive}
+                  archivedSessionIds={archivedSessionIds}
+                  orderBy={orderBy}
+                  sessionOrderByAccount={sessionOrderByAccount}
+                  sessionUpdatedAtByAccount={sessionUpdatedAtByAccount}
+                  syncSessionOrderAccount={actions.syncSessionOrderAccount}
+                  setSessionOrder={actions.setSessionOrder}
+                  t={t}
+                />
+              )
+              : (
+                <SessionTree
+                  useSessions={useSessions}
+                  onSessionRename={onSessionRename}
+                  onSessionArchive={onSessionArchive}
+                  forkSession={forkSession}
+                  workspaces={workspaces}
+                  groupExpansion={groupExpansion}
+                  setGroupExpanded={actions.setGroupExpanded}
+                  collapsedSessionIds={collapsedSessionIds}
+                  setSessionExpanded={actions.setSessionExpanded}
+                  retainSessionIds={actions.retainSessionIds}
+                  sessionOrderByAccount={sessionOrderByAccount}
+                  sessionUpdatedAtByAccount={sessionUpdatedAtByAccount}
+                  syncSessionOrderAccount={actions.syncSessionOrderAccount}
+                  setSessionOrder={actions.setSessionOrder}
+                  archivedSessionIds={archivedSessionIds}
+                  startSession={startSession}
+                  open={open}
+                  insertWorkspaceBefore={insertWorkspaceBefore}
+                  insertSessionBefore={insertSessionBefore}
+                  orderBy={orderBy}
+                  t={t}
+                  onRenameRequest={(workspaceId, currentTitle) => {
+                    setRenameTarget({ workspaceId, currentTitle })
+                    setRenameDraft(currentTitle)
+                    setRenameError(null)
+                  }}
+                  onDeleteRequest={(workspaceId, title) => {
+                    setDeleteTarget({ workspaceId, title })
+                    setDeleteError(null)
+                  }}
+                />
+              ))}
       </div>
 
       <Modal

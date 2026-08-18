@@ -76,6 +76,7 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     renameWorkspace: vi.fn(async () => {}),
     deleteWorkspace: vi.fn(async () => {}),
     archiveSession: vi.fn(async () => {}),
+    unarchiveSession: vi.fn(async () => {}),
     insertWorkspaceBefore: vi.fn(async () => {}),
     insertSessionBefore: vi.fn(async () => {}),
     createWorkspace: vi.fn(async () => workspace('created', [])),
@@ -1137,5 +1138,61 @@ describe('WorkspaceBrowser', () => {
     fireEvent.change(screen.getByPlaceholderText('搜索会话…'), { target: { value: 'needle' } })
     const row = screen.getByText('Needle A').closest('[role="treeitem"]') as HTMLElement
     expect(row.hasAttribute('draggable')).toBe(false)
+  })
+
+  it('opens an in-sidebar archive list and waits for the authoritative set before removing a restored row', async () => {
+    let resolveRestore!: () => void
+    const restorePending = new Promise<void>((resolve) => { resolveRestore = resolve })
+    const unarchiveSession = vi.fn(() => restorePending)
+    const sessions = sessionState([
+      summary('old', 2, { displayTitle: 'Old Session' }),
+      summary('keep', 1, { displayTitle: 'Keep Session' }),
+    ])
+    const ws = workspace('alpha', ['old', 'keep'], 'Alpha')
+    const browser = mount({
+      useSessions: hook(sessions),
+      useWorkspaces: hook(workspaceState([ws], [sid('old'), sid('keep')])),
+      unarchiveSession,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '查看已归档会话（2）' }))
+    expect(screen.getByText('已归档会话')).toBeTruthy()
+    expect(screen.getByText('Alpha')).toBeTruthy()
+    expect(screen.getByText('Old Session')).toBeTruthy()
+    expect(screen.getByText('Keep Session')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '打开 Old Session' })).toBeNull()
+
+    const restore = screen.getByRole<HTMLButtonElement>('button', { name: '恢复“Old Session”' })
+    fireEvent.click(restore)
+    expect(unarchiveSession).toHaveBeenCalledWith(sid('old'))
+    expect(restore.disabled).toBe(true)
+    await act(async () => { resolveRestore() })
+    // Unary success is not enough: keep the row pending until the full-set
+    // projection no longer contains its stable id.
+    expect(screen.getByText('Old Session')).toBeTruthy()
+    rerender(browser, {
+      useWorkspaces: hook(workspaceState([ws], [sid('keep')])),
+    })
+    expect(screen.queryByText('Old Session')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '返回会话列表' }))
+    expect(screen.getByText('工作区')).toBeTruthy()
+  })
+
+  it('keeps a failed restore visible with an inline error and allows retry', async () => {
+    const unarchiveSession = vi.fn()
+      .mockRejectedValueOnce(new Error('session changed while archived'))
+      .mockResolvedValueOnce(undefined)
+    mount({
+      useSessions: hook(sessionState([summary('old', 1, { displayTitle: 'Old Session' })])),
+      useWorkspaces: hook(workspaceState([], [sid('old')])),
+      unarchiveSession,
+    })
+    fireEvent.click(screen.getByRole('button', { name: '查看已归档会话（1）' }))
+    fireEvent.click(screen.getByRole('button', { name: '恢复“Old Session”' }))
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('session changed while archived')
+    })
+    fireEvent.click(screen.getByRole('button', { name: '恢复“Old Session”' }))
+    expect(unarchiveSession).toHaveBeenCalledTimes(2)
   })
 })

@@ -23,6 +23,8 @@ async function bench() {
   const startSession = vi.fn()
   const rename = vi.fn(async () => ({}))
   const insertSessionBefore = vi.fn(async () => ({}))
+  const archiveSession = vi.fn(async () => {})
+  const unarchiveSession = vi.fn(async () => {})
   const open = vi.fn()
   const clear = vi.fn()
   const search = vi.fn(async () => ({
@@ -33,14 +35,14 @@ async function bench() {
   const binding = vi.fn(() => ({ session: { rename: renameSession } }))
   const fork = vi.fn(async () => 'forked' as never)
   ctx.provide('workspaces', {
-    create, startSession, rename, insertSessionBefore,
+    create, startSession, rename, insertSessionBefore, archiveSession, unarchiveSession,
   } as never)
   ctx.provide('sessions', { open, clear, search, searchResultLimit: 20, binding, fork } as never)
   const locale = new LocaleRuntime(ctx)
   ctx.provide('locale', locale)
   return {
     ctx, slots: ctx.get('slots') as SlotRegistry, locale, create, startSession, rename,
-    insertSessionBefore, open, clear, search, renameSession, binding, fork,
+    insertSessionBefore, archiveSession, unarchiveSession, open, clear, search, renameSession, binding, fork,
   }
 }
 
@@ -107,6 +109,10 @@ describe('ui-workspace apply', () => {
     expect(b.rename).toHaveBeenCalledWith('ws', 'renamed')
     await browser.insertSessionBefore('ws' as never, 's1' as never, 's2' as never)
     expect(b.insertSessionBefore).toHaveBeenCalledWith('ws', 's1', 's2')
+    await browser.archiveSession('s1' as never)
+    expect(b.archiveSession).toHaveBeenCalledWith('s1')
+    await browser.unarchiveSession('s1' as never)
+    expect(b.unarchiveSession).toHaveBeenCalledWith('s1')
     await browser.createWorkspace({ path: '/tmp/browser-project' })
     expect(b.create).toHaveBeenCalledWith({ path: '/tmp/browser-project' })
 
