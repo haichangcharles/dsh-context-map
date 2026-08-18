@@ -921,6 +921,54 @@ describe('registry-global session archive', () => {
     expect(storedState(result.pool).archivedSessionIds).toEqual([])
   })
 
+  it('restores one archived id durably without changing workspace accounting', async () => {
+    const dir = await makeDir('unarchive-home')
+    const result = await harness({ sessions: [header('parent', dir, 100), header('child', dir, 200)] })
+    const workspace = result.registry.list()[0]!
+    const accounting = [...workspace.sessionIds]
+    await result.registry.archiveSession(SessionId('parent'))
+
+    await result.registry.unarchiveSession(SessionId('parent'))
+
+    expect(result.registry.archivedSessionIds).toEqual([])
+    expect(workspace.sessionIds).toEqual(accounting)
+    expect(storedState(result.pool).archivedSessionIds).toEqual([])
+  })
+
+  it('makes repeated restore a write-free success and serializes archive races', async () => {
+    const dir = await makeDir('unarchive-race')
+    const result = await harness({ sessions: [header('session', dir, 100)] })
+    const id = SessionId('session')
+    await result.registry.archiveSession(id)
+    await result.registry.unarchiveSession(id)
+    const changesAfterRestore = result.changes.filter(change => change.table === '').length
+
+    await result.registry.unarchiveSession(id)
+    expect(result.changes.filter(change => change.table === '').length).toBe(changesAfterRestore)
+
+    await result.registry.archiveSession(id)
+    await Promise.all([result.registry.unarchiveSession(id), result.registry.archiveSession(id)])
+    expect(result.registry.archivedSessionIds).toEqual([id])
+
+    await Promise.all([result.registry.archiveSession(id), result.registry.unarchiveSession(id)])
+    expect(result.registry.archivedSessionIds).toEqual([])
+  })
+
+  it('keeps an archive entry when its Session is unavailable at restore time', async () => {
+    const missing = SessionId('missing')
+    const pool = storedPool([], {
+      initialized: true,
+      workspaceIds: [],
+      archivedSessionIds: [missing],
+    })
+    const result = await harness({ pool, sessions: [] })
+
+    await expect(result.registry.unarchiveSession(missing))
+      .rejects.toThrow(/cannot restore session 'missing'/)
+    expect(result.registry.archivedSessionIds).toEqual([missing])
+    expect(storedState(pool).archivedSessionIds).toEqual([missing])
+  })
+
   it('restores the archive set across restarts and defaults it for pre-field media', async () => {
     const dir = await makeDir('archive-restart')
     const pool = new MemoryMediaPool()
