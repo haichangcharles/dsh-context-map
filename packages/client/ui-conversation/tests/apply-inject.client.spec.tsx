@@ -222,6 +222,9 @@ describe('conversation slot inject API', () => {
     const { instance, injected } = b.chatViewApi(ROOT)
     injected.openDetails({ turnSeq: 2, callId: 'c1' })
     expect(instance.store.getSnapshot().selection).toEqual({ turnSeq: 2, callId: 'c1' })
+    const detailsEntry = b.entryOf('details')
+    const detailsInjected = (detailsEntry.inject as unknown as (sessionId: SessionId) => DetailsInjected)(ROOT)
+    expect(detailsInjected.hooks.detailsPage.getSnapshot().page).toBe('tool')
     expect(b.layoutFake.openDetails).toHaveBeenCalledTimes(1)
     // The chat view shares the conversation entry's store instance: selection
     // writes land where the skeleton and details read.
@@ -339,9 +342,16 @@ describe('details inject API', () => {
   it('details injects the one layout callback; selection rides the shared store instead', async () => {
     const b = await bench()
     const entry = b.entryOf('details')
-    const injected = (entry.inject as unknown as () => DetailsInjected)()
-    expect(Object.keys(injected)).toEqual(['closeDetails', 'hooks'])
+    const injected = (entry.inject as unknown as (sessionId: SessionId) => DetailsInjected)(ROOT)
+    expect(Object.keys(injected)).toEqual([
+      'closeDetails', 'showPinnedDetails', 'showToolDetails', 'hooks',
+    ])
     expect(injected.hooks.pinnedDetails.getSnapshot()).toBe(false)
+    expect(injected.hooks.detailsPage.getSnapshot()).toEqual({ page: 'pinned', revision: 0 })
+    injected.showToolDetails()
+    expect(injected.hooks.detailsPage.getSnapshot()).toEqual({ page: 'tool', revision: 1 })
+    injected.showPinnedDetails()
+    expect(injected.hooks.detailsPage.getSnapshot()).toEqual({ page: 'pinned', revision: 2 })
     const occupancyChanged = vi.fn()
     const stopOccupancy = injected.hooks.pinnedDetails.subscribe(occupancyChanged)
     const disposePinned = b.slots.register({

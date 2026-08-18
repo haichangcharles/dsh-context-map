@@ -68,14 +68,17 @@ export function DetailsPanel({
   useSessions,
   sessionId,
   useStore,
-  actions,
   renderSlot,
   closeDetails,
   usePinnedDetails,
+  useDetailsPage,
+  showPinnedDetails,
+  showToolDetails,
   t,
 }: DetailsPanelProps) {
   const selection = useStore(s => s.selection)
   const pinned = usePinnedDetails(value => value)
+  const requestedPage = useDetailsPage(value => value.page)
   // Session workspace root: an omitted or relative terminal cwd resolves
   // against it, which the pure presenter cannot see.
   const sessionCwd = useSessions(list => list.byId[sessionId]?.cwd)
@@ -94,10 +97,7 @@ export function DetailsPanel({
         </div>
         <button
           type="button" className={css.close} aria-label={t('details.close')}
-          onClick={() => {
-            if (pinned) actions.select(null)
-            else closeDetails()
-          }}
+          onClick={closeDetails}
         >
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
             <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -141,12 +141,26 @@ export function DetailsPanel({
     </>
   )
 
+  const activePage = pinned && (requestedPage === 'pinned' || selection === null) ? 'pinned' : 'tool'
+
   return (
     <div className={css.root} data-pinned={pinned || undefined}>
-      {pinned && <div className={css.pinned}>{renderSlot('conversation.details.pinned', {})}</div>}
-      {!pinned
-        ? toolDrawer
-        : selection !== null && <div className={css.drawer}>{toolDrawer}</div>}
+      {pinned && (
+        <div className={css.pageTabs} role="tablist" aria-label="Details pages">
+          <button
+            type="button" role="tab" aria-selected={activePage === 'pinned'}
+            onClick={showPinnedDetails}
+          >Context Map</button>
+          <button
+            type="button" role="tab" aria-selected={activePage === 'tool'}
+            disabled={selection === null}
+            onClick={showToolDetails}
+          >{t('details.title')}</button>
+        </div>
+      )}
+      {activePage === 'pinned'
+        ? <div className={css.pinned}>{renderSlot('conversation.details.pinned', {})}</div>
+        : <div className={css.drawer}>{toolDrawer}</div>}
     </div>
   )
 }

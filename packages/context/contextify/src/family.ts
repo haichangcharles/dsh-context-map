@@ -50,6 +50,41 @@ function visibleMessage(event: SessionEvent): { role: 'user' | 'assistant'; mess
   return visible ? { role: 'assistant', message: event.data.message } : null
 }
 
+interface ProjectedMessage {
+  readonly event: SessionEvent
+  readonly visible: { role: 'user' | 'assistant'; message: Message }
+}
+
+/**
+ * Select the conversational surface of each native Turn.
+ * Human inputs are visible while a Turn is running, but assistant text is
+ * committed only once the Turn completes and only from its last visible
+ * assistant step. This keeps ReAct narration and intermediate questions out
+ * of the Map without rewriting the Session log used by compilation.
+ */
+function projectedMessages(events: readonly SessionEvent[]): ProjectedMessage[] {
+  const projected: ProjectedMessage[] = []
+  let finalAssistant: ProjectedMessage | undefined
+  for (const event of events) {
+    if (event.type === 'turn/start') {
+      finalAssistant = undefined
+      continue
+    }
+    if (event.type === 'turn/end') {
+      if (event.data.reason.kind === 'completed' && finalAssistant !== undefined) {
+        projected.push(finalAssistant)
+      }
+      finalAssistant = undefined
+      continue
+    }
+    const visible = visibleMessage(event)
+    if (visible === null) continue
+    if (visible.role === 'user') projected.push({ event, visible })
+    else finalAssistant = { event, visible }
+  }
+  return projected
+}
+
 function blockPreview(block: ContentBlock): string[] {
   if (block.type === 'text') return [block.text]
   if (block.type === 'image') return ['[Image]']
@@ -149,9 +184,7 @@ export function projectSessionFamily(input: {
   for (const { inspection, depth } of ordered) {
     const path: string[] = []
     const boundaries = branchBoundaries(inspection.events)
-    for (const event of inspection.events) {
-      const visible = visibleMessage(event)
-      if (visible === null) continue
+    for (const { event, visible } of projectedMessages(inspection.events)) {
       const owner = canonicalOwner(inspection, event, byId)
       const id = `${owner.sessionId}:${String(owner.seq)}`
       let node = nodes.get(id)

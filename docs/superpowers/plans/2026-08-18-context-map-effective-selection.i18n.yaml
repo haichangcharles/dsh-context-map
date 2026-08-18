@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/superpowers/plans/2026-08-18-context-map-effective-selection.md
-2026-08-18-context-map-effective-selection.md: 6c7d466d8dfde7e9159847b2dc90ece86669127f
-2026-08-18-context-map-effective-selection.zh.md: db3dc1436b4cec2edc2d5483bf6ccf5d151902d8
+2026-08-18-context-map-effective-selection.md: e0ded04e857e749813c7bd056c76fd390dd2e06b
+2026-08-18-context-map-effective-selection.zh.md: b572b83e34ca90dbcb02899c885bdf05bf3182ac

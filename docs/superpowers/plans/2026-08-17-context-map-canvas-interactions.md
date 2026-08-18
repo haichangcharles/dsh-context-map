@@ -1,5 +1,7 @@
 # Context Map Canvas Interactions Implementation Plan
 
+English | [中文](2026-08-17-context-map-canvas-interactions.zh.md)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Restore the independent Context Map's click, multi-select, context-menu, live-drag, and Chat-location interactions while keeping Harness Context Plan and native Sessions authoritative.
@@ -39,7 +41,7 @@
 
 Add tests that render a natural active-path node and a natural off-path node, call the React Flow node-click callback, and expect `setNodeMode(owner, 'exclude')` and `setNodeMode(owner, 'include')` respectively. Add a Selection-mode test that clicks two nodes and expects both IDs in the viewing store without a Context Plan mutation.
 
-```ts
+```ts ignore-check
 fireEvent.click(screen.getByRole('button', { name: 'Selection mode' }))
 fireEvent.click(screen.getByLabelText('User message: root'))
 fireEvent.click(screen.getByLabelText('User message: branch'))
@@ -58,6 +60,8 @@ Expected: FAIL because no Selection mode exists and card clicks do not invoke mo
 Implement these exported functions in `canvas-interactions.ts`:
 
 ```ts
+type ContextNodeMode = 'natural' | 'include' | 'exclude'
+
 export type CanvasPoint = { readonly x: number; readonly y: number }
 export type CanvasRect = CanvasPoint & { readonly width: number; readonly height: number }
 
@@ -91,7 +95,7 @@ Run the Task 1 focused test command and expect PASS. Commit with `feat: restore 
 
 Simulate Shift pointer-down, pointer-move, and pointer-up over the canvas with two mocked node rectangles. Expect the marquee element to update before pointer-up and the intersecting node IDs to be toggled after pointer-up.
 
-```ts
+```ts ignore-check
 fireEvent.pointerDown(canvas, { shiftKey: true, clientX: 10, clientY: 10, pointerId: 1 })
 fireEvent.pointerMove(canvas, { shiftKey: true, clientX: 220, clientY: 220, pointerId: 1 })
 expect(screen.getByTestId('context-map-marquee')).toHaveStyle({ width: '210px', height: '210px' })
@@ -141,6 +145,19 @@ Expected failures: no context menu, and the controlled node keeps its layout pos
 Maintain a transient `Map<string, XYPosition>` in panel state. Apply every React Flow position change to that map. Resolve node position as transient, then persisted override, then layout. On `dragging: false`, persist the final coordinate with `actions.setPosition` and remove the transient entry.
 
 ```ts
+type XYPosition = { readonly x: number; readonly y: number }
+type PositionChange = {
+  readonly type: 'position'
+  readonly id: string
+  readonly position?: XYPosition
+  readonly dragging?: boolean
+}
+declare const change: PositionChange
+declare const actions: { setPosition(id: string, position: XYPosition): void }
+declare function setTransientPositions(
+  update: (current: Map<string, XYPosition>) => Map<string, XYPosition>,
+): void
+
 if (change.type === 'position' && change.position !== undefined) {
   setTransientPositions(current => new Map(current).set(change.id, change.position!))
   if (change.dragging === false) {
@@ -162,7 +179,7 @@ Expect menu, dismissal, and live-drag tests to pass. Commit with `feat: restore 
 
 **Files:**
 - Create: `packages/client/ui-conversation/src/client/chat/message-reveal.ts`
-- Create: `packages/client/ui-conversation/tests/message-reveal.client.spec.tsx`
+- Modify: `packages/client/ui-conversation/tests/service-orchestration.client.spec.ts`
 - Modify: `packages/client/ui-conversation/src/client/service.ts`
 - Modify: `packages/client/ui-conversation/src/client/apply.ts`
 - Modify: `packages/client/ui-conversation/src/client/contract/slots.ts`
@@ -174,7 +191,7 @@ Expect menu, dismissal, and live-drag tests to pass. Commit with `feat: restore 
 
 Prove a request made before the target row mounts remains readable, a matching ChatView scrolls the row with `block: 'center'`, the row receives `data-chat-revealed`, and consumption clears only the matching request ID.
 
-```ts
+```ts ignore-check
 reveal.request(sessionId, 12)
 expect(reveal.read(sessionId)?.seq).toBe(12)
 renderChat({ reveal: reveal.binding(sessionId), messageSeq: 12 })
@@ -183,7 +200,7 @@ expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center
 
 - [ ] **Step 2: Run tests and observe failure**
 
-Run: `pnpm --filter @deepseek-ai/dsh-client-ui-conversation test -- message-reveal.client.spec.tsx`
+Run: `pnpm --filter @deepseek-ai/dsh-client-ui-conversation test -- service-orchestration.client.spec.ts`
 
 Expected: FAIL because the reveal registry, durable message anchors, and ChatView effect do not exist.
 

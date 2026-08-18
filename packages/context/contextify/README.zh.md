@@ -8,7 +8,7 @@
 
 在 `agent/session-start` 时，插件会选择 Contextify compiler；若计划不存在，则创建 Natural plan。新 fork 的 child 会继承 parent 的事件前缀，但拥有自己的 Natural plan，因此 context 修改不会被静默继承。
 
-Family projector 从原生 root Session 遍历全部后代，并按最早拥有它的 Session 对复制前缀消息去重。每条可见、append 的 `user/message`，以及含文本或图片的 `assistant/message`，各自成为一个节点。纯 reasoning assistant event、tool call、tool result、context injection 和其他 runtime event 都不会进入图。User 与 assistant 节点都会解析到所在 completed `turn/end`，Branch 因而使用 Harness 原生 Session fork 接受的边界。
+Family projector 从原生 root Session 遍历全部后代，并按最早拥有它的 Session 对复制前缀消息去重。每个 Turn 只保留真实 user input，以及成功 `turn/end` 后最后一条含文本或图片的 assistant message。Turn 运行期间 assistant 文本不会进入图；更早的 ReAct step、中间提问、失败或中断时的部分输出、纯 reasoning assistant event、tool call、tool result、context injection 和其他 runtime event 也都会被排除。保留的 user 与最终 assistant 节点都会解析到所在 completed `turn/end`，Branch 因而使用 Harness 原生 Session fork 接受的边界。
 
 持久计划包含三种模式：
 

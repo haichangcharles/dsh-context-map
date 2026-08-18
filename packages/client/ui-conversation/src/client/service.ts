@@ -20,6 +20,7 @@ import type { ComposerBlocks } from './input/blocks.ts'
 import type { DraftAttachmentId, SessionInputResolver } from './input/contract.ts'
 import type { InputSubmitMode } from './contract/composer-submission.ts'
 import type { MessageRevealRegistry } from './chat/message-reveal.ts'
+import type { DetailsNavigation } from './details-navigation.ts'
 
 /**
  * The outward conversation face (`ctx.conversation`): the scope-addressed
@@ -59,6 +60,8 @@ export interface IConversation {
   loadOlder(): Promise<void>
   /** Open a native Session and request that Chat reveal one durable message. */
   revealMessage(sessionId: SessionId, seq: number): void
+  /** Request the additive pinned-content subpage for one Session's native details column. */
+  openPinnedDetails(sessionId: SessionId): void
 }
 
 /** Create one browser-only draft descriptor; only its id enters input state. */
@@ -102,6 +105,7 @@ export class ConversationController extends Service implements IConversation {
   private readonly createdImageUrls = new Set<string>()
   private disposed = false
   private readonly messageReveal: MessageRevealRegistry
+  private readonly detailsNavigation: DetailsNavigation
 
   /**
    * @param ctx - owning root context (the plugin apply context; the service
@@ -114,11 +118,13 @@ export class ConversationController extends Service implements IConversation {
     input: SessionInputResolver
     blocks: ComposerBlocks
     messageReveal: MessageRevealRegistry
+    detailsNavigation: DetailsNavigation
   }) {
     super(ctx, 'conversation')
     this.input = config.input
     this.blocks = config.blocks
     this.messageReveal = config.messageReveal
+    this.detailsNavigation = config.detailsNavigation
     ctx.effect(() => () => {
       this.disposed = true
       for (const url of this.createdImageUrls) revokePreview(url)
@@ -300,6 +306,11 @@ export class ConversationController extends Service implements IConversation {
   revealMessage(sessionId: SessionId, seq: number): void {
     this.messageReveal.request(sessionId, seq)
     this.requireSessions().open(sessionId)
+  }
+
+  /** Request the pinned-plugin subpage for one Session's native details column. */
+  openPinnedDetails(sessionId: SessionId): void {
+    this.detailsNavigation.request(sessionId, 'pinned')
   }
 
   /** Resolve the caller scope's session face or throw on root contexts. */

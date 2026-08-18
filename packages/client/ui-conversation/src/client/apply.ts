@@ -29,6 +29,7 @@ import { EnterBehaviorRow } from './settings/EnterBehaviorRow.tsx'
 import type { EnterBehaviorRowInjected } from './settings/EnterBehaviorRow.tsx'
 import { ChatView } from './chat/ChatView.tsx'
 import { MessageRevealRegistry } from './chat/message-reveal.ts'
+import { DetailsNavigation } from './details-navigation.ts'
 import { StatsLine } from './chat/StatsLine.tsx'
 import { ApprovalPanel } from './skeleton/ApprovalPanel.tsx'
 import { todoDockEntry } from './skeleton/TodoPanel.tsx'
@@ -151,6 +152,7 @@ export function apply(ctx: Context): void {
   // persisted: a fresh page load keeps the open-jump-to-bottom default.
   const chatScrollPositions = new Map<SessionId, ChatScrollPosition>()
   const messageReveal = new MessageRevealRegistry()
+  const detailsNavigation = new DetailsNavigation()
 
   const viewTabs = (): ViewTab[] => {
     const tabs: ViewTab[] = []
@@ -392,6 +394,7 @@ export function apply(ctx: Context): void {
       return {
         openDetails: (target) => {
           actions.select(target)
+          detailsNavigation.request(sessionId, 'tool')
           layout.openDetails()
         },
         fileMentions: owner => ctx.get('chatFileMentions')?.forClosing(owner),
@@ -436,7 +439,12 @@ export function apply(ctx: Context): void {
   // registers itself as `conversation` and lives on its own child fiber.
   // Presentation registrants depend directly on their slot declarations;
   // this service remains only where conversation actions are required.
-  ctx.plugin(ConversationController, { input: inputHub, blocks: composerBlocks, messageReveal })
+  ctx.plugin(ConversationController, {
+    input: inputHub,
+    blocks: composerBlocks,
+    messageReveal,
+    detailsNavigation,
+  })
 
   // The plan strip rides the input dock above the queue rows (same posture).
   ctx.plugin(todoDockEntry)
@@ -457,9 +465,14 @@ export function apply(ctx: Context): void {
       'conversation.details.tool': { kind: 'single', scope: 'session' },
     },
     store: chatStore,
-    inject: (): DetailsInjected => ({
+    inject: (sessionId: SessionId): DetailsInjected => ({
       closeDetails: () => { layout.closeDetails() },
-      hooks: { pinnedDetails },
+      showPinnedDetails: () => { detailsNavigation.request(sessionId, 'pinned') },
+      showToolDetails: () => { detailsNavigation.request(sessionId, 'tool') },
+      hooks: {
+        pinnedDetails,
+        detailsPage: detailsNavigation.observable(sessionId),
+      },
     }),
   }, DetailsPanel)
 

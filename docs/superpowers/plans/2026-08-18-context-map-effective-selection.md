@@ -23,6 +23,12 @@ English | [中文](2026-08-18-context-map-effective-selection.zh.md)
 Add assertions that active-path Natural is checked, off-path Natural is unchecked, manual overrides reverse those results, and returning to the automatic result resolves to Natural:
 
 ```ts
+import { expect } from 'vitest'
+
+type ContextNodeMode = 'natural' | 'include' | 'exclude'
+declare function effectiveContextIncluded(active: boolean, mode: ContextNodeMode): boolean
+declare function modeForEffectiveContext(active: boolean, included: boolean): ContextNodeMode
+
 expect(effectiveContextIncluded(true, 'natural')).toBe(true)
 expect(effectiveContextIncluded(false, 'natural')).toBe(false)
 expect(effectiveContextIncluded(true, 'exclude')).toBe(false)
@@ -44,6 +50,8 @@ Expected: FAIL because `effectiveContextIncluded` and `modeForEffectiveContext` 
 Replace `nextNodeMode` with explicit effective-state helpers:
 
 ```ts
+type ContextNodeMode = 'natural' | 'include' | 'exclude'
+
 export function effectiveContextIncluded(active: boolean, mode: ContextNodeMode): boolean {
   if (mode === 'include') return true
   if (mode === 'exclude') return false
@@ -81,7 +89,7 @@ git commit -m "refactor: derive effective Context Map selection"
 
 Assert that Natural active and off-path nodes render checked and unchecked checkboxes, clicking the checkbox sends Exclude or Include, clicking it again after the matching snapshot sends Natural, and pointer/click events do not invoke node selection or drag behavior. Add a deferred `setNodeMode` promise and assert optimistic checked state, disabled pending state, rollback, and visible error.
 
-```ts
+```ts ignore-check
 const checkbox = screen.getByRole('checkbox', { name: 'Include root requirement in model context' })
 expect(checkbox).toBeChecked()
 fireEvent.click(checkbox)
@@ -140,7 +148,7 @@ git commit -m "feat: add effective context checkboxes"
 
 Assert `3 / 3 in context`, `Clear manual changes`, menu omission of Natural/Include/Exclude, conditional Restore Automatic, and effective batch mutations that normalize to Natural when the requested checkbox result matches path membership.
 
-```ts
+```ts ignore-check
 expect(screen.getByText('3 / 3 in context')).toBeTruthy()
 expect(screen.getByRole('button', { name: 'Clear manual changes' })).toBeTruthy()
 expect(within(menu).queryByRole('menuitem', { name: 'Include' })).toBeNull()

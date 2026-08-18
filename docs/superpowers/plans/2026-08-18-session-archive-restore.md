@@ -420,11 +420,11 @@ git commit -m "fix(ui-contextify): preserve map layout across archive restore"
 
 **Files:**
 - Modify: `.agents/notes/implemented/feature/2026-07-31-session-archive-global-set.*`
-- Modify: `packages/workspace/workspace/README.*`
-- Modify: `packages/host/apiproxy/README.*`
-- Modify: `packages/client/runtime/README.*`
-- Modify: `packages/client/ui-workspace/README.*`
-- Modify: `packages/client/ui-contextify/README.*`
+- Modify: `packages/workspace/workspace/README.md` and `README.zh.md`
+- Modify: `packages/host/apiproxy/README.md` and `README.zh.md`
+- Modify: `packages/client/runtime/README.md` and `README.zh.md`
+- Modify: `packages/client/ui-workspace/README.md` and `README.zh.md`
+- Modify: `packages/client/ui-contextify/README.md` and `README.zh.md`
 - Modify: `packages/client/connection/tests/fixture.client.spec.ts`
 
 - [ ] **Step 1: Add a keyless assembled regression**
@@ -467,9 +467,12 @@ Archive a parent, continue a visible child, create another child branch, restore
 
 ~~~bash
 git add .agents/notes/implemented/feature/2026-07-31-session-archive-global-set* \
-  packages/workspace/workspace/README* packages/host/apiproxy/README* \
-  packages/client/runtime/README* packages/client/ui-workspace/README* \
-  packages/client/ui-contextify/README* packages/client/connection/tests/fixture.client.spec.ts
+  packages/workspace/workspace/README.md packages/workspace/workspace/README.zh.md \
+  packages/host/apiproxy/README.md packages/host/apiproxy/README.zh.md \
+  packages/client/runtime/README.md packages/client/runtime/README.zh.md \
+  packages/client/ui-workspace/README.md packages/client/ui-workspace/README.zh.md \
+  packages/client/ui-contextify/README.md packages/client/ui-contextify/README.zh.md \
+  packages/client/connection/tests/fixture.client.spec.ts
 git commit -m "docs: document session archive restoration"
 ~~~
 

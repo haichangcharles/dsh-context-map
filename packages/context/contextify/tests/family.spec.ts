@@ -63,6 +63,77 @@ describe('projectSessionFamily', () => {
     ])
   })
 
+  it('keeps only the completed final assistant output from a multi-step turn', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const session = ctx.sessions.create(SessionId('final-output-only'))
+    session.append('turn/start', { turn: 1 })
+    session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'BAI资本是什么' }],
+      source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+    session.append('assistant/message', {
+      turn: 1,
+      step: 1,
+      message: createAssistantMessage({
+        content: [{ type: 'text', text: '我先搜索，请再确认一些过程问题。' }],
+        source: { provider: 'mock', model: 'mock' },
+      }),
+    }, { surfaceOp: 'append' })
+    session.append('tool/result', {
+      turn: 1,
+      step: 1,
+      message: createToolResultMessage({
+        callId: CallId('search'),
+        content: [{ type: 'text', text: 'intermediate search result' }],
+        isError: false,
+      }),
+    }, { surfaceOp: 'append' })
+    session.append('assistant/message', {
+      turn: 1,
+      step: 2,
+      message: createAssistantMessage({
+        content: [{ type: 'text', text: 'BAI资本是一家专注亚洲市场的投资机构。' }],
+        source: { provider: 'mock', model: 'mock' },
+      }),
+    }, { surfaceOp: 'append' })
+
+    const openGraph = projectSessionFamily({
+      activeSessionId: session.id,
+      sessions: [inspect(session)],
+    })
+    expect(openGraph.nodes.map(node => node.preview)).toEqual(['BAI资本是什么'])
+
+    session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    session.append('turn/start', { turn: 2 })
+    session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: '继续' }],
+      source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+    session.append('assistant/message', {
+      turn: 2,
+      step: 1,
+      message: createAssistantMessage({
+        content: [{ type: 'text', text: '失败前的过程文本' }],
+        source: { provider: 'mock', model: 'mock' },
+      }),
+    }, { surfaceOp: 'append' })
+    session.append('turn/end', {
+      turn: 2,
+      reason: { kind: 'error', error: { message: 'boom', code: 'UNKNOWN' } },
+    })
+
+    const graph = projectSessionFamily({
+      activeSessionId: session.id,
+      sessions: [inspect(session)],
+    })
+    expect(graph.nodes.map(node => [node.role, node.preview])).toEqual([
+      ['user', 'BAI资本是什么'],
+      ['assistant', 'BAI资本是一家专注亚洲市场的投资机构。'],
+      ['user', '继续'],
+    ])
+  })
+
   it('deduplicates inherited messages and projects native fork edges', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)

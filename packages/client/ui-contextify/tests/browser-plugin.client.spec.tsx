@@ -57,7 +57,8 @@ async function bench() {
   const open = vi.fn()
   ctx.provide('sessions', { fork, open })
   const revealMessage = vi.fn()
-  ctx.provide('conversation', { revealMessage } as never)
+  const openPinnedDetails = vi.fn()
+  ctx.provide('conversation', { revealMessage, openPinnedDetails } as never)
   await ctx.plugin(SlotRegistry).await()
   ctx.slots.register({
     name: 'root',
@@ -75,7 +76,7 @@ async function bench() {
   const userAction = ctx.slots.entries('conversation.chat.user-actions')[0]
   const assistantAction = ctx.slots.entries('conversation.chat.assistant-actions')[0]
   return {
-    ctx, fiber, calls, closeDetails, openDetails, fork, open, revealMessage, record,
+    ctx, fiber, calls, closeDetails, openDetails, fork, open, revealMessage, openPinnedDetails, record,
     panel: injectPanel(source),
     pinned,
     userAction,
@@ -98,6 +99,7 @@ describe('ui-contextify browser plugin', () => {
       ((sessionId: SessionId) => ContextMessageActionInjected))(source)
     expect(userInjected.hooks.contextify).toBe(b.panel.hooks.contextify)
     expect(assistantInjected.hooks.contextify).toBe(b.panel.hooks.contextify)
+    userInjected.locate(b.record.id)
 
     const controller = b.panel.hooks.contextify
     await (controller as never as { refresh: () => Promise<void> }).refresh()
@@ -117,7 +119,8 @@ describe('ui-contextify browser plugin', () => {
     expect(b.fork).toHaveBeenCalledWith({ sessionId: source, atSeq: 9, increaseTitle: true })
     expect(b.open).toHaveBeenNthCalledWith(1, child)
     expect(b.revealMessage).toHaveBeenCalledWith(source, 7)
-    expect(b.openDetails).not.toHaveBeenCalled()
+    expect(b.openPinnedDetails).toHaveBeenCalledWith(source)
+    expect(b.openDetails).toHaveBeenCalledOnce()
     expect(b.closeDetails).toHaveBeenCalledOnce()
   })
 

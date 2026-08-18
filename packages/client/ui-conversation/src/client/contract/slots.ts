@@ -22,6 +22,7 @@ import type { ComposerSubmitGesture, InputSubmitMode } from './composer-submissi
 import type { ChatNode, ChatNodeKind } from './chat-nodes.ts'
 import type { CallId, SelectionTarget, ViewTab } from './views.ts'
 import type { MessageRevealBinding } from '../chat/message-reveal.ts'
+import type { DetailsPageSnapshot } from '../details-navigation.ts'
 
 /** Browser-owned image that has not crossed the durable host boundary. */
 export interface ComposerAttachment {
@@ -744,9 +745,15 @@ export type ChatViewSlotProps =
 export interface DetailsInjected {
   /** Close the details panel (layout geometry stays with ctx.layout). */
   closeDetails: () => void
+  /** Select the additive pinned-content subpage without clearing Tool state. */
+  showPinnedDetails: () => void
+  /** Return to the selected Tool's native details subpage. */
+  showToolDetails: () => void
   hooks: {
     /** Live occupancy of the pinned area, including late plugin changes. */
     pinnedDetails: ObservableSnapshot<boolean>
+    /** Session-local active right-column subpage. */
+    detailsPage: ObservableSnapshot<DetailsPageSnapshot>
   }
 }
 

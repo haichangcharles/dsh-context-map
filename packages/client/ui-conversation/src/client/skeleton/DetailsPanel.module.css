@@ -19,11 +19,40 @@
 
 .drawer {
   display: flex;
-  flex: 0 1 45%;
+  flex: 1;
   flex-direction: column;
   min-height: 0;
-  max-height: 45%;
-  border-top: 1px solid var(--dsw-alias-border-l2);
+}
+
+.pageTabs {
+  display: flex;
+  flex: none;
+  gap: 4px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+
+.pageTabs button {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  border-radius: 7px;
+  padding: 6px 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pageTabs button[aria-selected='true'] {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+  font-weight: 500;
+}
+
+.pageTabs button:disabled {
+  cursor: default;
+  opacity: 0.42;
 }
 
 /* figma RightSidebar header frame (I54:42735;43:36451): pad 14/12/12/12, gap 8. */

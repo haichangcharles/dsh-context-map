@@ -67,7 +67,11 @@ export function apply(ctx: ClientContext): void {
     return {
       hooks: { contextify: controller },
       setNodeMode: (node, mode) => controller.setNodeMode(node, mode),
-      locate: (nodeId) => { controller.focus(nodeId); ctx.layout.openDetails() },
+      locate: (nodeId) => {
+        controller.focus(nodeId)
+        ctx.conversation.openPinnedDetails(sessionId)
+        ctx.layout.openDetails()
+      },
     }
   }
 

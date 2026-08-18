@@ -2,11 +2,11 @@
 
 [English](README.md) | 中文
 
-`dsh-client-ui-contextify` 把可交互 Context Map 固定在 Chat 右侧的 details column。Map 与消息旁的 Chat control 共用同一个 Session-scoped controller，因此操作的是同一份持久 Context Plan。
+`dsh-client-ui-contextify` 把可交互 Context Map 作为 Harness 原生右侧 details column 的一个子页。Context Map 与 Tool Details 在同一条原生可缩放侧栏中互斥显示，因此不会相互替换或上下堆叠。Map 与消息旁的 Chat control 共用同一个 Session-scoped controller，因此操作的是同一份持久 Context Plan。
 
 ## 用户体验
 
-右侧 panel 使用 React Flow 渲染相互连接的原生 Session family。每条可见 user 或 assistant 消息对应一个 card；复制的 Session 前缀会去重，reasoning 与 tool event 不进入图。Panel 支持缩放、平移、搜索，以及 tree、mind-map、timeline 三种布局。每个 card 只有一个有效 context checkbox：勾选表示消息进入下一次模型请求，未勾选表示不进入。Natural 根据 active Session path 得出这个结果；checkbox 偏离自动结果时会写入相应的 Include 或 Exclude override，恢复自动结果时则移除 override。Selection 模式仍是独立的画布操作，提供累加点击、可见的 Shift 拖动框选与批量操作。被拖动的节点会持续跟随指针，只在松开后持久化最终位置。布局、画布选择和拖动位置仅属于 viewing state，不会改变模型输入。
+右侧子页使用 React Flow 以唯一的自上而下 tree 渲染相互连接的原生 Session family，不暴露布局模式或其他布局控件。每条真实 user input 与每个 completed Turn 的最后一条可见 assistant output 对应一个 card；复制的 Session 前缀会去重，中间 assistant step、未完成输出、reasoning 与 tool event 不进入图。每个 card 只有一个有效 context checkbox：勾选表示消息进入下一次模型请求，未勾选表示不进入。Natural 根据 active Session path 得出这个结果；checkbox 偏离自动结果时会写入相应的 Include 或 Exclude override，恢复自动结果时则移除 override。Selection 模式仍是独立的画布操作，提供累加点击、可见的 Shift 拖动框选与批量操作。被拖动的节点会持续跟随指针，只在松开后持久化最终位置。画布选择和拖动位置仅属于 viewing state，不会改变模型输入。
 
 沿用独立版画布，节点操作集中在右键菜单：Locate in Chat、Branch from Here，以及仅在存在 manual override 时显示的 Restore automatic。Branch 会在消息对应的 completed Turn boundary 调用 Harness 原生 `sessions.fork`，并打开新的 child Session。Locate 会打开所属原生 Session、切换到 Chat、在需要时加载较早 history，并滚动和高亮准确的持久消息。Batch mode 会在一个 plan revision 中 include、exclude 或恢复多个画布选中节点。Clear manual changes 会移除全部 Include 与 Exclude，但不会重置 graph layout；Undo 和 Redo 操作持久 plan history。
 

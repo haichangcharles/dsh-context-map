@@ -136,7 +136,10 @@ describe('render branch tails', () => {
         useStore={bindSnapshotSelector(chat)}
         actions={chat.actions}
         closeDetails={vi.fn()}
+        showPinnedDetails={vi.fn()}
+        showToolDetails={vi.fn()}
         usePinnedDetails={select => select(false)}
+        useDetailsPage={select => select({ page: 'tool', revision: 0 })}
         t={t}
       />,
     )
@@ -144,7 +147,7 @@ describe('render branch tails', () => {
     expect(view.getByText('该调用不在当前窗口内')).toBeTruthy()
   })
 
-  it('keeps pinned content visible and closes only the transient Tool drawer', () => {
+  it('switches pinned content and Tool details as independent right-sidebar pages', () => {
     localStorage.clear()
     const snap = snapshotBase()
     const chat = createChatStore().create()
@@ -159,6 +162,12 @@ describe('render branch tails', () => {
     const renderSlot = ((key: string) => key === 'conversation.details.pinned'
       ? <div>Context Map mock</div>
       : <div data-testid="tool-details-seat" />) as DetailsSlotProps['renderSlot']
+    const detailsPage = createSnapshotStore<{ page: 'pinned' | 'tool'; revision: number }>({
+      page: 'pinned', revision: 0,
+    })
+    const requestPage = (page: 'pinned' | 'tool'): void => {
+      detailsPage.set({ page, revision: detailsPage.getSnapshot().revision + 1 })
+    }
     const view = render(
       <DetailsPanel
         SessionProvider={SessionProviderStub}
@@ -179,18 +188,33 @@ describe('render branch tails', () => {
         useStore={bindSnapshotSelector(chat)}
         actions={chat.actions}
         closeDetails={closeDetails}
+        showPinnedDetails={() => { requestPage('pinned') }}
+        showToolDetails={() => { requestPage('tool') }}
         usePinnedDetails={select => select(true)}
+        useDetailsPage={bindSnapshotSelector(detailsPage)}
         t={t}
       />,
     )
 
+    expect(view.getByRole('tab', { name: 'Context Map' })).toBeTruthy()
+    expect(view.getByRole('tab', { name: '详情' })).toBeTruthy()
     expect(view.getByText('Context Map mock')).toBeTruthy()
-    expect(view.getByText('该调用不在当前窗口内')).toBeTruthy()
-    fireEvent.click(view.getByRole('button', { name: '关闭详情' }))
-    expect(chat.getSnapshot().selection).toBeNull()
-    expect(closeDetails).not.toHaveBeenCalled()
-    expect(view.queryByText('Context Map mock')).toBeTruthy()
     expect(view.queryByText('该调用不在当前窗口内')).toBeNull()
+
+    fireEvent.click(view.getByRole('tab', { name: '详情' }))
+    expect(view.queryByText('Context Map mock')).toBeNull()
+    expect(view.getByText('该调用不在当前窗口内')).toBeTruthy()
+    expect(chat.getSnapshot().selection).toEqual({ turnSeq: 1, callId: 'ghost' })
+
+    fireEvent.click(view.getByRole('tab', { name: 'Context Map' }))
+    expect(view.getByText('Context Map mock')).toBeTruthy()
+    expect(view.queryByText('该调用不在当前窗口内')).toBeNull()
+    expect(chat.getSnapshot().selection).toEqual({ turnSeq: 1, callId: 'ghost' })
+
+    fireEvent.click(view.getByRole('tab', { name: '详情' }))
+    fireEvent.click(view.getByRole('button', { name: '关闭详情' }))
+    expect(closeDetails).toHaveBeenCalledOnce()
+    expect(chat.getSnapshot().selection).toEqual({ turnSeq: 1, callId: 'ghost' })
   })
 
   it('DetailsPanel resolves a nested run_code leaf to its full logged args and output', () => {
@@ -243,7 +267,10 @@ describe('render branch tails', () => {
         useStore={bindSnapshotSelector(chat)}
         actions={chat.actions}
         closeDetails={vi.fn()}
+        showPinnedDetails={vi.fn()}
+        showToolDetails={vi.fn()}
         usePinnedDetails={select => select(false)}
+        useDetailsPage={select => select({ page: 'tool', revision: 0 })}
         t={t}
       />,
     )

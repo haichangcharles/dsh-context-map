@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
 import type { SessionId, WorkspaceListState } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ContextFamilyGraphNode } from '@deepseek-ai/dsh-contextify/types'
@@ -271,7 +271,7 @@ describe('ContextMapPanel', () => {
     expect(h.mapActions.locate).toHaveBeenCalledWith(h.snapshot.graph!.nodes[0])
   })
 
-  it('renders the message graph and controls modes, branch, locate, and layouts', async () => {
+  it('renders one tree graph without exposing layout modes', async () => {
     const h = mount()
     expect(await screen.findByLabelText('User message: root requirement')).toBeTruthy()
     expect(screen.getByText('3 / 3 in context')).toBeTruthy()
@@ -287,12 +287,18 @@ describe('ContextMapPanel', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Locate in Chat' }))
     expect(h.mapActions.locate).toHaveBeenCalledWith(h.snapshot.graph!.nodes[0])
 
-    fireEvent.click(screen.getByRole('button', { name: 'mindmap layout' }))
-    expect(h.store.getSnapshot().layout).toBe('mindmap')
-    fireEvent.click(screen.getByRole('button', { name: 'timeline layout' }))
-    expect(h.store.getSnapshot().layout).toBe('timeline')
-    fireEvent.click(screen.getByRole('button', { name: 'tree layout' }))
-    expect(h.store.getSnapshot().layout).toBe('tree')
+    expect(screen.queryByLabelText('Context Map layout')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'tree layout' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'mindmap layout' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'timeline layout' })).toBeNull()
+
+    act(() => { h.store.actions.setLayout('mindmap') })
+    await waitFor(() => {
+      expect(rootCard.querySelector('.react-flow__handle-top')).toBeTruthy()
+      expect(rootCard.querySelector('.react-flow__handle-bottom')).toBeTruthy()
+      expect(rootCard.querySelector('.react-flow__handle-left')).toBeNull()
+      expect(rootCard.querySelector('.react-flow__handle-right')).toBeNull()
+    })
   })
 
   it('hides archived-only paths and rebinds inherited nodes to a visible Session', async () => {

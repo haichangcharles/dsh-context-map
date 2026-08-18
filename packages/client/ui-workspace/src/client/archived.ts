@@ -23,6 +23,11 @@ export interface ArchivedSessionGroup {
  * Workspace order is authoritative; within each group the latest archive is
  * first. Missing summaries remain addressable by id so restore is never
  * blocked by a temporarily incomplete Session list.
+ * @param list - Current native Session summary projection.
+ * @param workspaces - Current authoritative Workspace accounting order.
+ * @param archivedSessionIds - Stable archived ids in archive order.
+ * @param query - Local case-insensitive title/id filter.
+ * @returns Visible archived rows grouped by their current Workspace account.
  */
 export function deriveArchivedGroups(
   list: SessionListState,

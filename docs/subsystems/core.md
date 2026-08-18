@@ -832,7 +832,7 @@ Durable Context Plan mutations and native Session-family graph reads.
 @Remote('redo') redo(agent: Agent, ref: ContextPlanRef): ContextifyView
 ```
 
-Source: [`packages/context/contextify/src/index.ts:92`](../../packages/context/contextify/src/index.ts)
+Source: [`packages/context/contextify/src/index.ts:93`](../../packages/context/contextify/src/index.ts)
 
 <a id="agent-events"></a>
 

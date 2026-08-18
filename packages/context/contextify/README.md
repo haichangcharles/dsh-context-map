@@ -8,7 +8,7 @@ English | [中文](README.zh.md)
 
 On `agent/session-start`, the plugin selects the Contextify compiler and creates a Natural plan when no plan exists. A newly forked child inherits the parent's event prefix but starts with its own Natural plan; context edits are never silently inherited.
 
-The family projector walks from the native root Session through every descendant. It de-duplicates copied prefix messages by their earliest owning Session and emits one node for each visible appended `user/message` or text/image `assistant/message`. Reasoning-only assistant events, tool calls, tool results, context injections, and other runtime events are intentionally absent from the map. Both user and assistant nodes resolve to their enclosing completed `turn/end`, which is the boundary accepted by native Session fork.
+The family projector walks from the native root Session through every descendant. It de-duplicates copied prefix messages by their earliest owning Session and reduces each Turn to genuine user inputs plus, after a successful `turn/end`, the last visible text/image assistant message. Assistant text stays out of the graph while a Turn is running; earlier ReAct steps, intermediate questions, failed or interrupted partial output, reasoning-only assistant events, tool calls, tool results, context injections, and other runtime events are intentionally absent. Retained user and final-assistant nodes resolve to their enclosing completed `turn/end`, which is the boundary accepted by native Session fork.
 
 The durable plan has three modes:
 

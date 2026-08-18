@@ -23,6 +23,12 @@
 增加断言：当前路径 Natural 为勾选，其他路径 Natural 为未勾选，手动覆盖反转结果，回到自动结果时解析为 Natural：
 
 ```ts
+import { expect } from 'vitest'
+
+type ContextNodeMode = 'natural' | 'include' | 'exclude'
+declare function effectiveContextIncluded(active: boolean, mode: ContextNodeMode): boolean
+declare function modeForEffectiveContext(active: boolean, included: boolean): ContextNodeMode
+
 expect(effectiveContextIncluded(true, 'natural')).toBe(true)
 expect(effectiveContextIncluded(false, 'natural')).toBe(false)
 expect(effectiveContextIncluded(true, 'exclude')).toBe(false)
@@ -44,6 +50,8 @@ expect(modeForEffectiveContext(false, true)).toBe('include')
 用显式有效状态 helper 替换 `nextNodeMode`：
 
 ```ts
+type ContextNodeMode = 'natural' | 'include' | 'exclude'
+
 export function effectiveContextIncluded(active: boolean, mode: ContextNodeMode): boolean {
   if (mode === 'include') return true
   if (mode === 'exclude') return false
@@ -81,7 +89,7 @@ git commit -m "refactor: derive effective Context Map selection"
 
 断言自动勾选和未勾选节点、checkbox 发送 Exclude/Include、快照匹配后再次点击发送 Natural，以及 pointer/click 事件不会调用节点选择或拖拽。使用 deferred `setNodeMode` Promise 断言乐观状态、pending 禁用、失败回滚和可见错误。
 
-```ts
+```ts ignore-check
 const checkbox = screen.getByRole('checkbox', { name: 'Include root requirement in model context' })
 expect(checkbox).toBeChecked()
 fireEvent.click(checkbox)
@@ -140,7 +148,7 @@ git commit -m "feat: add effective context checkboxes"
 
 断言 `3 / 3 in context`、`Clear manual changes`、菜单不再显示 Natural/Include/Exclude、仅在需要时显示 Restore Automatic，以及批量有效 mutation 在目标值等于路径成员关系时标准化为 Natural。
 
-```ts
+```ts ignore-check
 expect(screen.getByText('3 / 3 in context')).toBeTruthy()
 expect(screen.getByRole('button', { name: 'Clear manual changes' })).toBeTruthy()
 expect(within(menu).queryByRole('menuitem', { name: 'Include' })).toBeNull()

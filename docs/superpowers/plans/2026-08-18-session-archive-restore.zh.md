@@ -418,11 +418,11 @@ git commit -m "fix(ui-contextify): preserve map layout across archive restore"
 
 **文件：**
 - 修改：`.agents/notes/implemented/feature/2026-07-31-session-archive-global-set.*`
-- 修改：`packages/workspace/workspace/README.*`
-- 修改：`packages/host/apiproxy/README.*`
-- 修改：`packages/client/runtime/README.*`
-- 修改：`packages/client/ui-workspace/README.*`
-- 修改：`packages/client/ui-contextify/README.*`
+- 修改：`packages/workspace/workspace/README.md` 和 `README.zh.md`
+- 修改：`packages/host/apiproxy/README.md` 和 `README.zh.md`
+- 修改：`packages/client/runtime/README.md` 和 `README.zh.md`
+- 修改：`packages/client/ui-workspace/README.md` 和 `README.zh.md`
+- 修改：`packages/client/ui-contextify/README.md` 和 `README.zh.md`
 - 修改：`packages/client/connection/tests/fixture.client.spec.ts`
 
 - [ ] **步骤 1：加入无密钥 assembled regression**
@@ -465,9 +465,12 @@ git diff --check
 
 ~~~bash
 git add .agents/notes/implemented/feature/2026-07-31-session-archive-global-set* \
-  packages/workspace/workspace/README* packages/host/apiproxy/README* \
-  packages/client/runtime/README* packages/client/ui-workspace/README* \
-  packages/client/ui-contextify/README* packages/client/connection/tests/fixture.client.spec.ts
+  packages/workspace/workspace/README.md packages/workspace/workspace/README.zh.md \
+  packages/host/apiproxy/README.md packages/host/apiproxy/README.zh.md \
+  packages/client/runtime/README.md packages/client/runtime/README.zh.md \
+  packages/client/ui-workspace/README.md packages/client/ui-workspace/README.zh.md \
+  packages/client/ui-contextify/README.md packages/client/ui-contextify/README.zh.md \
+  packages/client/connection/tests/fixture.client.spec.ts
 git commit -m "docs: document session archive restoration"
 ~~~
 

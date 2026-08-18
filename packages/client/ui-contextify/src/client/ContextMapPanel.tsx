@@ -69,13 +69,12 @@ function modeOf(snapshot: ContextifyControllerSnapshot, node: ContextFamilyGraph
   return 'natural'
 }
 
-/** The pinned header, graph canvas, search, layouts, history, and batch controls. */
+/** The pinned header, tree canvas, search, history, and batch controls. */
 export function ContextMapPanel({
   useContextify, useWorkspaces, useStore, actions, mapActions,
 }: ContextMapPanelProps) {
   const snapshot = useContextify(value => value)
   const archivedSessionIds = useWorkspaces(value => value.archivedSessionIds)
-  const layout = useStore(value => value.layout)
   const selectedNodeIds = useStore(value => value.selectedNodeIds)
   const positionOverrides = useStore(value => value.positionOverrides)
   const [query, setQuery] = useState('')
@@ -167,14 +166,14 @@ export function ContextMapPanel({
       void instance.fitView({ nodes: [{ id: target }], duration: 220, maxZoom: 1.2 })
     }, 300)
     return () => { window.clearTimeout(timer) }
-  }, [activeSearchId, instance, layout, measurementVersion, records.length, snapshot.focusedNodeId])
+  }, [activeSearchId, instance, measurementVersion, records.length, snapshot.focusedNodeId])
 
   const flowNodes = useMemo(() => {
     if (graph === undefined) return []
     const searchMatches = new Set(searchResultIds)
     const selected = new Set(selectedNodeIds)
     const sessions = new Map(graph.sessions.map(session => [session.id, session]))
-    return layoutContextMap(graph.nodes, graph.edges, layout).map((node) => {
+    return layoutContextMap(graph.nodes, graph.edges, 'tree').map((node) => {
       const record = node.data.record
       const session = sessions.get(record.owner.sessionId)
       const mode = optimisticModes[record.id] ?? modeOf(snapshot, record)
@@ -215,7 +214,7 @@ export function ContextMapPanel({
       }
     })
   }, [
-    actions, activeSearchId, graph, interactionMode, layout, mutationPending, optimisticModes,
+    actions, activeSearchId, graph, interactionMode, mutationPending, optimisticModes,
     positionOverrides, searchResultIds, selectedNodeIds, setEffectiveMode, snapshot, transientPositions,
   ])
 
@@ -291,16 +290,7 @@ export function ContextMapPanel({
         <button type="button" aria-label="Previous search result" onClick={() => { stepSearch(-1) }}>↑</button>
         <button type="button" aria-label="Next search result" onClick={() => { stepSearch(1) }}>↓</button>
       </div>
-      <div className={css.toolbar} aria-label="Context Map layout">
-        {(['tree', 'mindmap', 'timeline'] as const).map(mode => (
-          <button
-            type="button"
-            key={mode}
-            aria-pressed={layout === mode}
-            aria-label={`${mode} layout`}
-            onClick={() => { actions.setLayout(mode); actions.clearPositions() }}
-          >{mode === 'mindmap' ? 'Mind map' : mode.charAt(0).toUpperCase() + mode.slice(1)}</button>
-        ))}
+      <div className={css.toolbar} aria-label="Context Map actions">
         <button
           type="button"
           aria-label="Selection mode"
@@ -320,7 +310,6 @@ export function ContextMapPanel({
       <div
         ref={canvasRef}
         className={css.canvas}
-        data-layout={layout}
         data-context-map-canvas=""
         onPointerDownCapture={(event) => {
           if (event.target instanceof Element && event.target.closest('[data-context-map-menu]') !== null) return
@@ -369,7 +358,6 @@ export function ContextMapPanel({
       >
         {graph !== undefined && (
           <ReactFlow
-            key={layout}
             nodes={flowNodes}
             edges={flowEdges}
             nodeTypes={nodeTypes}
