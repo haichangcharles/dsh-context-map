@@ -123,11 +123,45 @@ export interface ContextNodeMutation {
   readonly mode: 'natural' | 'include' | 'exclude'
 }
 
+/** Revision and graph watermark one recommendation analyzed. */
+export interface ContextRecommendationBase {
+  readonly planRevision: number
+  readonly graphAsOfSeq: number
+  readonly activeSessionId: SessionId
+}
+
+/** One review-only change to effective context selection. */
+export interface ContextSelectionRecommendation {
+  readonly nodeId: string
+  readonly action: 'include' | 'exclude'
+  readonly reason: string
+  readonly confidence: 'high' | 'medium' | 'low'
+}
+
+/** One review-only candidate for semantic placeholder replacement. */
+export interface ContextCleanupCandidate {
+  readonly nodeId: string
+  readonly category: 'obsolete' | 'conflict' | 'redundant'
+  readonly reason: string
+  readonly evidenceNodeIds: readonly string[]
+  readonly placeholderText: string
+}
+
+/** Ephemeral, revision-scoped Agent output. Nothing here is a mutation. */
+export interface ContextRecommendationProposal {
+  readonly base: ContextRecommendationBase
+  readonly selection: readonly ContextSelectionRecommendation[]
+  readonly cleanup: readonly ContextCleanupCandidate[]
+}
+
 /** Stable Contextify mutation failures. */
 export type ContextifyErrorCode =
   | 'CONTEXTIFY_AGENT_NOT_LIVE' | 'CONTEXTIFY_AGENT_BUSY' | 'CONTEXTIFY_STALE_REVISION'
   | 'CONTEXTIFY_INVALID_NODE' | 'CONTEXTIFY_CROSS_FAMILY' | 'CONTEXTIFY_UNSUPPORTED_MESSAGE'
   | 'CONTEXTIFY_INVALID_TRANSITION' | 'CONTEXTIFY_HISTORY_EMPTY'
+  | 'CONTEXTIFY_STALE_GRAPH' | 'CONTEXTIFY_RECOMMENDATION_BUSY'
+  | 'CONTEXTIFY_RECOMMENDATION_UNAVAILABLE' | 'CONTEXTIFY_RECOMMENDATION_TOO_LARGE'
+  | 'CONTEXTIFY_INVALID_RECOMMENDATION'
 
 declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {

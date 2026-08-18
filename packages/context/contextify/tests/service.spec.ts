@@ -5,6 +5,7 @@ import ContextCompilerRegistry from '@deepseek-ai/dsh-context-compiler'
 import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import type { SessionInspection } from '@deepseek-ai/dsh-session-persistence'
+import SubagentRuntime, { type SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
 import ContextifyService from '../src/index.ts'
 
 function stubAgent(session: Session): { agent: Agent; setStatus: (status: AgentStatus) => void } {
@@ -52,6 +53,7 @@ async function harness() {
   await ctx.plugin(SessionStore)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(ContextCompilerRegistry)
+  await ctx.plugin(SubagentRuntime)
   ctx.provide('sessionPersistence', {
     list: async () => ctx.sessions.list().map(session => session.header),
     inspect: async (id: string): Promise<SessionInspection> => {
@@ -71,6 +73,54 @@ async function harness() {
 }
 
 describe('ContextifyService native Session family', () => {
+  it('generates review-only recommendations through an isolated Harness subagent', async () => {
+    const { ctx, start } = await harness()
+    const session = ctx.sessions.create(SessionId('recommendation'))
+    const active = start(session)
+    const turn = appendClosedTurn(session, 1, 'old requirement', 'new answer')
+    let captured: SubagentStartRequest | undefined
+    let disposed = false
+    ctx.subagents.registerProvider({
+      name: 'spawn',
+      capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      inheritsParentContext: false,
+      start: async (request) => {
+        captured = request
+        return {
+          id: SessionId('review-child'),
+          localAgent: undefined,
+          result: Promise.resolve({
+            output: [],
+            stopReason: 'completed',
+            structured: {
+              selection: [{
+                nodeId: `${session.id}:${String(turn.userSeq)}`, action: 'exclude', reason: 'Superseded', confidence: 'high',
+              }],
+              cleanup: [],
+            },
+          }),
+          dispose: async () => { disposed = true },
+        }
+      },
+    })
+    const view = ctx.contextify.get(active.agent)
+    const before = session.seq
+
+    const proposal = await ctx.contextify.recommend(active.agent, {
+      planRevision: view.plan.revision,
+      graphAsOfSeq: view.graphAsOfSeq,
+      activeSessionId: session.id,
+    })
+
+    expect(proposal.selection).toMatchObject([{ action: 'exclude', reason: 'Superseded' }])
+    expect(captured?.parent.id).toBe(active.agent.id)
+    expect(captured?.toolFilter).toEqual({ allow: [] })
+    expect(captured?.agentOptions).toEqual({ maxTokens: 4_000 })
+    expect(captured?.outputSchema).toMatchObject({ type: 'object' })
+    expect(disposed).toBe(true)
+    expect(session.seq).toBe(before)
+  })
+
   it('migrates a legacy same-Session plan to v2 Natural before compilation', async () => {
     const { ctx, start } = await harness()
     const session = ctx.sessions.create(SessionId('legacy-plan'))
