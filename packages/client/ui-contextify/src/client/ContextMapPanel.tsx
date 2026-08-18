@@ -1,5 +1,5 @@
 /** Interactive React Flow surface for one native Session Context Map. */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Background, Controls, MarkerType, ReactFlow,
   type Edge, type NodeChange, type ReactFlowInstance,
@@ -11,7 +11,7 @@ import type {
 import type { HostObservable, PropsStore, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import { ContextMapNode, type ContextMapNodeData, type ContextNodeMode } from './ContextMapNode.tsx'
 import {
-  intersects, nextNodeMode, reducePositionChanges, type CanvasPoint,
+  effectiveContextIncluded, intersects, modeForEffectiveContext, reducePositionChanges, type CanvasPoint,
 } from './canvas-interactions.ts'
 import { ContextMapMenu } from './ContextMapMenu.tsx'
 import type { ContextifyControllerSnapshot } from './controller.ts'
@@ -57,10 +57,6 @@ interface ContextMenuState {
   readonly point: CanvasPoint
 }
 
-function ignoreHandledError(operation: Promise<void>): void {
-  void operation.catch(() => {})
-}
-
 function modeOf(snapshot: ContextifyControllerSnapshot, node: ContextFamilyGraphNode): ContextNodeMode {
   const plan = snapshot.view?.plan
   if (plan?.excluded.some(item => item.nodeId === node.id) === true) return 'exclude'
@@ -81,14 +77,17 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
   const [marquee, setMarquee] = useState<MarqueeState | null>(null)
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [pendingNodeId, setPendingNodeId] = useState<string | null>(null)
+  const [optimisticModes, setOptimisticModes] = useState<Record<string, ContextNodeMode>>({})
   const [transientPositions, setTransientPositions] = useState<Record<string, CanvasPoint>>({})
   const [measurementVersion, setMeasurementVersion] = useState(0)
   const canvasRef = useRef<HTMLDivElement>(null)
   const graph = snapshot.graph
   const records = graph?.nodes ?? EMPTY_NODES
+  const mutationPending = snapshot.pending || pendingNodeId !== null
   const visibleSelectedCount = graph === undefined ? 0 : records.filter((record) => {
-    const mode = modeOf(snapshot, record)
-    return record.sessionIds.includes(graph.activeSessionId) ? mode !== 'exclude' : mode === 'include'
+    const mode = optimisticModes[record.id] ?? modeOf(snapshot, record)
+    return effectiveContextIncluded(record.sessionIds.includes(graph.activeSessionId), mode)
   }).length
   const normalizedQuery = query.trim().toLocaleLowerCase()
   const searchResultIds = useMemo(() => normalizedQuery === ''
@@ -98,6 +97,38 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
   const activeSearchId = searchResultIds.length === 0
     ? undefined
     : searchResultIds[resultIndex % searchResultIds.length]
+
+  const runMutation = useCallback((
+    id: string,
+    operation: () => Promise<void>,
+    optimisticMode?: ContextNodeMode,
+  ): void => {
+    if (snapshot.pending || pendingNodeId !== null) return
+    setActionError(null)
+    setPendingNodeId(id)
+    if (optimisticMode !== undefined) {
+      setOptimisticModes(current => ({ ...current, [id]: optimisticMode }))
+    }
+    void operation()
+      .catch((cause: unknown) => {
+        setActionError(cause instanceof Error ? cause.message : String(cause))
+      })
+      .finally(() => {
+        setPendingNodeId(null)
+        if (optimisticMode !== undefined) {
+          setOptimisticModes(current => Object.fromEntries(
+            Object.entries(current).filter(([candidate]) => candidate !== id),
+          ))
+        }
+      })
+  }, [pendingNodeId, snapshot.pending])
+
+  const setEffectiveMode = useCallback((record: ContextFamilyGraphNode, included: boolean): void => {
+    if (graph === undefined) return
+    const active = record.sessionIds.includes(graph.activeSessionId)
+    const mode = modeForEffectiveContext(active, included)
+    runMutation(record.id, () => mapActions.setNodeMode(record.owner, mode), mode)
+  }, [graph, mapActions, runMutation])
 
   useEffect(() => {
     actions.retainNodeIds(records.map(node => node.id))
@@ -132,23 +163,23 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
     return layoutContextMap(graph.nodes, graph.edges, layout).map((node) => {
       const record = node.data.record
       const session = sessions.get(record.owner.sessionId)
+      const mode = optimisticModes[record.id] ?? modeOf(snapshot, record)
+      const active = record.sessionIds.includes(graph.activeSessionId)
       const data: ContextMapNodeData = {
         record,
-        mode: modeOf(snapshot, record),
+        mode,
+        included: effectiveContextIncluded(active, mode),
+        pending: mutationPending,
         sessionLabel: session?.depth === 0 ? 'Root Session' : `Branch Session · depth ${String(session?.depth ?? 0)}`,
-        active: record.sessionIds.includes(graph.activeSessionId),
+        active,
         focused: snapshot.focusedNodeId === record.id || activeSearchId === record.id,
         searchMatch: searchMatches.has(record.id),
         onActivate: (candidate) => {
           if (interactionMode === 'selection') {
             actions.setNodeSelected(candidate.id, !selected.has(candidate.id))
-            return
           }
-          ignoreHandledError(mapActions.setNodeMode(
-            candidate.owner,
-            nextNodeMode(candidate.sessionIds.includes(graph.activeSessionId), modeOf(snapshot, candidate)),
-          ))
         },
+        onIncludedChange: setEffectiveMode,
         onContextMenu: (candidate, screenPoint) => {
           const bounds = canvasRef.current?.getBoundingClientRect()
           if (bounds === undefined) return
@@ -170,8 +201,8 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
       }
     })
   }, [
-    actions, activeSearchId, graph, interactionMode, layout, mapActions, positionOverrides,
-    searchResultIds, selectedNodeIds, snapshot, transientPositions,
+    actions, activeSearchId, graph, interactionMode, layout, mutationPending, optimisticModes,
+    positionOverrides, searchResultIds, selectedNodeIds, setEffectiveMode, snapshot, transientPositions,
   ])
 
   const flowEdges = useMemo((): Edge[] => (graph?.edges ?? []).map(edge => ({
@@ -200,8 +231,15 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
     }
   }
   const selectedRecords = records.filter(record => selectedNodeIds.includes(record.id))
-  const batch = (mode: ContextNodeMode): void => {
-    ignoreHandledError(mapActions.setNodeModes(selectedRecords.map(record => ({ node: record.owner, mode }))))
+  const batch = (desired: boolean | 'natural'): void => {
+    if (graph === undefined) return
+    const mutations = selectedRecords.map(record => ({
+      node: record.owner,
+      mode: desired === 'natural'
+        ? 'natural' as const
+        : modeForEffectiveContext(record.sessionIds.includes(graph.activeSessionId), desired),
+    }))
+    runMutation('__batch__', () => mapActions.setNodeModes(mutations))
   }
   const stepSearch = (delta: -1 | 1): void => {
     if (searchResultIds.length === 0) return
@@ -221,7 +259,7 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
           <h2>Context Map</h2>
           <p>{snapshot.view === undefined || graph === undefined
             ? 'Loading context…'
-            : `${String(visibleSelectedCount)} / ${String(records.length)} selected`}</p>
+            : `${String(visibleSelectedCount)} / ${String(records.length)} in context`}</p>
         </div>
         <button type="button" className={css.iconButton} aria-label="Close Context Map" onClick={mapActions.close}>×</button>
       </header>
@@ -259,9 +297,9 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
           }}
         >Select</button>
         <span className={css.toolbarSpacer} />
-        <button type="button" disabled={snapshot.pending} onClick={() => { ignoreHandledError(mapActions.reset()) }}>Reset</button>
-        <button type="button" disabled={snapshot.pending || snapshot.view?.canUndo !== true} onClick={() => { ignoreHandledError(mapActions.undo()) }}>Undo</button>
-        <button type="button" disabled={snapshot.pending || snapshot.view?.canRedo !== true} onClick={() => { ignoreHandledError(mapActions.redo()) }}>Redo</button>
+        <button type="button" disabled={mutationPending} onClick={() => { runMutation('__reset__', mapActions.reset) }}>Clear manual changes</button>
+        <button type="button" disabled={mutationPending || snapshot.view?.canUndo !== true} onClick={() => { runMutation('__undo__', mapActions.undo) }}>Undo</button>
+        <button type="button" disabled={mutationPending || snapshot.view?.canRedo !== true} onClick={() => { runMutation('__redo__', mapActions.redo) }}>Redo</button>
       </div>
       {snapshot.error !== undefined && <div className={css.error} role="alert">{snapshot.error}</div>}
       {actionError !== null && <div className={css.error} role="alert">{actionError}</div>}
@@ -277,7 +315,7 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
           if (event.target instanceof Element && event.target.closest('[data-context-node-id]') !== null) return
           const bounds = event.currentTarget.getBoundingClientRect()
           const point = { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
-          event.currentTarget.setPointerCapture?.(event.pointerId)
+          event.currentTarget.setPointerCapture(event.pointerId)
           setMarquee({ pointerId: event.pointerId, start: point, current: point })
           event.preventDefault()
           event.stopPropagation()
@@ -310,7 +348,7 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
             const id = card.dataset.contextNodeId
             if (id !== undefined) actions.setNodeSelected(id, !selectedNodeIds.includes(id))
           }
-          event.currentTarget.releasePointerCapture?.(event.pointerId)
+          event.currentTarget.releasePointerCapture(event.pointerId)
           setMarquee(null)
         }}
         onPointerCancelCapture={() => { setMarquee(null) }}
@@ -359,10 +397,13 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
             point={menu.point}
             record={menu.record}
             mode={modeOf(snapshot, menu.record)}
+            pending={mutationPending}
             close={() => { setMenu(null) }}
             locate={mapActions.locate}
             branch={mapActions.branch}
-            setNodeMode={mapActions.setNodeMode}
+            restoreAutomatic={(record) => {
+              runMutation(record.id, () => mapActions.setNodeMode(record.owner, 'natural'), 'natural')
+            }}
             reportError={(cause) => {
               setActionError(cause instanceof Error ? cause.message : String(cause))
             }}
@@ -372,9 +413,9 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
       {interactionMode === 'selection' && selectedRecords.length > 0 && (
         <div className={css.selectionBar} aria-label="Selected message actions">
           <strong>{selectedRecords.length} selected</strong>
-          <button type="button" onClick={() => { batch('include') }}>Include selected</button>
-          <button type="button" onClick={() => { batch('exclude') }}>Exclude selected</button>
-          <button type="button" onClick={() => { batch('natural') }}>Natural selected</button>
+          <button type="button" disabled={mutationPending} onClick={() => { batch(true) }}>Include in context</button>
+          <button type="button" disabled={mutationPending} onClick={() => { batch(false) }}>Exclude from context</button>
+          <button type="button" disabled={mutationPending} onClick={() => { batch('natural') }}>Restore automatic</button>
           <button type="button" onClick={() => { actions.clearSelection() }}>Clear</button>
         </div>
       )}

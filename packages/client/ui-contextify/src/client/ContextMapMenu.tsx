@@ -1,4 +1,4 @@
-import type { ContextFamilyGraphNode, ContextMessageRef } from '@deepseek-ai/dsh-contextify/types'
+import type { ContextFamilyGraphNode } from '@deepseek-ai/dsh-contextify/types'
 import type { CanvasPoint } from './canvas-interactions.ts'
 import type { ContextNodeMode } from './ContextMapNode.tsx'
 import css from './ContextMapPanel.module.css'
@@ -7,16 +7,17 @@ export interface ContextMapMenuProps {
   readonly point: CanvasPoint
   readonly record: ContextFamilyGraphNode
   readonly mode: ContextNodeMode
+  readonly pending: boolean
   readonly close: () => void
   readonly locate: (record: ContextFamilyGraphNode) => void
   readonly branch: (record: ContextFamilyGraphNode) => Promise<void>
-  readonly setNodeMode: (node: ContextMessageRef, mode: ContextNodeMode) => Promise<void>
+  readonly restoreAutomatic: (record: ContextFamilyGraphNode) => void
   readonly reportError: (cause: unknown) => void
 }
 
 /** Pointer-positioned node actions backed only by Harness-native operations. */
 export function ContextMapMenu({
-  point, record, mode, close, locate, branch, setNodeMode, reportError,
+  point, record, mode, pending, close, locate, branch, restoreAutomatic, reportError,
 }: ContextMapMenuProps) {
   const run = (action: () => void | Promise<void>): void => {
     try {
@@ -42,19 +43,18 @@ export function ContextMapMenu({
       <button
         type="button"
         role="menuitem"
-        disabled={record.branchAtSeq === null}
+        disabled={pending || record.branchAtSeq === null}
         onClick={() => { run(() => branch(record)) }}
       >Branch from Here</button>
-      <div className={css.contextMenuSeparator} />
-      {(['natural', 'include', 'exclude'] as const).map(candidate => (
+      {mode !== 'natural' && <>
+        <div className={css.contextMenuSeparator} />
         <button
           type="button"
           role="menuitem"
-          key={candidate}
-          disabled={mode === candidate}
-          onClick={() => { run(() => setNodeMode(record.owner, candidate)) }}
-        >{candidate.charAt(0).toUpperCase() + candidate.slice(1)}</button>
-      ))}
+          disabled={pending}
+          onClick={() => { run(() => { restoreAutomatic(record) }) }}
+        >Restore automatic</button>
+      </>}
     </div>
   )
 }

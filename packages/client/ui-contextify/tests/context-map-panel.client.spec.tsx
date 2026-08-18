@@ -13,7 +13,7 @@ import {
 import { createContextMapStore } from '../src/client/store.ts'
 import { ContextMessageAction } from '../src/client/ContextMessageAction.tsx'
 import {
-  intersects, nextNodeMode, reducePositionChanges,
+  effectiveContextIncluded, intersects, modeForEffectiveContext, reducePositionChanges,
 } from '../src/client/canvas-interactions.ts'
 
 class ResizeObserverStub {
@@ -27,8 +27,20 @@ beforeEach(() => {
   vi.stubGlobal('DOMMatrixReadOnly', class {
     readonly m22 = 1
   })
+  Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', {
+    configurable: true, value: () => {},
+  })
+  Object.defineProperty(HTMLElement.prototype, 'releasePointerCapture', {
+    configurable: true, value: () => {},
+  })
 })
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); localStorage.clear() })
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  localStorage.clear()
+  Reflect.deleteProperty(HTMLElement.prototype, 'setPointerCapture')
+  Reflect.deleteProperty(HTMLElement.prototype, 'releasePointerCapture')
+})
 
 const sid = (value: string) => value as SessionId
 const root = sid('root-session')
@@ -86,7 +98,7 @@ function fixture(): ContextifyControllerSnapshot {
   }
 }
 
-function mount(snapshot = fixture()) {
+function mount(snapshot = fixture(), overrides: Partial<ContextMapActions> = {}) {
   const source = { getSnapshot: () => snapshot, subscribe: () => () => {} }
   const store = createContextMapStore().create()
   const mapActions: ContextMapActions = {
@@ -98,6 +110,7 @@ function mount(snapshot = fixture()) {
     branch: vi.fn(async () => {}),
     locate: vi.fn(),
     close: vi.fn(),
+    ...overrides,
   }
   const view = render(
     <div style={{ width: 720, height: 680 }}>
@@ -113,10 +126,67 @@ function mount(snapshot = fixture()) {
 }
 
 describe('ContextMapPanel', () => {
-  it('cycles the meaningful context override when a node card is clicked', async () => {
+  it('changes effective context only through a checkbox, not a normal card click', async () => {
     const h = mount()
-    fireEvent.click(await screen.findByLabelText('User message: root requirement'))
+    const card = await screen.findByLabelText('User message: root requirement')
+    const checkbox = within(card).getByLabelText('Include root requirement in context')
+    expect((checkbox as HTMLInputElement).checked).toBe(true)
+    fireEvent.click(card)
+    expect(h.mapActions.setNodeMode).not.toHaveBeenCalled()
+    fireEvent.click(checkbox)
     expect(h.mapActions.setNodeMode).toHaveBeenCalledWith({ sessionId: root, seq: 1 }, 'exclude')
+  })
+
+  it('uses the active Session path as the automatic checkbox result', async () => {
+    const original = fixture()
+    const snapshot = { ...original, graph: { ...original.graph!, activeSessionId: root } }
+    const h = mount(snapshot)
+    const rootCheckbox = await screen.findByLabelText('Include root requirement in context')
+    const branchCheckbox = screen.getByLabelText('Include branch follow-up in context')
+    expect((rootCheckbox as HTMLInputElement).checked).toBe(true)
+    expect((branchCheckbox as HTMLInputElement).checked).toBe(false)
+    fireEvent.click(branchCheckbox)
+    expect(h.mapActions.setNodeMode).toHaveBeenCalledWith({ sessionId: child, seq: 8 }, 'include')
+  })
+
+  it('restores the automatic mode when the checkbox returns to the path result', async () => {
+    const original = fixture()
+    const snapshot: ContextifyControllerSnapshot = {
+      ...original,
+      view: {
+        ...original.view!,
+        plan: { ...original.view!.plan, excluded: [{ nodeId: 'root:1', eventSeq: 1 }], included: [] },
+      },
+    }
+    const h = mount(snapshot)
+    const checkbox = await screen.findByLabelText('Include root requirement in context')
+    expect((checkbox as HTMLInputElement).checked).toBe(false)
+    fireEvent.click(checkbox)
+    expect(h.mapActions.setNodeMode).toHaveBeenCalledWith({ sessionId: root, seq: 1 }, 'natural')
+  })
+
+  it('updates a checkbox optimistically and rolls it back when Harness rejects the change', async () => {
+    let rejectMutation!: (cause: unknown) => void
+    const mutation = new Promise<void>((_resolve, reject) => { rejectMutation = reject })
+    mount(fixture(), { setNodeMode: vi.fn(() => mutation) })
+    const checkbox = await screen.findByLabelText('Include root requirement in context')
+    fireEvent.click(checkbox)
+    expect((checkbox as HTMLInputElement).checked).toBe(false)
+    expect((checkbox as HTMLInputElement).disabled).toBe(true)
+    rejectMutation(new Error('revision conflict'))
+    await waitFor(() => {
+      expect((checkbox as HTMLInputElement).checked).toBe(true)
+      expect(screen.getByRole('alert').textContent).toContain('revision conflict')
+    })
+  })
+
+  it('keeps checkbox changes separate from canvas selection mode', async () => {
+    const h = mount()
+    fireEvent.click(screen.getByRole('button', { name: 'Selection mode' }))
+    const checkbox = await screen.findByLabelText('Include root requirement in context')
+    fireEvent.click(checkbox)
+    expect(h.mapActions.setNodeMode).toHaveBeenCalledWith({ sessionId: root, seq: 1 }, 'exclude')
+    expect(h.store.getSnapshot().selectedNodeIds).toEqual([])
   })
 
   it('uses node clicks for additive selection while Selection mode is active', async () => {
@@ -161,18 +231,27 @@ describe('ContextMapPanel', () => {
   })
 
   it('opens the original-style node menu and delegates durable actions', async () => {
-    const h = mount()
+    const original = fixture()
+    const snapshot: ContextifyControllerSnapshot = {
+      ...original,
+      view: {
+        ...original.view!,
+        plan: { ...original.view!.plan, excluded: [{ nodeId: 'root:1', eventSeq: 1 }], included: [] },
+      },
+    }
+    const h = mount(snapshot)
     const card = await screen.findByLabelText('User message: root requirement')
     fireEvent.contextMenu(card, { clientX: 120, clientY: 160 })
     const menu = screen.getByRole('menu', { name: 'Message actions' })
     expect(within(menu).getByRole('menuitem', { name: 'Locate in Chat' })).toBeTruthy()
     expect(within(menu).getByRole('menuitem', { name: 'Branch from Here' })).toBeTruthy()
-    expect(within(menu).getByRole('menuitem', { name: 'Natural' })).toBeTruthy()
-    expect(within(menu).getByRole('menuitem', { name: 'Include' })).toBeTruthy()
-    const exclude = within(menu).getByRole('menuitem', { name: 'Exclude' })
-    fireEvent.pointerDown(exclude)
-    fireEvent.click(exclude)
-    expect(h.mapActions.setNodeMode).toHaveBeenCalledWith({ sessionId: root, seq: 1 }, 'exclude')
+    expect(within(menu).queryByRole('menuitem', { name: 'Natural' })).toBeNull()
+    expect(within(menu).queryByRole('menuitem', { name: 'Include' })).toBeNull()
+    expect(within(menu).queryByRole('menuitem', { name: 'Exclude' })).toBeNull()
+    const restore = within(menu).getByRole('menuitem', { name: 'Restore automatic' })
+    fireEvent.pointerDown(restore)
+    fireEvent.click(restore)
+    expect(h.mapActions.setNodeMode).toHaveBeenCalledWith({ sessionId: root, seq: 1 }, 'natural')
     expect(screen.queryByRole('menu')).toBeNull()
 
     fireEvent.contextMenu(card, { clientX: 120, clientY: 160 })
@@ -183,15 +262,12 @@ describe('ContextMapPanel', () => {
   it('renders the message graph and controls modes, branch, locate, and layouts', async () => {
     const h = mount()
     expect(await screen.findByLabelText('User message: root requirement')).toBeTruthy()
-    expect(screen.getByText('3 / 3 selected')).toBeTruthy()
+    expect(screen.getByText('3 / 3 in context')).toBeTruthy()
     expect(h.view.container.querySelectorAll('.react-flow__node')).toHaveLength(3)
     expect(h.view.container.querySelector('.react-flow__edges')).toBeTruthy()
 
     const rootCard = screen.getByLabelText('User message: root requirement')
-    expect(within(rootCard).queryByRole('button')).toBeNull()
-    fireEvent.contextMenu(rootCard, { clientX: 120, clientY: 160 })
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Exclude' }))
-    expect(h.mapActions.setNodeMode).toHaveBeenCalledWith({ sessionId: root, seq: 1 }, 'exclude')
+    expect(within(rootCard).getByLabelText('Include root requirement in context')).toBeTruthy()
     fireEvent.contextMenu(rootCard, { clientX: 120, clientY: 160 })
     fireEvent.click(screen.getByRole('menuitem', { name: 'Branch from Here' }))
     expect(h.mapActions.branch).toHaveBeenCalledWith(h.snapshot.graph!.nodes[0])
@@ -218,22 +294,47 @@ describe('ContextMapPanel', () => {
     h.store.actions.setNodeSelected('root:1', true)
     h.store.actions.setNodeSelected('child:8', true)
     await waitFor(() => { expect(screen.getByText('2 selected')).toBeTruthy() })
-    fireEvent.click(screen.getByRole('button', { name: 'Exclude selected' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Exclude from context' }))
     expect(h.mapActions.setNodeModes).toHaveBeenCalledWith([
       { node: { sessionId: root, seq: 1 }, mode: 'exclude' },
       { node: { sessionId: child, seq: 8 }, mode: 'exclude' },
     ])
-    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    const restore = screen.getByRole('button', { name: 'Restore automatic' })
+    await waitFor(() => { expect((restore as HTMLButtonElement).disabled).toBe(false) })
+    fireEvent.click(restore)
+    expect(h.mapActions.setNodeModes).toHaveBeenLastCalledWith([
+      { node: { sessionId: root, seq: 1 }, mode: 'natural' },
+      { node: { sessionId: child, seq: 8 }, mode: 'natural' },
+    ])
+    const undo = screen.getByRole('button', { name: 'Undo' })
+    await waitFor(() => { expect((undo as HTMLButtonElement).disabled).toBe(false) })
+    fireEvent.click(undo)
     expect(h.mapActions.undo).toHaveBeenCalledOnce()
+  })
+
+  it('describes Reset as clearing durable manual changes', async () => {
+    const h = mount()
+    const reset = await screen.findByRole('button', { name: 'Clear manual changes' })
+    fireEvent.click(reset)
+    expect(h.mapActions.reset).toHaveBeenCalledOnce()
   })
 })
 
 describe('canvas interaction rules', () => {
-  it('cycles only the meaningful override for active and off-path nodes', () => {
-    expect(nextNodeMode(true, 'natural')).toBe('exclude')
-    expect(nextNodeMode(true, 'exclude')).toBe('natural')
-    expect(nextNodeMode(false, 'natural')).toBe('include')
-    expect(nextNodeMode(false, 'include')).toBe('natural')
+  it('derives the effective checkbox result from path membership and manual overrides', () => {
+    expect(effectiveContextIncluded(true, 'natural')).toBe(true)
+    expect(effectiveContextIncluded(true, 'exclude')).toBe(false)
+    expect(effectiveContextIncluded(true, 'include')).toBe(true)
+    expect(effectiveContextIncluded(false, 'natural')).toBe(false)
+    expect(effectiveContextIncluded(false, 'include')).toBe(true)
+    expect(effectiveContextIncluded(false, 'exclude')).toBe(false)
+  })
+
+  it('removes a manual override when the checkbox returns to its automatic result', () => {
+    expect(modeForEffectiveContext(true, true)).toBe('natural')
+    expect(modeForEffectiveContext(true, false)).toBe('exclude')
+    expect(modeForEffectiveContext(false, false)).toBe('natural')
+    expect(modeForEffectiveContext(false, true)).toBe('include')
   })
 
   it('detects rectangles that overlap at an edge', () => {

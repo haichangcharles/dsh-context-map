@@ -25,19 +25,52 @@ export interface CommittedCanvasPosition {
   readonly position: CanvasPoint
 }
 
-/** Cycle the only meaningful Context Plan override for one graph location. */
-export function nextNodeMode(active: boolean, mode: ContextNodeMode): ContextNodeMode {
-  if (active) return mode === 'exclude' ? 'natural' : 'exclude'
-  return mode === 'include' ? 'natural' : 'include'
+/**
+ * Resolve whether a graph message enters the effective model context.
+ *
+ * @param active - Whether the message belongs to the active Session path.
+ * @param mode - The persisted Harness Context Plan mode.
+ * @returns `true` when the message should enter the next model request.
+ */
+export function effectiveContextIncluded(active: boolean, mode: ContextNodeMode): boolean {
+  if (mode === 'include') return true
+  if (mode === 'exclude') return false
+  return active
 }
 
-/** Whether two closed rectangles overlap, including a shared boundary. */
+/**
+ * Translate a checkbox result back to the smallest native Harness override.
+ *
+ * Selecting the automatic path-derived result removes any manual override.
+ *
+ * @param active - Whether the message belongs to the active Session path.
+ * @param included - The effective result requested by the user.
+ * @returns `natural` for the automatic result, otherwise `include` or `exclude`.
+ */
+export function modeForEffectiveContext(active: boolean, included: boolean): ContextNodeMode {
+  if (included === active) return 'natural'
+  return included ? 'include' : 'exclude'
+}
+
+/**
+ * Determine whether two closed rectangles overlap, including a shared boundary.
+ *
+ * @param a - The first rectangle.
+ * @param b - The second rectangle.
+ * @returns `true` when the rectangles overlap.
+ */
 export function intersects(a: CanvasRect, b: CanvasRect): boolean {
   return a.x <= b.x + b.width && a.x + a.width >= b.x
     && a.y <= b.y + b.height && a.y + a.height >= b.y
 }
 
-/** Apply live drag coordinates and separate final coordinates for persistence. */
+/**
+ * Apply live drag coordinates and separate final coordinates for persistence.
+ *
+ * @param current - Current transient positions keyed by graph node ID.
+ * @param changes - React Flow position changes received in this frame.
+ * @returns Updated transient coordinates and completed positions to persist.
+ */
 export function reducePositionChanges(
   current: Readonly<Record<string, CanvasPoint>>,
   changes: readonly CanvasPositionChange[],

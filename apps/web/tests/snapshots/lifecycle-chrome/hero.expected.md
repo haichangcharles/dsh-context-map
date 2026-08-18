@@ -40,7 +40,7 @@
 - button "Send message" [disabled]
 - region "Context Map":
   - heading "Context Map" [level=2]
-  - paragraph: 0 / 0 selected
+  - paragraph: 0 / 0 in context
   - button "Close Context Map": ×
   - text: Search Context Map
   - textbox "Search Context Map":
@@ -52,7 +52,7 @@
   - button "mindmap layout": Mind map
   - button "timeline layout": Timeline
   - button "Selection mode": Select
-  - button "Reset"
+  - button "Clear manual changes"
   - button "Undo" [disabled]
   - button "Redo" [disabled]
   - application:

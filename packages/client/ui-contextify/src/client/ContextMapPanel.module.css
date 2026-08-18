@@ -142,7 +142,16 @@
 
 .nodeHeader { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .role { color: var(--dsw-alias-fg-secondary); font-size: 10px; font-weight: 650; text-transform: uppercase; }
-.modeBadge { border-radius: 999px; padding: 2px 6px; background: rgb(127 140 165 / 12%); font-size: 9px; text-transform: capitalize; }
+.contextCheckbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  color: var(--dsw-alias-fg-secondary);
+  font-size: 9px;
+}
+.contextCheckbox input { width: 14px; height: 14px; margin: 0; accent-color: #4f7df3; cursor: pointer; }
+.contextCheckbox input:disabled { cursor: wait; opacity: 0.58; }
 .preview { min-height: 34px; margin: 7px 0 4px; overflow: hidden; font-size: 11px; line-height: 17px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .preview::before { content: attr(data-preview); }
 .nodeMeta { overflow: hidden; color: var(--dsw-alias-fg-secondary); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }

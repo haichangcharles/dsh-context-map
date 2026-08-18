@@ -164,6 +164,10 @@ describe('web e2e: resident question composer round trip', () => {
     expect(await page.locator('[data-question-key]').count()).toBe(0)
     expect(await selectedRow.locator('[data-state="warning"]').count()).toBe(0)
     await expect.poll(() => page.locator('textarea').first().isEnabled(), { timeout: 10_000 }).toBe(true)
+    // Turn settlement and transcript rendering can win the race with the
+    // Contextify graph refresh. The golden owns this action row, so wait for
+    // its durable, user-visible state instead of snapshotting the gap.
+    await page.getByRole('button', { name: 'Locate DONE in Context Map' }).waitFor({ timeout: 10_000 })
     // Golden of the answered transcript: the ask_user_question round trip
     // rendered as history (question tool row + DONE), composer takeover gone.
     const snapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd)

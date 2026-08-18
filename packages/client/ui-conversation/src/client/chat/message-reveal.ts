@@ -20,7 +20,13 @@ export class MessageRevealRegistry {
   private readonly listeners = new Map<SessionId, Set<() => void>>()
   private readonly bindings = new Map<SessionId, MessageRevealBinding>()
 
-  /** Publish or replace the pending target for one Session. */
+  /**
+   * Publish or replace the pending target for one Session.
+   *
+   * @param sessionId - Session whose Chat view should reveal a message.
+   * @param seq - Durable local event sequence to reveal.
+   * @returns The newly published one-shot request.
+   */
   request(sessionId: SessionId, seq: number): MessageRevealRequest {
     const request = { id: this.nextId++, seq }
     this.requests.set(sessionId, request)
@@ -28,12 +34,22 @@ export class MessageRevealRegistry {
     return request
   }
 
-  /** Read one Session's current request. */
+  /**
+   * Read one Session's current request.
+   *
+   * @param sessionId - Session whose pending request should be read.
+   * @returns The pending request, or `null` when none exists.
+   */
   read(sessionId: SessionId): MessageRevealRequest | null {
     return this.requests.get(sessionId) ?? null
   }
 
-  /** Stable observable binding for an injected Session view. */
+  /**
+   * Create or reuse the stable observable binding for an injected Session view.
+   *
+   * @param sessionId - Session whose request lifecycle the binding exposes.
+   * @returns A stable observable and compare-and-clear binding.
+   */
   binding(sessionId: SessionId): MessageRevealBinding {
     const existing = this.bindings.get(sessionId)
     if (existing !== undefined) return existing
