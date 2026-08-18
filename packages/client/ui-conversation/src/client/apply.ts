@@ -461,6 +461,7 @@ export function apply(ctx: Context): void {
     name: 'details',
     locale: NS,
     children: {
+      'conversation.details.inspector': { kind: 'single', scope: 'session' },
       'conversation.details.pinned': { kind: 'list', scope: 'session' },
       'conversation.details.tool': { kind: 'single', scope: 'session' },
     },

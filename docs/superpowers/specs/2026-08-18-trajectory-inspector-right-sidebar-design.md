@@ -23,22 +23,17 @@ Move the existing Trajectory Inspector from the Trajectory view's internal split
 
 `ui-layout` continues to own the right-column geometry, collapse/reveal behavior, and resize handle. `ui-conversation` continues to own the right-column shell and the Context Map/Details page navigation. `ui-trajectory` continues to own Trajectory record identity, selection semantics, detail tabs, and Inspector rendering.
 
-`ui-conversation` will declare one session-scoped single slot for a native Inspector page. Its Details page renders that slot when occupied and retains the current Tool drawer as the fallback when no Inspector provider exists. `ui-trajectory` registers the Trajectory Inspector into that slot without making `ui-conversation` understand Trajectory records.
+`ui-conversation` declares one session-scoped single slot for a native Inspector page. Its Details page renders that slot when occupied and retains the current Tool drawer as the fallback when no Inspector provider exists. `ui-trajectory` registers a stable Session-derived host into that slot without making `ui-conversation` understand Trajectory records.
 
-### Session-scoped Inspector state
+### Stable slot-host portal
 
-The selection state currently local to `TrajectoryTable` will move into a session-scoped Trajectory Inspector controller. It stores stable selection identities rather than duplicated rendered markup:
+The native Inspector remains the same React instance owned by `TrajectoryTable`. A Session-derived host ID connects it to the right-column Inspector seat through `createPortal`. The Details host remains mounted while Context Map is visible and is hidden rather than destroyed. Therefore selected record/request identity, active detail tab, recent-tab preference, hierarchy navigation, streaming updates, and external inspect acknowledgements continue to use the existing Trajectory state machine without a duplicated store or renderer.
 
-- selected record identity or selected request identity;
-- active detail tab and recent-tab preference;
-- externally requested focus/selection acknowledgements;
-- the minimum UI state required to preserve Inspector continuity while switching right-column pages.
-
-The ledger and the right-sidebar Inspector subscribe to the same controller. The ledger remains responsible for row expansion and scrolling. The Inspector derives its current content from the live Session projection, so streaming completion and history paging update the open detail without copying stale payloads into another store.
+Standalone `TrajectoryTable` consumers that do not supply a native host keep the existing local Inspector fallback. The assembled Harness always supplies the Session host, so no duplicate Inspector appears inside its ledger.
 
 ### Rendering
 
-The existing Inspector body is extracted from `TrajectoryTable` into a Trajectory-owned component. The internal Trajectory split pane, its local width state, and its duplicate resize handle are removed. The extracted component renders inside the native Details page and uses the native right column's width and scrolling boundary.
+The existing Inspector body is portalled from `TrajectoryTable` into the native Details page and uses the native right column's width and scrolling boundary. In the assembled host, its internal resize handle and local width style are omitted because `ui-layout` owns resizing. The standalone fallback retains them for compatibility.
 
 The Inspector close action preserves its native meaning: it clears the active Trajectory selection. It does not switch to Context Map and does not collapse the whole right column. With no selection, Details remains available and shows a neutral Trajectory empty state.
 

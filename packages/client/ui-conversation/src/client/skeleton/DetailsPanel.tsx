@@ -157,9 +157,12 @@ export function DetailsPanel({
           >{t('details.title')}</button>
         </div>
       )}
-      {activePage === 'pinned'
-        ? <div className={css.pinned}>{renderSlot('conversation.details.pinned', {})}</div>
-        : <div className={css.drawer}>{toolDrawer}</div>}
+      {activePage === 'pinned' && (
+        <div className={css.pinned}>{renderSlot('conversation.details.pinned', {})}</div>
+      )}
+      <div className={css.drawer} hidden={activePage !== 'tool'}>
+        {renderSlot('conversation.details.inspector', {}, { fallback: toolDrawer })}
+      </div>
     </div>
   )
 }

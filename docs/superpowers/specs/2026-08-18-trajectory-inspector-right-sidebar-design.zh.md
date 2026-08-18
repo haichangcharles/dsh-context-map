@@ -23,22 +23,17 @@
 
 `ui-layout` 继续拥有右栏几何尺寸、折叠／恢复行为和 resize handle。`ui-conversation` 继续拥有右栏壳层，以及 Context Map／详情页面导航。`ui-trajectory` 继续拥有轨迹记录身份、选择语义、详情标签和 Inspector 渲染。
 
-`ui-conversation` 将声明一个 Session 作用域的单实例原生 Inspector 页面 slot。存在占用者时，详情页渲染该 slot；没有 Inspector provider 时，保留当前 Tool drawer 作为 fallback。`ui-trajectory` 向该 slot 注册 Trajectory Inspector，不让 `ui-conversation` 理解任何轨迹记录。
+`ui-conversation` 声明一个 Session 作用域的单实例原生 Inspector 页面 slot。存在占用者时，详情页渲染该 slot；没有 Inspector provider 时，保留当前 Tool drawer 作为 fallback。`ui-trajectory` 向该 slot 注册由 Session 派生的稳定 host，不让 `ui-conversation` 理解任何轨迹记录。
 
-### Session 作用域的 Inspector 状态
+### 稳定 slot-host portal
 
-当前位于 `TrajectoryTable` 内部的 selection 状态将提升到 Session 作用域的 Trajectory Inspector controller。它保存稳定的选择身份，而不是复制渲染后的内容：
+原生 Inspector 仍是 `TrajectoryTable` 拥有的同一个 React 实例。由 Session 派生的 host ID 通过 `createPortal` 把它连接到右栏 Inspector seat。Context Map 可见时，详情 host 仍保持挂载，只隐藏而不销毁。因此所选记录／Request 身份、当前详情标签、最近标签偏好、Hierarchy 导航、流式更新和外部 inspect 确认继续使用现有 Trajectory 状态机，不复制 store，也不增加第二套 renderer。
 
-- 被选中的记录身份或 Request 身份；
-- 当前详情标签与最近标签偏好；
-- 外部发起的 focus／selection 请求及其确认状态；
-- 在右栏页面切换时保持 Inspector 连续性所需的最小 UI 状态。
-
-ledger 与右栏 Inspector 订阅同一个 controller。ledger 仍负责行展开与滚动。Inspector 从实时 Session projection 解析当前内容，因此流式完成和历史分页会更新已打开的详情，不会把过期 payload 复制进另一个 store。
+没有提供原生 host 的独立 `TrajectoryTable` 消费者继续使用既有局部 Inspector fallback。组装后的 Harness 始终提供 Session host，因此其 ledger 内部不会出现重复 Inspector。
 
 ### 渲染
 
-现有 Inspector body 将从 `TrajectoryTable` 提取成由 Trajectory 拥有的组件。轨迹内部 split pane、局部宽度状态和重复 resize handle 将被删除。提取后的组件在原生详情页内渲染，并使用原生右栏的宽度和滚动边界。
+现有 Inspector body 从 `TrajectoryTable` portal 到原生详情页，并使用原生右栏的宽度和滚动边界。在组装 host 中，它不渲染内部 resize handle，也不应用局部宽度样式，因为 resize 归 `ui-layout` 所有。独立 fallback 为兼容性继续保留这些能力。
 
 Inspector 的关闭操作保留原生语义：清空当前轨迹 selection。它不会切换到 Context Map，也不会折叠整个右栏。没有 selection 时，详情页仍可进入，并显示中性的轨迹空状态。
 

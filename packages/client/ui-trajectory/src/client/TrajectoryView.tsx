@@ -66,6 +66,8 @@ function partialStructureSignature(partial: ConversationSnapshot['partial']): st
 
 /** Session-bound controls not already supplied by the conversation view slot. */
 export interface TrajectoryViewInjected {
+  /** Stable native right-column target for the Trajectory Inspector portal. */
+  inspectorHostId?: string
   hooks: {
     duration: SnapshotStore<boolean>
   }
@@ -118,7 +120,7 @@ function addUsage(
 }
 
 export function TrajectoryView({
-  useSession, useDuration, loadOlder, setActualDuration,
+  useSession, useDuration, loadOlder, setActualDuration, inspectorHostId,
   inspect, onInspectDone, t,
 }: ConvViewProps & InjectFace<TrajectoryViewInjected> & PropsLocale<'trajectory'>) {
   const [collapsedTurns, setCollapsedTurns] = useState<ReadonlySet<number>>(EMPTY_TURN_IDS)
@@ -478,6 +480,8 @@ export function TrajectoryView({
       />
       <div className={css.ledger}>
         <TrajectoryTable
+          inspectorEmptyLabel={t('details.empty')}
+          inspectorHostId={inspectorHostId}
           requestNumbers={requestNumbers}
           turns={timelineTurns}
           streamingCells={streamingCells}

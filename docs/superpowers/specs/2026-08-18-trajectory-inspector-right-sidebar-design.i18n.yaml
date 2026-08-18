@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/superpowers/specs/2026-08-18-trajectory-inspector-right-sidebar-design.md
-2026-08-18-trajectory-inspector-right-sidebar-design.md: 529bb012d2b7f1b6272efa8e6bc0c6197cef57e6
-2026-08-18-trajectory-inspector-right-sidebar-design.zh.md: a20ea0f8d602aaea12989fc171edb048caee2f0a
+2026-08-18-trajectory-inspector-right-sidebar-design.md: 97081bb9641056018c98d6350299cc92fa28b04e
+2026-08-18-trajectory-inspector-right-sidebar-design.zh.md: a42976546500716cc8cb7dab64cc7d159c03163b

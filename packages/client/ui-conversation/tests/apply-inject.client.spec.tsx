@@ -342,6 +342,7 @@ describe('details inject API', () => {
   it('details injects the one layout callback; selection rides the shared store instead', async () => {
     const b = await bench()
     const entry = b.entryOf('details')
+    expect(Object.keys(entry.children ?? {})).toContain('conversation.details.inspector')
     const injected = (entry.inject as unknown as (sessionId: SessionId) => DetailsInjected)(ROOT)
     expect(Object.keys(injected)).toEqual([
       'closeDetails', 'showPinnedDetails', 'showToolDetails', 'hooks',

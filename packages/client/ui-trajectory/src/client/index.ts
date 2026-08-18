@@ -18,6 +18,9 @@ import { registerTrajectoryRequestHeaderDefinition } from './trajectory-request-
 import { registerTrajectoryConversationView } from './trajectory-snapshot-builder.ts'
 import { registerTrajectoryToolDefinition } from './trajectory-tool-definition.ts'
 import { TrajectoryView, type TrajectoryViewInjected } from './TrajectoryView.tsx'
+import {
+  TrajectoryInspectorSeat, trajectoryInspectorHostId,
+} from './TrajectoryInspectorSeat.tsx'
 
 /** Required services: the conversation slot, registries, ordinary Session paging, and the locale service. */
 export const inject = ['slots', 'conversationEvents', 'conversationViews', 'sessions', 'locale']
@@ -40,6 +43,10 @@ export function apply(ctx: Context): void {
   registerTrajectoryToolDefinition(ctx)
   registerTrajectoryCompactionDefinitions(ctx)
   registerTrajectoryConversationView(ctx)
+  ctx.slots.inject('conversation.details.inspector', () => ctx.slots.register({
+    name: 'conversation.details.inspector',
+    inject: (sessionId: SessionId) => ({ hostId: trajectoryInspectorHostId(sessionId) }),
+  }, TrajectoryInspectorSeat))
   ctx.slots.inject('conversation.view', () => ctx.slots.register({
     name: 'conversation.view',
     id: 'trajectory',
@@ -52,6 +59,7 @@ export function apply(ctx: Context): void {
         throw new Error(`ui-trajectory: session "${sessionId}" is unavailable`)
       }
       return {
+        inspectorHostId: trajectoryInspectorHostId(sessionId),
         hooks: { duration },
         loadOlder: async () => {
           const before = session.getSnapshot().views.get('trajectory')

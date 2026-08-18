@@ -874,6 +874,19 @@
   background: var(--dsw-alias-bg-layer-1);
 }
 
+.details[data-external] {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  border-left: 0;
+}
+
+.inspectorEmpty {
+  padding: 16px;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xs-13);
+}
+
 .detailsResizeHandle {
   position: absolute;
   z-index: 6;

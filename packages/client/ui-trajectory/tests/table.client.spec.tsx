@@ -2,7 +2,7 @@
 /** Trajectory ledger selection, details, status, and fold behavior. */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { TrajectoryTable } from '../src/client/TrajectoryTable.tsx'
 import type { TrajectoryTurnModel } from '../src/client/layout.ts'
 
@@ -219,6 +219,27 @@ describe('TrajectoryTable', () => {
     expect(row.getAttribute('aria-selected')).toBe('false')
     expect(screen.queryByRole('complementary', { name: 'Event details' })).toBeNull()
     expect(onClearSelection).toHaveBeenCalledOnce()
+  })
+
+  it('portals the native Inspector into the supplied right-sidebar host', () => {
+    const host = document.createElement('div')
+    host.id = 'trajectory-inspector-test-host'
+    document.body.append(host)
+    const view = render(
+      <TrajectoryTable
+        turns={TURNS}
+        {...FOLD_PROPS}
+        inspectorHostId={host.id}
+        inspectorEmptyLabel="Select a trajectory record"
+      />,
+    )
+
+    expect(within(host).getByText('Select a trajectory record')).toBeTruthy()
+    fireEvent.click(screen.getByRole('row', { name: /ASSISTANT/ }))
+
+    expect(view.container.querySelector('[aria-label="Event details"]')).toBeNull()
+    expect(within(host).getByRole('complementary', { name: 'Event details' })).toBeTruthy()
+    host.remove()
   })
 
   it('keeps the selected record when older rows shift projection indexes', () => {

@@ -42,7 +42,8 @@ const SessionProviderStub: SessionProviderComponent = ({ children }) => children
 
 /** Observe the owner currency without importing the Tool details renderer. */
 function renderToolDetailsProbe(owners?: DetailsToolOwnerProps[]): DetailsSlotProps['renderSlot'] {
-  return (_key, owner) => {
+  return (key, owner, options) => {
+    if (key === 'conversation.details.inspector') return options?.fallback
     owners?.push(owner as unknown as DetailsToolOwnerProps)
     return <div data-testid="tool-details-seat" />
   }
@@ -147,7 +148,7 @@ describe('render branch tails', () => {
     expect(view.getByText('该调用不在当前窗口内')).toBeTruthy()
   })
 
-  it('switches pinned content and Tool details as independent right-sidebar pages', () => {
+  it('keeps the native Inspector mounted while manually switching right-sidebar pages', () => {
     localStorage.clear()
     const snap = snapshotBase()
     const chat = createChatStore().create()
@@ -160,7 +161,9 @@ describe('render branch tails', () => {
     })
     const renderSlot = ((key: string) => key === 'conversation.details.pinned'
       ? <div>Context Map mock</div>
-      : <div data-testid="tool-details-seat" />) as DetailsSlotProps['renderSlot']
+      : key === 'conversation.details.inspector'
+        ? <div data-testid="trajectory-inspector-seat">Trajectory Inspector mock</div>
+        : <div data-testid="tool-details-seat" />) as DetailsSlotProps['renderSlot']
     const detailsPage = createSnapshotStore<{ page: 'pinned' | 'tool'; revision: number }>({
       page: 'pinned', revision: 0,
     })
@@ -198,27 +201,29 @@ describe('render branch tails', () => {
     expect(view.getByRole('tab', { name: 'Context Map' })).toBeTruthy()
     expect((view.getByRole('tab', { name: '详情' }) as HTMLButtonElement).disabled).toBe(false)
     expect(view.getByText('Context Map mock')).toBeTruthy()
-    expect(view.queryByText('该调用不在当前窗口内')).toBeNull()
+    const inspectorSeat = view.getByTestId('trajectory-inspector-seat')
+    expect(inspectorSeat.closest('[hidden]')).not.toBeNull()
 
     fireEvent.click(view.getByRole('tab', { name: '详情' }))
     expect(view.queryByText('Context Map mock')).toBeNull()
-    expect(view.getByText('点击消息流中的工具行查看详情')).toBeTruthy()
+    expect(inspectorSeat.closest('[hidden]')).toBeNull()
+    expect(view.getByText('Trajectory Inspector mock')).toBeTruthy()
     expect(chat.getSnapshot().selection).toBeNull()
 
     fireEvent.click(view.getByRole('tab', { name: 'Context Map' }))
     act(() => { chat.actions.select({ turnSeq: 1, callId: 'ghost' } satisfies SelectionTarget) })
     fireEvent.click(view.getByRole('tab', { name: '详情' }))
-    expect(view.getByText('该调用不在当前窗口内')).toBeTruthy()
+    expect(view.getByText('Trajectory Inspector mock')).toBeTruthy()
     expect(chat.getSnapshot().selection).toEqual({ turnSeq: 1, callId: 'ghost' })
 
     fireEvent.click(view.getByRole('tab', { name: 'Context Map' }))
     expect(view.getByText('Context Map mock')).toBeTruthy()
-    expect(view.queryByText('该调用不在当前窗口内')).toBeNull()
+    expect(inspectorSeat.closest('[hidden]')).not.toBeNull()
     expect(chat.getSnapshot().selection).toEqual({ turnSeq: 1, callId: 'ghost' })
 
     fireEvent.click(view.getByRole('tab', { name: '详情' }))
-    fireEvent.click(view.getByRole('button', { name: '关闭详情' }))
-    expect(closeDetails).toHaveBeenCalledOnce()
+    expect(inspectorSeat.closest('[hidden]')).toBeNull()
+    expect(closeDetails).not.toHaveBeenCalled()
     expect(chat.getSnapshot().selection).toEqual({ turnSeq: 1, callId: 'ghost' })
   })
 

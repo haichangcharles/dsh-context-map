@@ -131,6 +131,16 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'conversation.details.tool': { kind: 'single'; scope: 'session'; owner: DetailsToolOwnerProps }
     /**
+     * A feature-owned native Inspector rendered on the Details subpage.
+     * The provider owns selection and presentation; the conversation shell
+     * only supplies the stable right-column page host.
+     */
+    'conversation.details.inspector': {
+      kind: 'single'
+      scope: 'session'
+      owner: Record<string, never>
+    }
+    /**
      * Additive, always-visible content in the conversation details column.
      * Entries share the column with the transient Tool drawer instead of
      * replacing it; each entry owns its own header and close affordance.
@@ -759,7 +769,9 @@ export interface DetailsInjected {
 
 /** Full details-slot props: selection store, pinned and Tool seats, injected layout callbacks, and locale. */
 export type DetailsSlotProps = PropsRuntime<'details'>
-  & PropsRenderSlots<'conversation.details.pinned' | 'conversation.details.tool'>
+  & PropsRenderSlots<
+    'conversation.details.inspector' | 'conversation.details.pinned' | 'conversation.details.tool'
+  >
   & PropsStore<ChatStore> & InjectFace<DetailsInjected> & PropsLocale<'conversation'>
 
 /** Owner share common to the hero / New-Session Workspace pickers. */

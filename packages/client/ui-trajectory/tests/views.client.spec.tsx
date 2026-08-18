@@ -191,7 +191,10 @@ async function bench(snapshot = historySnapshot(NODES)) {
   // The conversation entry's role: declare the ring, then seed the chat entry.
   slots.register({
     name: 'root',
-    children: { 'conversation.view': { kind: 'list', scope: 'session' } },
+    children: {
+      'conversation.details.inspector': { kind: 'single', scope: 'session' },
+      'conversation.view': { kind: 'list', scope: 'session' },
+    },
   }, (_p: { renderSlot?: unknown }) => null)
   const chatBody = vi.fn(() => <div data-testid="chat-body" />)
   slots.register(
@@ -305,6 +308,7 @@ describe('plugin registration', () => {
       { id: 'chat', label: 'Chat' },
       { id: 'trajectory', label: 'Trajectory' },
     ])
+    expect(b.slots.entries('conversation.details.inspector')).toHaveLength(1)
   })
 
   it('fiber disposal removes the tab and leaves chat standing', async () => {

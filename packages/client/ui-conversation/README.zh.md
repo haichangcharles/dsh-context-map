@@ -18,7 +18,7 @@ Chat 业务行是彼此独立的注册表贡献，不是封闭的内建联合。
 
 会话页头会在标题旁渲染会话作用域的 `'conversation.session.header.actions'` 列表，并在最右侧渲染独立的 `'conversation.session.header.utilities'` 列表。会话上下文和谱系控件保留在 `actions` 中；可选的会话工具不会改变它们的顺序或位置。编辑器链的 currency 包含当前对话 `session`；ui-subagent 会选取 one-shot 或 parent 不可用的已寻址会话，并按原因显示只读文案，而普通 InputBar 会让所有已寻址 child 仅保留 Send，因为继续执行服务不公开逐 Activation 取消操作，`session.cancel` 也会绕过其所有权。
 
-详情壳层声明会话作用域的 `conversation.details.pinned` 列表，供必须与 Chat 同屏的持久面板使用。没有占用者时，工具详情保留原有的全高度树和关闭行为。有占用者时，常驻内容与 Tool Details 会成为同一条原生 details column 中互斥的子页。尚未选择 Tool 时，Details 标签仍可点击，并显示原生空状态引导；检查 Tool 会选择 Tool 页，常驻 surface 请求会选择 pinned 页，切换页面时 Tool selection 会保留。侧栏边框、缩放手柄、宽度让步与关闭过渡仍完全由 `ui-layout` 拥有。占用状态通过 slot 账本 observable 跟随晚注册与 dispose，详见[常驻详情决策](../../../.agents/notes/implemented/architecture/2026-08-14-pinned-conversation-details-slot.md)。
+详情壳层声明 Session 作用域的 `conversation.details.pinned` 列表供常驻面板使用，并声明单实例 `conversation.details.inspector` seat 供功能包提供原生 Inspector。存在 pinned 占用者时，Context Map 与详情成为同一条原生 details column 中互斥的子页。Context Map 可见时 Inspector seat 仍保持挂载，因此 provider 可以保留 selection 和内部标签状态；此时只隐藏页面。没有 Inspector provider 时，详情退回现有 Tool drawer。页面切换保持显式：选择记录不会请求切换到详情。侧栏边框、缩放手柄、宽度让步与关闭过渡仍完全由 `ui-layout` 拥有。占用状态通过 slot 账本 observable 跟随晚注册与 dispose，详见[常驻详情决策](../../../.agents/notes/implemented/architecture/2026-08-14-pinned-conversation-details-slot.md)。
 
 已记录的非用户消息渲染为默认折叠的展开项，标题栏先给出运行时为该消息投影出的角色——注入为 `上下文注入`，召回为 `跨会话召回`——其后是该投影从持久来源读出的生产者名称，因此读者无需展开即可区分 skill（技能）目录、工作区指令文件与被召回的会话。来源未提供生产者名称时只显示角色。共享的 `DisclosureRow` 原子组件让该上下文界面与消息流中的其他紧凑行保持相同几何，同时保留上下文语义：展开内容区的高度会随内容自适应，最大为 141px，超出后滚动，且不会合成工具状态或摘要（[历史展开项决策](../../../.agents/notes/archived/feature/2026-07-30-web-context-injection-disclosure.md)、[生产者标签决策](../../../.agents/notes/implemented/feature/2026-08-04-web-context-source-and-steer-marks.md)）。该内容区按生产方在持久来源上声明的形态渲染：`instructions` 在正文之上列出它对账过的文件，`catalog` 列出来源记录的条目而非面向模型的正文，其余取值——未声明、本版本不认识、或字段不可用——一律渲染 opaque 内容区，即按真实换行展示面向模型的文本，并把剩余来源字段列出。opaque 不是兜底剩余物而是有文档的默认：恢复的、fork 的、外部写入的日志，无论其生产方是否挂载在此处，都必须渲染得出来。持久或待处理的 steering（中途引导）气泡沿用用户气泡的呈现，不加任何装饰；transcript 中唯一的 steering 信号是它出现在轮次中途的位置。
 
@@ -61,7 +61,7 @@ Host 带 placement 的 `session/queue` 快照也会携带待处理 steering。Qu
 ## 已知限制与暂缓事项
 
 - **统计行的回退折算只覆盖窗口内消息流**：未组合 `sessionStats` 投影单元的装配中，所有数字由快照的 assistant `timing` 与工具 call/result 配对折算，落在已加载事件窗口之外的节点（更早的历史）不计入，数字随加载页数增长。
-- **Tool 行深度选择仍不完整**：Details 子页始终可进入，在存在 Tool selection 前显示原生空状态引导；但组装后的消息流尚未调用 `ChatViewInjected.openDetails`。没有 Input/Output/Metadata 切换、Prev/Next 步进，也没有 trajectory 深链接。
+- **Chat 消息流的 Tool 行深度选择仍不完整**：组装后的 Trajectory provider 拥有原生详情页，而普通 Chat 消息行仍未调用 `ChatViewInjected.openDetails`。没有 Inspector provider 时可进入 fallback Tool drawer，但组装后的 Chat 行不会为它提供 selection。Chat 中没有 Input/Output/Metadata 切换或 Prev/Next 步进。
 - **assistant 逐消息分页是预留 slot**：设计中已有图稿，尚未实现。已定稿的内容 IconActions 行（复制／时钟／分支）只挂在每个已结束轮次中最后一条带 text 内容的 assistant 下；轮次中间的叙述、纯 Think 节点，以及仍在产出步骤的轮次里的所有节点都不带 chrome。除非该消息同时也是已完成轮次的最后一个 transcript 节点，否则分支保持禁用；启用后，它会 fork 到该轮次末尾，在 client 端递增继承标题并打开子会话。fork 或改名失败时源会话保持选中（[决策](../../../.agents/notes/implemented/bug-fix/2026-08-02-message-fork-actions-require-completed-turn-tail.md)）。
 - **已发送的 user 消息无法编辑**：user 气泡保留时钟和复制；分支只存在于 assistant 回答之下（[决策](../../../.agents/notes/implemented/simplification/2026-08-06-user-bubbles-drop-the-branch-action.md)）。编辑功能要与其背后的能力一起回归：既需要针对已定稿 user 消息的 client 变更，也需要 host 侧对已经消费过它的轮次给出行为（[决策](../../../.agents/notes/implemented/simplification/2026-07-31-drop-user-message-edit-stub.md)）。
 - **others 工具行的闪光图标是手绘近似版本**：无法在本地导出设计字形的矢量几何；等到存在精确导出后再将其提升到 ui-primitives。
