@@ -125,6 +125,7 @@ function fixture(): ContextifyControllerSnapshot {
         { id: 'e2', source: 'root:2', target: 'child:8', sessionIds: [child] },
       ],
     },
+    graphRevision: 'family-20',
   }
 }
 
@@ -494,7 +495,7 @@ describe('ContextMapPanel', () => {
   it('reviews recommendations without changing checkboxes before explicit acceptance', async () => {
     const original = fixture()
     const proposal = {
-      base: { planRevision: 3, graphAsOfSeq: 20, activeSessionId: child },
+      base: { planRevision: 3, graphRevision: 'family-20', activeSessionId: child },
       selection: [{
         nodeId: 'root:1', action: 'exclude' as const, reason: 'Superseded', confidence: 'high' as const,
       }],
@@ -536,6 +537,7 @@ describe('ContextMapPanel', () => {
       ...record,
       replacement: {
         preview: '[Earlier answer removed]', reason: 'obsolete', role: 'assistant' as const,
+        original: 'old draft',
         originalAvailable: true as const,
       },
     } : record)
@@ -630,6 +632,7 @@ describe('ContextifyController', () => {
       get: async () => currentView,
       familyPage: async () => ({
         asOfSeq: currentView.graphAsOfSeq,
+        revision: `family-${String(currentView.graphAsOfSeq)}`,
         rootSessionId: root,
         activeSessionId: child,
         sessions: fixture().graph!.sessions,
@@ -651,7 +654,7 @@ describe('ContextifyController', () => {
     const recommending = controller.recommend()
     expect(controller.getSnapshot().recommendation.phase).toBe('running')
     const proposal = {
-      base: { planRevision: 3, graphAsOfSeq: 20, activeSessionId: child },
+      base: { planRevision: 3, graphRevision: 'family-20', activeSessionId: child },
       selection: [], cleanup: [],
     }
     resolveProposal(proposal)
@@ -675,6 +678,7 @@ describe('ContextifyController', () => {
       get: async () => (await viewPromise)!,
       familyPage: async () => ({
         asOfSeq: 20,
+        revision: 'family-20',
         rootSessionId: root,
         activeSessionId: child,
         sessions: fixture().graph!.sessions,
@@ -688,7 +692,7 @@ describe('ContextifyController', () => {
       undo: vi.fn(async () => fixture().view!),
       redo: vi.fn(async () => fixture().view!),
       recommend: vi.fn(async () => ({
-        base: { planRevision: 3, graphAsOfSeq: 20, activeSessionId: child },
+        base: { planRevision: 3, graphRevision: 'family-20', activeSessionId: child },
         selection: [], cleanup: [],
       })),
       replaceNode: vi.fn(async () => fixture().view!),

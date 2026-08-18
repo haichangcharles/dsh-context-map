@@ -13,7 +13,12 @@ function validSize(width: number, height: number): ContextMapNodeSize | undefine
   return { width: roundToHalfPixel(width), height: roundToHalfPixel(height) }
 }
 
-/** Fold React Flow dimension notifications without publishing measurement noise. */
+/**
+ * Fold React Flow dimension notifications without publishing measurement noise.
+ * @param current - Previously accepted normalized measurements.
+ * @param changes - React Flow changes that may contain new rendered dimensions.
+ * @returns The original table when equivalent, or a new table with meaningful measurements.
+ */
 export function reduceMeasuredSizes(
   current: ContextMapNodeSizes,
   changes: readonly NodeChange[],
@@ -33,7 +38,12 @@ export function reduceMeasuredSizes(
   return next ?? current
 }
 
-/** Drop measurements for nodes removed by graph projection or archive filtering. */
+/**
+ * Drop measurements for nodes removed by graph projection or archive filtering.
+ * @param current - Previously accepted normalized measurements.
+ * @param nodeIds - Canonical node IDs still visible in the current projection.
+ * @returns The original table when unchanged, or a filtered measurement table.
+ */
 export function reconcileMeasuredSizes(
   current: ContextMapNodeSizes,
   nodeIds: readonly string[],

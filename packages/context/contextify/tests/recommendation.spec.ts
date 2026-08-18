@@ -9,7 +9,7 @@ import {
 const root = 'recommend-root' as SessionId
 const base: ContextRecommendationBase = {
   planRevision: 3,
-  graphAsOfSeq: 20,
+  graphRevision: 'family-20',
   activeSessionId: root,
 }
 const graph: ContextFamilyGraph = {

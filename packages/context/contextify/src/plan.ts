@@ -64,8 +64,7 @@ function assertPlanState(state: ContextPlanState): void {
       && (!Number.isSafeInteger(replacement.originalEventSeq) || replacement.originalEventSeq < 0)) {
       throw new Error('Contextify replacement original event sequence must be null or non-negative')
     }
-    if ((replacement.role !== 'user' && replacement.role !== 'assistant')
-      || replacement.kind !== 'placeholder' || replacement.reason.trim().length === 0) {
+    if (replacement.reason.trim().length === 0) {
       throw new Error('Contextify replacement metadata is invalid')
     }
     replacementNodeIds.add(replacement.nodeId)
@@ -138,7 +137,11 @@ export function isContextPlanSnapshot(value: unknown): value is ContextPlanSnaps
     && value.replacements.every(isReplacementNode)
 }
 
-/** Normalize supported durable plans without appending a migration event. */
+/**
+ * Normalize supported durable plans without appending a migration event.
+ * @param value - Unknown current or legacy Context Plan event payload.
+ * @returns A frozen v3 plan for supported data, otherwise null.
+ */
 export function normalizeContextPlanSnapshot(value: unknown): ContextPlanSnapshot | null {
   if (isContextPlanSnapshot(value)) return freezePlan(value)
   if (!isRecord(value) || value.kind !== 'contextify/plan' || value.version !== 2

@@ -86,6 +86,12 @@ describe('ContextifyService native Session family', () => {
       inheritsParentContext: false,
       start: async (request) => {
         captured = request
+        // The shipped spawn provider publishes a live subagent Session until
+        // run.dispose(). Context Map lineage must ignore that implementation
+        // detail or every successful recommendation invalidates itself.
+        ctx.sessions.create(SessionId('review-child'), {
+          meta: { parentSession: session.id, origin: 'subagent', delegationDepth: 1 },
+        })
         return {
           id: SessionId('review-child'),
           localAgent: undefined,
@@ -106,19 +112,58 @@ describe('ContextifyService native Session family', () => {
     const view = ctx.contextify.get(active.agent)
     const before = session.seq
 
+    const page = await ctx.contextify.familyPage(active.agent, undefined, 100)
     const proposal = await ctx.contextify.recommend(active.agent, {
       planRevision: view.plan.revision,
-      graphAsOfSeq: view.graphAsOfSeq,
+      graphRevision: page.revision,
       activeSessionId: session.id,
-    })
+    }, 'x'.repeat(200_000))
 
     expect(proposal.selection).toMatchObject([{ action: 'exclude', reason: 'Superseded' }])
     expect(captured?.parent.id).toBe(active.agent.id)
     expect(captured?.toolFilter).toEqual({ allow: [] })
     expect(captured?.agentOptions).toEqual({ maxTokens: 4_000 })
     expect(captured?.outputSchema).toMatchObject({ type: 'object' })
+    expect((captured?.prompt[0] as { text: string }).text.length).toBeLessThan(102_000)
     expect(disposed).toBe(true)
     expect(session.seq).toBe(before)
+  })
+
+  it('rejects a recommendation when any Session in the reviewed family changes during the run', async () => {
+    const { ctx, start } = await harness()
+    const root = ctx.sessions.create(SessionId('recommend-stale-root'))
+    start(root)
+    const prefix = appendClosedTurn(root, 1, 'prefix', 'answer')
+    const activeSession = ctx.sessions.fork(root, prefix.boundary, SessionId('recommend-stale-active'))
+    const active = start(activeSession)
+    const sibling = ctx.sessions.fork(root, prefix.boundary, SessionId('recommend-stale-sibling'))
+    start(sibling)
+    let resolveResult!: (value: {
+      output: never[]
+      stopReason: 'completed'
+      structured: { selection: never[]; cleanup: never[] }
+    }) => void
+    const result = new Promise<Parameters<typeof resolveResult>[0]>((resolve) => { resolveResult = resolve })
+    ctx.subagents.registerProvider({
+      name: 'spawn',
+      capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      inheritsParentContext: false,
+      start: async () => ({
+        id: SessionId('recommend-stale-review'), localAgent: undefined, result,
+        dispose: async () => {},
+      }),
+    })
+    const view = ctx.contextify.get(active.agent)
+    const page = await ctx.contextify.familyPage(active.agent, undefined, 100)
+    const pending = ctx.contextify.recommend(active.agent, {
+      planRevision: view.plan.revision,
+      graphRevision: page.revision,
+      activeSessionId: activeSession.id,
+    })
+    appendClosedTurn(sibling, 2, 'new sibling fact')
+    resolveResult({ output: [], stopReason: 'completed', structured: { selection: [], cleanup: [] } })
+
+    await expect(pending).rejects.toMatchObject({ code: 'CONTEXTIFY_STALE_GRAPH' })
   })
 
   it('migrates a legacy same-Session plan to v3 Natural before compilation', async () => {
@@ -201,7 +246,8 @@ describe('ContextifyService native Session family', () => {
       owner: nodeBefore.owner,
       branchAtSeq: nodeBefore.branchAtSeq,
       replacement: {
-        preview: '[Earlier user requirement removed]', originalAvailable: true, role: 'user',
+        preview: '[Earlier user requirement removed]', original: 'private requirement',
+        originalAvailable: true, role: 'user',
       },
     })
     expect(graphAfter.edges).toEqual(graphBefore.edges)
@@ -273,6 +319,61 @@ describe('ContextifyService native Session family', () => {
       'exclude',
     )).rejects.toMatchObject({ code: 'CONTEXTIFY_STALE_REVISION' })
     expect(activeSession.seq).toBe(afterInclude)
+  })
+
+  it('restores original semantics after an off-path placeholder is included', async () => {
+    const { ctx, start } = await harness()
+    const root = ctx.sessions.create(SessionId('restore-off-path-root'))
+    start(root)
+    const prefix = appendClosedTurn(root, 1, 'prefix', 'answer')
+    const activeSession = ctx.sessions.fork(root, prefix.boundary, SessionId('restore-off-path-active'))
+    const active = start(activeSession)
+    const sibling = ctx.sessions.fork(root, prefix.boundary, SessionId('restore-off-path-sibling'))
+    start(sibling)
+    const siblingTurn = appendClosedTurn(sibling, 2, 'original sibling semantics')
+    const initial = ctx.contextify.get(active.agent)
+    const replaced = await ctx.contextify.replaceNode(
+      active.agent, { revision: initial.plan.revision },
+      { sessionId: sibling.id, seq: siblingTurn.userSeq }, '[Sibling detail removed]', 'obsolete',
+    )
+    const included = await ctx.contextify.setNodeMode(
+      active.agent, { revision: replaced.plan.revision },
+      { sessionId: sibling.id, seq: siblingTurn.userSeq }, 'include',
+    )
+    expect(ctx.contextCompiler.compile({ session: activeSession, turn: 2, step: 1 }).messages
+      .flatMap(message => message.content).filter(block => block.type === 'text').map(block => block.text))
+      .toContain('[Sibling detail removed]')
+
+    await ctx.contextify.restoreNode(
+      active.agent, { revision: included.plan.revision },
+      { sessionId: sibling.id, seq: siblingTurn.userSeq },
+    )
+    const compiledText = ctx.contextCompiler.compile({ session: activeSession, turn: 2, step: 1 }).messages
+      .flatMap(message => message.content).filter(block => block.type === 'text').map(block => block.text)
+    expect(compiledText).toContain('original sibling semantics')
+    expect(compiledText).not.toContain('[Sibling detail removed]')
+  })
+
+  it('rejects accepted recommendations after a sibling changes', async () => {
+    const { ctx, start } = await harness()
+    const root = ctx.sessions.create(SessionId('accept-stale-root'))
+    start(root)
+    const prefix = appendClosedTurn(root, 1, 'prefix')
+    const activeSession = ctx.sessions.fork(root, prefix.boundary, SessionId('accept-stale-active'))
+    const active = start(activeSession)
+    const sibling = ctx.sessions.fork(root, prefix.boundary, SessionId('accept-stale-sibling'))
+    start(sibling)
+    const page = await ctx.contextify.familyPage(active.agent, undefined, 100)
+    const view = ctx.contextify.get(active.agent)
+    appendClosedTurn(sibling, 2, 'late sibling change')
+
+    await expect(ctx.contextify.setNodeModes(
+      active.agent,
+      { revision: view.plan.revision },
+      [{ node: { sessionId: activeSession.id, seq: prefix.userSeq }, mode: 'exclude' }],
+      page.revision,
+    )).rejects.toMatchObject({ code: 'CONTEXTIFY_STALE_GRAPH' })
+    expect(ctx.contextify.get(active.agent).plan.revision).toBe(view.plan.revision)
   })
 
   it('resets inherited choices when a native fork child starts', async () => {

@@ -545,16 +545,34 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'Family metadata, all edges, and the requested canonical node page.',
       },
       {
+        signature: '@Remote(\'recommend\') async recommend( agent: Agent, base: ContextRecommendationBase, objective?: string, ): Promise<ContextRecommendationProposal>',
+        description: 'Analyze one exact graph snapshot through an isolated Harness one-shot Agent.',
+        parameters: [{ name: 'agent', description: 'Live idle Agent whose route and native Session family are reviewed.' }, { name: 'base', description: 'Expected plan revision, graph watermark, and active Session identity.' }, { name: 'objective', description: 'Optional review objective; the latest user input is the fallback.' }],
+        returns: 'An ephemeral, validated proposal that has not mutated the Context Plan.',
+      },
+      {
         signature: '@Remote(\'setNodeMode\') async setNodeMode( agent: Agent, ref: ContextPlanRef, node: ContextMessageRef, mode: \'natural\' | \'include\' | \'exclude\', ): Promise<ContextifyView>',
         description: 'Set or clear one message\'s explicit context mode.',
         parameters: [{ name: 'agent', description: 'Live Agent whose Session receives durable events.' }, { name: 'ref', description: 'Expected current plan revision.' }, { name: 'node', description: 'Message location in one Session in the active family.' }, { name: 'mode', description: 'Natural behavior or the meaningful on-path/off-path override.' }],
         returns: 'The view after the mutation commits.',
       },
       {
-        signature: '@Remote(\'setNodeModes\') async setNodeModes( agent: Agent, ref: ContextPlanRef, mutations: readonly ContextNodeMutation[], ): Promise<ContextifyView>',
+        signature: '@Remote(\'setNodeModes\') async setNodeModes( agent: Agent, ref: ContextPlanRef, mutations: readonly ContextNodeMutation[], expectedGraphRevision?: string, ): Promise<ContextifyView>',
         description: 'Apply several node-mode changes as one Context Plan revision.',
-        parameters: [{ name: 'agent', description: 'Live Agent whose Session receives durable events.' }, { name: 'ref', description: 'Expected current plan revision.' }, { name: 'mutations', description: 'Ordered message-mode replacements.' }],
+        parameters: [{ name: 'agent', description: 'Live Agent whose Session receives durable events.' }, { name: 'ref', description: 'Expected current plan revision.' }, { name: 'mutations', description: 'Ordered message-mode replacements.' }, { name: 'expectedGraphRevision', description: 'Optional family revision required by recommendation acceptance.' }],
         returns: 'The view after one complete plan commits.',
+      },
+      {
+        signature: '@Remote(\'replaceNode\') async replaceNode( agent: Agent, ref: ContextPlanRef, nodeRef: ContextMessageRef, placeholderText: string, reason: string, expectedGraphRevision?: string, ): Promise<ContextifyView>',
+        description: 'Replace one node\'s model-visible semantics with a reversible role-preserving placeholder.',
+        parameters: [{ name: 'agent', description: 'Live idle Agent whose Session receives the snapshot and plan events.' }, { name: 'ref', description: 'Expected current Context Plan revision.' }, { name: 'nodeRef', description: 'Native family message to retain structurally and replace semantically.' }, { name: 'placeholderText', description: 'Bounded model-visible placeholder content.' }, { name: 'reason', description: 'Human-visible reason retained with the replacement overlay.' }, { name: 'expectedGraphRevision', description: 'Optional family revision required by cleanup confirmation.' }],
+        returns: 'The committed v3 Contextify view.',
+      },
+      {
+        signature: '@Remote(\'restoreNode\') async restoreNode(agent: Agent, ref: ContextPlanRef, nodeRef: ContextMessageRef): Promise<ContextifyView>',
+        description: 'Restore a node\'s original semantics while preserving Include/Exclude state.',
+        parameters: [{ name: 'agent', description: 'Live idle Agent whose Session owns the replacement overlay.' }, { name: 'ref', description: 'Expected current Context Plan revision.' }, { name: 'nodeRef', description: 'Native family message whose replacement is removed.' }],
+        returns: 'The committed Contextify view with original semantics restored.',
       },
       {
         signature: '@Remote(\'reset\') reset(agent: Agent, ref: ContextPlanRef): ContextifyView',
@@ -2924,6 +2942,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ContentBlockType = keyof ContentBlockMap;',
   },
   {
+    name: 'ContextCleanupCandidate',
+    declaration: 'export interface ContextCleanupCandidate {\n    readonly nodeId: string;\n    readonly category: \'obsolete\' | \'conflict\' | \'redundant\';\n    readonly reason: string;\n    readonly evidenceNodeIds: readonly string[];\n    readonly placeholderText: string;\n}',
+  },
+  {
     name: 'ContextCompilation',
     declaration: 'export interface ContextCompilation extends ContextCompilerDescriptor {\n    readonly eventSeqs: readonly number[];\n    readonly messages: readonly Message[];\n}',
   },
@@ -2949,11 +2971,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContextFamilyGraphNode',
-    declaration: 'export interface ContextFamilyGraphNode {\n    readonly id: string;\n    readonly owner: ContextMessageRef;\n    readonly role: \'user\' | \'assistant\';\n    readonly preview: string;\n    readonly time: number;\n    readonly branchAtSeq: number | null;\n    readonly sessionIds: readonly SessionId[];\n    readonly activeEventSeq: number | null;\n}',
+    declaration: 'export interface ContextFamilyGraphNode {\n    readonly id: string;\n    readonly owner: ContextMessageRef;\n    readonly role: \'user\' | \'assistant\';\n    readonly preview: string;\n    readonly time: number;\n    readonly branchAtSeq: number | null;\n    readonly sessionIds: readonly SessionId[];\n    readonly activeEventSeq: number | null;\n    readonly replacement?: ContextReplacementView;\n}',
   },
   {
     name: 'ContextFamilyGraphPage',
-    declaration: 'export interface ContextFamilyGraphPage {\n    readonly asOfSeq: number;\n    readonly rootSessionId: SessionId;\n    readonly activeSessionId: SessionId;\n    readonly sessions: readonly ContextFamilySession[];\n    readonly edges: readonly ContextFamilyGraphEdge[];\n    readonly records: readonly ContextFamilyGraphNode[];\n    readonly totalNodeCount: number;\n    readonly nextAfter?: number;\n}',
+    declaration: 'export interface ContextFamilyGraphPage {\n    readonly asOfSeq: number;\n    readonly revision: string;\n    readonly rootSessionId: SessionId;\n    readonly activeSessionId: SessionId;\n    readonly sessions: readonly ContextFamilySession[];\n    readonly edges: readonly ContextFamilyGraphEdge[];\n    readonly records: readonly ContextFamilyGraphNode[];\n    readonly totalNodeCount: number;\n    readonly nextAfter?: number;\n}',
   },
   {
     name: 'ContextFamilySession',
@@ -2985,11 +3007,31 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContextPlanSnapshot',
-    declaration: 'export interface ContextPlanSnapshot {\n    readonly kind: \'contextify/plan\';\n    readonly version: 2;\n    readonly revision: number;\n    readonly stateRevision: number;\n    readonly history: {\n        readonly past: readonly number[];\n        readonly future: readonly number[];\n    };\n    readonly excluded: readonly ContextExcludedNode[];\n    readonly included: readonly ContextIncludedNode[];\n}',
+    declaration: 'export interface ContextPlanSnapshot {\n    readonly kind: \'contextify/plan\';\n    readonly version: 3;\n    readonly revision: number;\n    readonly stateRevision: number;\n    readonly history: {\n        readonly past: readonly number[];\n        readonly future: readonly number[];\n    };\n    readonly excluded: readonly ContextExcludedNode[];\n    readonly included: readonly ContextIncludedNode[];\n    readonly replacements: readonly ContextReplacementNode[];\n}',
+  },
+  {
+    name: 'ContextRecommendationBase',
+    declaration: 'export interface ContextRecommendationBase {\n    readonly planRevision: number;\n    readonly graphRevision: string;\n    readonly activeSessionId: SessionId;\n}',
+  },
+  {
+    name: 'ContextRecommendationProposal',
+    declaration: 'export interface ContextRecommendationProposal {\n    readonly base: ContextRecommendationBase;\n    readonly selection: readonly ContextSelectionRecommendation[];\n    readonly cleanup: readonly ContextCleanupCandidate[];\n}',
+  },
+  {
+    name: 'ContextReplacementNode',
+    declaration: 'export interface ContextReplacementNode {\n    readonly nodeId: string;\n    readonly snapshotSeq: number;\n    readonly originalEventSeq: number | null;\n    readonly role: \'user\' | \'assistant\';\n    readonly kind: \'placeholder\';\n    readonly reason: string;\n}',
+  },
+  {
+    name: 'ContextReplacementView',
+    declaration: 'export interface ContextReplacementView {\n    readonly preview: string;\n    readonly original: string;\n    readonly reason: string;\n    readonly role: \'user\' | \'assistant\';\n    readonly originalAvailable: true;\n}',
   },
   {
     name: 'ContextSelection',
     declaration: 'export interface ContextSelection {\n    readonly eventSeqs: readonly number[];\n}',
+  },
+  {
+    name: 'ContextSelectionRecommendation',
+    declaration: 'export interface ContextSelectionRecommendation {\n    readonly nodeId: string;\n    readonly action: \'include\' | \'exclude\';\n    readonly reason: string;\n    readonly confidence: \'high\' | \'medium\' | \'low\';\n}',
   },
   {
     name: 'ContextSnapshotSection',

@@ -186,6 +186,12 @@ export interface WebScaffold {
 /** Options for {@link launchWebScaffold}. */
 export interface LaunchOptions {
   /**
+   * Deterministic keyless Context Map review provider. Supplying this disables
+   * the shipped spawn driver but exercises the real Contextify service, RPC,
+   * UI review, plan mutation, and compiler seams.
+   */
+  contextRecommendation?: (prompt: string) => unknown
+  /**
    * Optional product overlay applied after the shipped Web surface and before
    * the scaffold's hermetic test patches, matching the launcher's `--patch`
    * ordering.
@@ -565,6 +571,23 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
         replayProviders(options.replayContextWindow).map(provider => provider.id),
         new RouteOnlyAdapter(replayProviders(options.replayContextWindow)),
       ), 'web e2e scaffold: route-only adapter')
+    }
+    if (options.contextRecommendation !== undefined) {
+      const recommend = options.contextRecommendation
+      const provider = ctx.subagents.getProvider('spawn')
+      if (provider === undefined) throw new Error('web e2e scaffold: spawn provider missing')
+      const originalStart = provider.start.bind(provider)
+      provider.start = async request => ({
+        id: SessionId('context-recommendation-review'),
+        localAgent: undefined,
+        result: Promise.resolve({
+          output: [],
+          stopReason: 'completed',
+          structured: recommend(request.prompt.flatMap(block => block.type === 'text' ? block.text : []).join('\n')),
+        }),
+        dispose: async () => {},
+      })
+      ctx.effect(() => () => { provider.start = originalStart }, 'web e2e scaffold: restore spawn provider')
     }
   } catch (error) {
     if (process.cwd() !== originalCwd) process.chdir(originalCwd)

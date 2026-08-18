@@ -2,23 +2,27 @@
 
 [English](README.md) | 中文
 
-`dsh-contextify` 把一组由 Harness 原生 Session fork 连接起来的对话投影成消息级 Context Map，并注册 `contextify@2` Context Compiler。它不再创造第二套 branch 概念：每条 branch 都是普通 Session，`parentSession` 与 `seedLength` 完全由 Harness 管理。
+`dsh-contextify` 把一组由 Harness 原生 Session fork 连接起来的对话投影成消息级 Context Map，并注册 `contextify@3` Context Compiler。它不再创造第二套 branch 概念：每条 branch 都是普通 Session，`parentSession` 与 `seedLength` 完全由 Harness 管理。
 
 ## 当前行为
 
 在 `agent/session-start` 时，插件会选择 Contextify compiler；若计划不存在，则创建 Natural plan。新 fork 的 child 会继承 parent 的事件前缀，但拥有自己的 Natural plan，因此 context 修改不会被静默继承。
 
-Family projector 从原生 root Session 遍历全部后代，并按最早拥有它的 Session 对复制前缀消息去重。每个 Turn 只保留真实 user input，以及成功 `turn/end` 后最后一条含文本或图片的 assistant message。Turn 运行期间 assistant 文本不会进入图；更早的 ReAct step、中间提问、失败或中断时的部分输出、纯 reasoning assistant event、tool call、tool result、context injection 和其他 runtime event 也都会被排除。保留的 user 与最终 assistant 节点都会解析到所在 completed `turn/end`，Branch 因而使用 Harness 原生 Session fork 接受的边界。
+Family projector 从原生 root Session 遍历全部原生后代；标记为 `origin: subagent` 的 Session 属于执行细节而不是聊天分支，因此不会进入 Map。它按最早拥有消息的 Session 对复制前缀去重。每个 Turn 只保留真实 user input，以及成功 `turn/end` 后最后一条含文本或图片的 assistant message。Turn 运行期间 assistant 文本不会进入图；更早的 ReAct step、中间提问、失败或中断时的部分输出、纯 reasoning assistant event、tool call、tool result、context injection 和其他 runtime event 也都会被排除。保留的 user 与最终 assistant 节点都会解析到所在 completed `turn/end`，Branch 因而使用 Harness 原生 Session fork 接受的边界。
 
-持久计划包含三种模式：
+持久计划包含三种选择模式：
 
 - **Natural**：消息属于当前 Session 的继承或本地历史时，保持默认输入。
 - **Exclude**：从下一次 compilation 中移除一条 Natural 历史消息。
 - **Include**：把同一原生 family 内其他 Session 的消息复制到本地 `context/compiler-snapshot` 事件，并按稳定位置插入。
 
+Plan v3 还支持可恢复的 **placeholder replacement** overlay。用户确认 cleanup 后，同一个 graph node、role、edge、原生 fork boundary 与 append-only Session 原事件全部保留，只在后续模型请求中选择一条本地、保持 role 的 compiler snapshot。Restore 只移除 overlay。Reset 会同时清空 Include、Exclude 与 replacement；Undo/Redo 会回放三者。已有 v2 plan 在内存中规范化，读取不会写入迁移事件，下一次 mutation 才持久化 v3。
+
 每次 plan mutation 都按 revision 做 compare-and-set，并记录完整 undo/redo 状态；Reset 回到 Natural。跨 family 引用、不可用消息、旧 revision、不支持的状态变化以及非 idle Agent 都会失败，不会产生部分更新。跨 Map import 暂不在范围内。
 
-`contextify` Remote namespace 提供 `get`、分页 `familyPage`、`setNodeMode`、批量 `setNodeModes`、`reset`、`undo` 和 `redo`。
+`contextify` Remote namespace 提供 `get`、分页 `familyPage`、仅建议的 `recommend`、`setNodeMode`、批量 `setNodeModes`、`replaceNode`、`restoreNode`、`reset`、`undo` 和 `redo`。
+
+`recommend` 使用 parent Agent 的 provider/model route，在隔离的 Harness one-shot `spawn` subagent 中运行。它读取精确但有界的同 family graph projection 与 objective，不能使用继承的工具，也不会把 prompt、reasoning 或结果写入 parent Session。返回的 Include/Exclude 与 cleanup candidate 只存在于内存，并同时绑定 plan 以及覆盖 family 内每个 Session append position 的哈希。服务会在返回或应用 proposal 前拒绝 family 变化；只有用户接受选择修改或逐项确认 cleanup 才会改变 plan。
 
 ## 模型体验
 
@@ -26,7 +30,7 @@ Family projector 从原生 root Session 遍历全部后代，并按最早拥有�
 
 #### 模型看到的内容
 
-Harness 原始 transcript 仍然是 append-only。Contextify 按现有顺序选择 active-family 消息、移除显式 exclusion、从持久 `context/compiler-snapshot` event 读取已 include 的 sibling 消息，并恢复当前 turn 的消息，因此旧 plan 无法隐藏正在回答的请求。
+Harness 原始 transcript 仍然是 append-only。Contextify 按现有顺序选择 active-family 消息、移除显式 exclusion、替换已确认的 placeholder snapshot、从持久 `context/compiler-snapshot` event 读取已 include 的 sibling 消息，并恢复当前 turn 的消息，因此旧 plan 无法隐藏正在回答的请求。
 
 #### Token 影响
 
@@ -39,7 +43,7 @@ Compiler 不添加任何提示词文本。Exclude 可以减少对话历史的 in
 ## 已知限制与暂缓事项
 
 - Web surface 有订阅者时每 1.5 秒轮询 family；后续可改为专用 projection event。
-- 自动推荐 include/exclude 节点暂缓。
+- 推荐目前由用户手动触发；自动推荐时机与路由推荐仍暂缓。
 - 跨 Map import 暂缓；目前只能引用连接到同一原生 root 的 Session。
-- Compaction replacement relationship 尚未展开成 shadow node。
+- Contextify placeholder 是原节点的 overlay；其他 compaction relationship 尚未展开成 shadow node。
 - 在 compiler、Remote、replay 与 UI seam 稳定前，package 继续保留在本 Harness fork 中。

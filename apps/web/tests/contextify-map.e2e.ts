@@ -3,13 +3,17 @@ import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
+import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import {
-  acknowledgeReloadConnectionLoss, launchWebScaffold, watchConsole, webSnapshotMode,
+  acknowledgeReloadConnectionLoss, compareOrRefreshGolden, launchWebScaffold, watchConsole, webSnapshotMode,
   type WebScaffold,
 } from './scaffold.ts'
 import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
 
 const REPLAY = fileURLToPath(new URL('./snapshots/lifecycle-chrome/session.jsonl', import.meta.url))
+const COMPILED_PLACEHOLDER_EXPECTED = fileURLToPath(new URL(
+  './snapshots/contextify-map/compiled-placeholder.expected.md', import.meta.url,
+))
 const PROMPT = 'Reply with the single word LIGHTHOUSE and stop.'
 const MODE = webSnapshotMode()
 
@@ -20,7 +24,40 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
   let tripwire: ReturnType<typeof watchConsole>
 
   beforeAll(async () => {
-    scaffold = await launchWebScaffold({ replayFixture: REPLAY, paceMs: 5 })
+    let recommendationCall = 0
+    scaffold = await launchWebScaffold({
+      replayFixture: REPLAY,
+      paceMs: 5,
+      contextRecommendation: (prompt) => {
+        const marker = 'Conversation graph JSON:\n'
+        const graph = JSON.parse(prompt.slice(prompt.lastIndexOf(marker) + marker.length)) as {
+          nodes: { id: string; content: string }[]
+        }
+        const promptNode = graph.nodes.find(node => node.content === PROMPT)
+        const answerNode = graph.nodes.find(node => node.content === 'LIGHTHOUSE')
+        if (promptNode === undefined || answerNode === undefined) {
+          throw new Error('Context recommendation fixture could not resolve projected messages')
+        }
+        recommendationCall += 1
+        return recommendationCall === 1
+          ? {
+            selection: [{
+              nodeId: answerNode.id, action: 'exclude', reason: 'Exercise explicit approval', confidence: 'high',
+            }],
+            cleanup: [],
+          }
+          : {
+            selection: [],
+            cleanup: [{
+              nodeId: promptNode.id,
+              category: 'obsolete',
+              reason: 'Exercise one-item cleanup confirmation',
+              evidenceNodeIds: [answerNode.id],
+              placeholderText: '[Earlier request retained as a placeholder]',
+            }],
+          }
+      },
+    })
     browser = await chromium.launch()
     page = await newEnglishPage(browser)
     tripwire = watchConsole(page)
@@ -84,6 +121,56 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
     await expect.poll(() => page.locator('[data-chat-revealed]').count(), { timeout: 5_000 }).toBe(1)
     expect(await page.locator('[role="treeitem"][aria-selected="true"]').count()).toBe(1)
 
+    const beforeProposal = scaffold.ctx.contextify.get(child)
+    const beforeProposalMessages = scaffold.ctx.contextCompiler.compile({
+      session: child.session, turn: 2, step: 1,
+    }).messages
+    await map.getByRole('button', { name: 'Recommend' }).click()
+    const review = map.getByRole('dialog', { name: 'Context recommendation review' })
+    await review.waitFor({ timeout: 10_000 })
+    expect(scaffold.ctx.contextify.get(child).plan.revision).toBe(beforeProposal.plan.revision)
+    expect(scaffold.ctx.contextCompiler.compile({ session: child.session, turn: 2, step: 1 }).messages)
+      .toEqual(beforeProposalMessages)
+    await review.getByRole('button', { name: 'Apply selected to next context' }).click()
+    await expect.poll(() => scaffold.ctx.contextify.get(child).plan.excluded.length, { timeout: 5_000 }).toBe(1)
+    expect(scaffold.ctx.contextCompiler.compile({ session: child.session, turn: 2, step: 1 }).messages
+      .flatMap(message => message.content)
+      .some(block => block.type === 'text' && block.text === 'LIGHTHOUSE')).toBe(false)
+
+    const beforeCleanup = scaffold.ctx.contextify.get(child)
+    await map.getByRole('button', { name: 'Recommend' }).click()
+    await review.waitFor({ timeout: 10_000 })
+    expect(scaffold.ctx.contextify.get(child).plan.revision).toBe(beforeCleanup.plan.revision)
+    expect(scaffold.ctx.contextCompiler.compile({ session: child.session, turn: 2, step: 1 }).messages
+      .flatMap(message => message.content)
+      .some(block => block.type === 'text' && block.text === PROMPT)).toBe(true)
+    await review.getByRole('button', { name: 'Review replacement' }).click()
+    expect(scaffold.ctx.contextify.get(child).plan.replacements).toHaveLength(0)
+    await review.getByRole('button', { name: 'Replace with placeholder' }).click()
+    await expect.poll(() => scaffold.ctx.contextify.get(child).plan.replacements.length, { timeout: 5_000 }).toBe(1)
+
+    const compiledPlaceholder = scaffold.ctx.contextCompiler.compile({
+      session: child.session, turn: 2, step: 1,
+    }).messages.flatMap(message => message.content)
+      .filter(block => block.type === 'text')
+      .map(block => block.text)
+      .filter(text => text === PROMPT || text.includes('retained as a placeholder'))
+      .join('\n')
+    await compareOrRefreshGolden(COMPILED_PLACEHOLDER_EXPECTED, compiledPlaceholder, MODE)
+    const placeholderCard = map.getByRole('article', {
+      name: 'User message: [Earlier request retained as a placeholder]',
+    })
+    await placeholderCard.waitFor({ timeout: 10_000 })
+    await placeholderCard.click({ button: 'right' })
+    await map.getByRole('menuitem', { name: 'Show original' }).click()
+    expect(await map.getByRole('dialog', { name: 'Original message' }).textContent()).toContain(PROMPT)
+    await map.getByRole('button', { name: 'Close original message' }).click()
+    await placeholderCard.click({ button: 'right' })
+    await map.getByRole('menuitem', { name: 'Restore original' }).click()
+    await map.getByRole('article', { name: `User message: ${PROMPT}` }).waitFor({ timeout: 10_000 })
+
+    await map.getByLabel('Include LIGHTHOUSE in context').click()
+    await expect.poll(() => map.getByText(/2 \/ 2 in context/).count(), { timeout: 5_000 }).toBe(1)
     await map.getByLabel(`Include ${PROMPT} in context`).click()
     await expect.poll(() => map.getByText(/1 \/ 2 in context/).count(), { timeout: 5_000 }).toBe(1)
     await expect.poll(() => scaffold.ctx.contextify.get(child).plan.excluded.length, { timeout: 5_000 }).toBe(1)
@@ -97,6 +184,46 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
     await expect.poll(() => reloadedMap.locator('.react-flow__node').count(), { timeout: 10_000 }).toBe(2)
     await reloadedMap.getByRole('article', { name: `User message: ${PROMPT}` }).click({ button: 'right' })
     await reloadedMap.getByRole('menuitem', { name: 'Restore automatic' }).waitFor()
+    await page.keyboard.press('Escape')
+
+    const longOutput = `LONG OUTPUT ${'measured layout content '.repeat(34)}`
+    child.session.append('turn/start', { turn: 2 })
+    child.session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'Generate a long layout probe.' }],
+      source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+    child.session.append('assistant/message', {
+      turn: 2,
+      step: 1,
+      message: createAssistantMessage({
+        content: [{ type: 'text', text: longOutput }],
+        source: { provider: 'mock', model: 'layout-probe' },
+      }),
+    }, { surfaceOp: 'append' })
+    child.session.append('turn/end', { turn: 2, reason: { kind: 'completed' } })
+    child.session.append('turn/start', { turn: 3 })
+    child.session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'Short child after long output.' }],
+      source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+    child.session.append('turn/end', { turn: 3, reason: { kind: 'completed' } })
+    const longCard = reloadedMap.getByRole('article', { name: /Assistant message: LONG OUTPUT/ })
+    const shortCard = reloadedMap.getByRole('article', { name: 'User message: Short child after long output.' })
+    await longCard.waitFor({ timeout: 10_000 })
+    await shortCard.waitFor({ timeout: 10_000 })
+    const viewport = reloadedMap.locator('.react-flow__viewport')
+    await expect.poll(async () => {
+      const parent = await longCard.boundingBox()
+      const next = await shortCard.boundingBox()
+      if (parent === null || next === null) return -1
+      const scale = await viewport.evaluate(element => new DOMMatrixReadOnly(
+        getComputedStyle(element).transform,
+      ).a)
+      return (next.y - (parent.y + parent.height)) / scale
+    }, { timeout: 10_000 }).toBeGreaterThanOrEqual(85)
+    const transformBeforePolling = await viewport.getAttribute('style')
+    await page.waitForTimeout(3_200)
+    expect(await viewport.getAttribute('style')).toBe(transformBeforePolling)
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])
   }, 90_000)

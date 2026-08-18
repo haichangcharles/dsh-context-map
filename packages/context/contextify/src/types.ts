@@ -41,6 +41,7 @@ export interface ContextFamilyGraphNode {
 /** Client-safe placeholder state without exposing compiler snapshot internals. */
 export interface ContextReplacementView {
   readonly preview: string
+  readonly original: string
   readonly reason: string
   readonly role: 'user' | 'assistant'
   readonly originalAvailable: true
@@ -130,6 +131,8 @@ export interface ContextifyView {
 /** One bounded page of a native Session family's canonical message nodes. */
 export interface ContextFamilyGraphPage {
   readonly asOfSeq: number
+  /** Hash of every Session header and append position in the projected family. */
+  readonly revision: string
   readonly rootSessionId: SessionId
   readonly activeSessionId: SessionId
   readonly sessions: readonly ContextFamilySession[]
@@ -148,7 +151,7 @@ export interface ContextNodeMutation {
 /** Revision and graph watermark one recommendation analyzed. */
 export interface ContextRecommendationBase {
   readonly planRevision: number
-  readonly graphAsOfSeq: number
+  readonly graphRevision: string
   readonly activeSessionId: SessionId
 }
 

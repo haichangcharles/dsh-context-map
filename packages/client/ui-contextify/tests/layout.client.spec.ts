@@ -39,7 +39,7 @@ describe('measured Context Map layout', () => {
     const parent = layout.find(candidate => candidate.id === 'parent')!
     const child = layout.find(candidate => candidate.id === 'child')!
 
-    expect(child.position.y - (parent.position.y + sizes.parent.height)).toBeGreaterThanOrEqual(
+    expect(child.position.y - (parent.position.y + sizes.parent!.height)).toBeGreaterThanOrEqual(
       CONTEXT_MAP_RANK_GAP,
     )
   })
@@ -55,7 +55,7 @@ describe('measured Context Map layout', () => {
     const parent = layout.find(candidate => candidate.id === 'parent')!
     const child = layout.find(candidate => candidate.id === 'child')!
 
-    expect(child.position.y - (parent.position.y + sizes.parent.height)).toBeGreaterThanOrEqual(
+    expect(child.position.y - (parent.position.y + sizes.parent!.height)).toBeGreaterThanOrEqual(
       CONTEXT_MAP_RANK_GAP,
     )
   })

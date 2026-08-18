@@ -119,6 +119,7 @@ function mindMapLayout(
  * @param nodes - Canonical visible user and assistant messages.
  * @param edges - De-duplicated causal family edges.
  * @param mode - Tree, radial mind-map, or left-to-right timeline.
+ * @param sizes - Renderer-measured bounds, with deterministic estimates for missing entries.
  * @returns React Flow nodes with deterministic coordinates and handles.
  */
 export function layoutContextMap(

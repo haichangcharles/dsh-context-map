@@ -30,7 +30,7 @@ async function bench() {
     preview: 'hello', time: 7, branchAtSeq: 9, sessionIds: [source], activeEventSeq: 7,
   }
   const proposal = {
-    base: { planRevision: 4, graphAsOfSeq: 7, activeSessionId: source },
+    base: { planRevision: 4, graphRevision: 'family-7', activeSessionId: source },
     selection: [{
       nodeId: record.id, action: 'exclude' as const, reason: 'No longer needed', confidence: 'high' as const,
     }],
@@ -44,6 +44,7 @@ async function bench() {
     get: answer('get', view),
     familyPage: answer('familyPage', {
       asOfSeq: 7,
+      revision: 'family-7',
       rootSessionId: source,
       activeSessionId: source,
       sessions: [{ id: source, seedLength: 0, depth: 0, tipNodeId: record.id }],
@@ -158,7 +159,7 @@ describe('ui-contextify browser plugin', () => {
     await b.panel.mapActions.applyRecommendations([b.record.id])
     expect(b.calls.filter(call => call.method === 'setNodeModes')).toEqual([{
       method: 'setNodeModes',
-      args: [source, { revision: 4 }, [{ node: b.record.owner, mode: 'exclude' }]],
+      args: [source, { revision: 4 }, [{ node: b.record.owner, mode: 'exclude' }], 'family-7'],
     }])
     expect(controller.getSnapshot().recommendation).toMatchObject({ phase: 'idle' })
   })

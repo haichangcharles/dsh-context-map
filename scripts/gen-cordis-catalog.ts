@@ -273,6 +273,8 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   ContextMessageRef: 'core.md',
   ContextNodeMutation: 'core.md',
   ContextPlanRef: 'core.md',
+  ContextRecommendationBase: 'core.md',
+  ContextRecommendationProposal: 'core.md',
   ContextifyView: 'core.md',
   PreStepDecision: 'core.md',
   PreStepContext: 'core.md',

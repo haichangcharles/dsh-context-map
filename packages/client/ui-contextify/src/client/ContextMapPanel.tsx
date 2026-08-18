@@ -501,7 +501,7 @@ export function ContextMapPanel({
         />}
         {originalPreview !== null && <div className={css.originalDialog} role="dialog" aria-label="Original message">
           <header><h3>Original message</h3><button type="button" aria-label="Close original message" onClick={() => { setOriginalPreview(null) }}>×</button></header>
-          <p>{originalPreview.preview || '(empty message)'}</p>
+          <p>{originalPreview.replacement?.original || originalPreview.preview || '(empty message)'}</p>
         </div>}
       </div>
       {interactionMode === 'selection' && selectedRecords.length > 0 && (

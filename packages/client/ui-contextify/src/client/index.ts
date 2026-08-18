@@ -53,13 +53,15 @@ export function apply(ctx: ClientContext): void {
       get: async () => valueOf(await remote.get(sessionId)),
       familyPage: async (after, limit) => valueOf(await remote.familyPage(sessionId, after, limit)),
       setNodeMode: async (ref, node, mode) => valueOf(await remote.setNodeMode(sessionId, ref, node, mode)),
-      setNodeModes: async (ref, mutations) => valueOf(await remote.setNodeModes(sessionId, ref, mutations)),
+      setNodeModes: async (ref, mutations, expectedGraphRevision) => valueOf(await remote.setNodeModes(
+        sessionId, ref, mutations, expectedGraphRevision,
+      )),
       reset: async ref => valueOf(await remote.reset(sessionId, ref)),
       undo: async ref => valueOf(await remote.undo(sessionId, ref)),
       redo: async ref => valueOf(await remote.redo(sessionId, ref)),
       recommend: async (base, objective) => valueOf(await remote.recommend(sessionId, base, objective)),
-      replaceNode: async (ref, node, placeholderText, reason) => valueOf(await remote.replaceNode(
-        sessionId, ref, node, placeholderText, reason,
+      replaceNode: async (ref, node, placeholderText, reason, expectedGraphRevision) => valueOf(await remote.replaceNode(
+        sessionId, ref, node, placeholderText, reason, expectedGraphRevision,
       )),
       restoreNode: async (ref, node) => valueOf(await remote.restoreNode(sessionId, ref, node)),
     }

@@ -20,7 +20,11 @@ export interface ContextifyTransport {
     node: ContextMessageRef,
     mode: 'natural' | 'include' | 'exclude',
   ) => Promise<ContextifyView>
-  setNodeModes: (ref: ContextPlanRef, mutations: readonly ContextNodeMutation[]) => Promise<ContextifyView>
+  setNodeModes: (
+    ref: ContextPlanRef,
+    mutations: readonly ContextNodeMutation[],
+    expectedGraphRevision?: string,
+  ) => Promise<ContextifyView>
   reset: (ref: ContextPlanRef) => Promise<ContextifyView>
   undo: (ref: ContextPlanRef) => Promise<ContextifyView>
   redo: (ref: ContextPlanRef) => Promise<ContextifyView>
@@ -33,6 +37,7 @@ export interface ContextifyTransport {
     node: ContextMessageRef,
     placeholderText: string,
     reason: string,
+    expectedGraphRevision?: string,
   ) => Promise<ContextifyView>
   restoreNode: (ref: ContextPlanRef, node: ContextMessageRef) => Promise<ContextifyView>
 }
@@ -51,6 +56,7 @@ export interface ContextifyControllerSnapshot {
   readonly pending: boolean
   readonly view?: ContextifyView
   readonly graph?: ContextFamilyGraph
+  readonly graphRevision?: string
   readonly focusedNodeId?: string
   readonly error?: string
   readonly recommendation: ContextRecommendationState
@@ -138,20 +144,23 @@ export class ContextifyController {
    */
   async redo(): Promise<void> { await this.mutate(ref => this.transport.redo(ref)) }
 
-  /** Run an isolated, review-only Context recommendation against the current revision. */
+  /**
+   * Run an isolated, review-only Context recommendation against the current revision.
+   * @param objective - Optional review objective forwarded to the isolated Agent.
+   */
   async recommend(objective?: string): Promise<void> {
     if (this.snapshot.recommendation.phase === 'running') {
       throw new Error('Context recommendation is already running')
     }
     if (this.refreshPromise !== undefined) await this.refreshPromise
     if (this.snapshot.view === undefined || this.snapshot.graph === undefined) await this.refresh()
-    const { view, graph } = this.snapshot
-    if (view === undefined || graph === undefined) {
+    const { view, graph, graphRevision } = this.snapshot
+    if (view === undefined || graph === undefined || graphRevision === undefined) {
       throw new Error(this.snapshot.error ?? 'Context Map is unavailable')
     }
     const base: ContextRecommendationBase = Object.freeze({
       planRevision: view.plan.revision,
-      graphAsOfSeq: view.graphAsOfSeq,
+      graphRevision,
       activeSessionId: graph.activeSessionId,
     })
     this.publish({ ...this.snapshot, recommendation: Object.freeze({ phase: 'running' }) })
@@ -174,7 +183,10 @@ export class ContextifyController {
     this.publish({ ...this.snapshot, recommendation: Object.freeze({ phase: 'idle' }) })
   }
 
-  /** Accept selected Include/Exclude recommendations in one atomic Context Plan revision. */
+  /**
+   * Accept selected Include/Exclude recommendations in one atomic Context Plan revision.
+   * @param nodeIds - Selected recommendation node IDs; omitted accepts all selection items.
+   */
   async applyRecommendations(nodeIds?: readonly string[]): Promise<void> {
     const recommendation = this.snapshot.recommendation
     if (recommendation.phase === 'stale') throw new Error('Context recommendation is stale')
@@ -197,7 +209,9 @@ export class ContextifyController {
       }
     })
     try {
-      await this.mutate(ref => this.transport.setNodeModes(ref, mutations))
+      await this.mutate(ref => this.transport.setNodeModes(
+        ref, mutations, recommendation.proposal.base.graphRevision,
+      ))
     } catch (cause) {
       this.publish({
         ...this.snapshot,
@@ -218,7 +232,11 @@ export class ContextifyController {
     })
   }
 
-  /** Confirm exactly one cleanup candidate; there is deliberately no bulk cleanup API. */
+  /**
+   * Confirm exactly one cleanup candidate; there is deliberately no bulk cleanup API.
+   * @param candidate - Proposal-owned cleanup item being explicitly confirmed.
+   * @param placeholderText - Optional user-edited placeholder text.
+   */
   async confirmCleanup(candidate: ContextCleanupCandidate, placeholderText?: string): Promise<void> {
     const recommendation = this.snapshot.recommendation
     if (recommendation.phase === 'stale') throw new Error('Context recommendation is stale')
@@ -231,6 +249,7 @@ export class ContextifyController {
     try {
       await this.mutate(ref => this.transport.replaceNode(
         ref, node.owner, placeholderText ?? candidate.placeholderText, candidate.reason,
+        recommendation.proposal.base.graphRevision,
       ))
       this.clearRecommendation()
     } catch (cause) {
@@ -242,7 +261,10 @@ export class ContextifyController {
     }
   }
 
-  /** Restore one placeholder overlay without changing its Include/Exclude mode. */
+  /**
+   * Restore one placeholder overlay without changing its Include/Exclude mode.
+   * @param node - Native family message whose original semantics are restored.
+   */
   async restoreNode(node: ContextMessageRef): Promise<void> {
     await this.mutate(ref => this.transport.restoreNode(ref, node))
   }
@@ -256,6 +278,7 @@ export class ContextifyController {
       for (;;) {
         const page = await this.transport.familyPage(after, 500)
         first ??= page
+        if (page.revision !== first.revision) throw new Error('Context Map changed while pages were loading')
         nodes.push(...page.records)
         if (page.nextAfter === undefined) break
         after = page.nextAfter
@@ -267,12 +290,14 @@ export class ContextifyController {
         edges: Object.freeze([...first.edges]),
         nodes: Object.freeze(nodes),
       })
-      const recommendation = this.reconcileRecommendation(view, graph)
+      const graphRevision = first.revision
+      const recommendation = this.reconcileRecommendation(view, graph, graphRevision)
       this.publish(Object.freeze({
         phase: 'ready',
         pending: this.snapshot.pending,
         view,
         graph,
+        graphRevision,
         recommendation,
         ...(this.snapshot.focusedNodeId === undefined ? {} : { focusedNodeId: this.snapshot.focusedNodeId }),
       }))
@@ -315,11 +340,12 @@ export class ContextifyController {
   private reconcileRecommendation(
     view: ContextifyView,
     graph: ContextFamilyGraph,
+    graphRevision: string,
   ): ContextRecommendationState {
     const current = this.snapshot.recommendation
     if (current.phase !== 'ready' && current.phase !== 'stale') return current
     return Object.freeze({
-      phase: this.isProposalStale(current.proposal, view, graph) ? 'stale' : current.phase,
+      phase: this.isProposalStale(current.proposal, view, graph, graphRevision) ? 'stale' : current.phase,
       proposal: current.proposal,
     })
   }
@@ -328,10 +354,11 @@ export class ContextifyController {
     proposal: ContextRecommendationProposal,
     view = this.snapshot.view,
     graph = this.snapshot.graph,
+    graphRevision = this.snapshot.graphRevision,
   ): boolean {
-    return view === undefined || graph === undefined
+    return view === undefined || graph === undefined || graphRevision === undefined
       || proposal.base.planRevision !== view.plan.revision
-      || proposal.base.graphAsOfSeq !== view.graphAsOfSeq
+      || proposal.base.graphRevision !== graphRevision
       || proposal.base.activeSessionId !== graph.activeSessionId
   }
 }

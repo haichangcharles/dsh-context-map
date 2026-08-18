@@ -797,6 +797,15 @@ Durable Context Plan mutations and native Session-family graph reads.
 @Remote('familyPage') async familyPage(agent: Agent, after?: number, limit?: number): Promise<ContextFamilyGraphPage>
 
 /**
+ * Analyze one exact graph snapshot through an isolated Harness one-shot Agent.
+ * @param agent - Live idle Agent whose route and native Session family are reviewed.
+ * @param base - Expected plan revision, graph watermark, and active Session identity.
+ * @param objective - Optional review objective; the latest user input is the fallback.
+ * @returns An ephemeral, validated proposal that has not mutated the Context Plan.
+ */
+@Remote('recommend') async recommend( agent: Agent, base: ContextRecommendationBase, objective?: string, ): Promise<ContextRecommendationProposal>
+
+/**
  * Set or clear one message's explicit context mode.
  * @param agent - Live Agent whose Session receives durable events.
  * @param ref - Expected current plan revision.
@@ -811,9 +820,31 @@ Durable Context Plan mutations and native Session-family graph reads.
  * @param agent - Live Agent whose Session receives durable events.
  * @param ref - Expected current plan revision.
  * @param mutations - Ordered message-mode replacements.
+ * @param expectedGraphRevision - Optional family revision required by recommendation acceptance.
  * @returns The view after one complete plan commits.
  */
-@Remote('setNodeModes') async setNodeModes( agent: Agent, ref: ContextPlanRef, mutations: readonly ContextNodeMutation[], ): Promise<ContextifyView>
+@Remote('setNodeModes') async setNodeModes( agent: Agent, ref: ContextPlanRef, mutations: readonly ContextNodeMutation[], expectedGraphRevision?: string, ): Promise<ContextifyView>
+
+/**
+ * Replace one node's model-visible semantics with a reversible role-preserving placeholder.
+ * @param agent - Live idle Agent whose Session receives the snapshot and plan events.
+ * @param ref - Expected current Context Plan revision.
+ * @param nodeRef - Native family message to retain structurally and replace semantically.
+ * @param placeholderText - Bounded model-visible placeholder content.
+ * @param reason - Human-visible reason retained with the replacement overlay.
+ * @param expectedGraphRevision - Optional family revision required by cleanup confirmation.
+ * @returns The committed v3 Contextify view.
+ */
+@Remote('replaceNode') async replaceNode( agent: Agent, ref: ContextPlanRef, nodeRef: ContextMessageRef, placeholderText: string, reason: string, expectedGraphRevision?: string, ): Promise<ContextifyView>
+
+/**
+ * Restore a node's original semantics while preserving Include/Exclude state.
+ * @param agent - Live idle Agent whose Session owns the replacement overlay.
+ * @param ref - Expected current Context Plan revision.
+ * @param nodeRef - Native family message whose replacement is removed.
+ * @returns The committed Contextify view with original semantics restored.
+ */
+@Remote('restoreNode') async restoreNode(agent: Agent, ref: ContextPlanRef, nodeRef: ContextMessageRef): Promise<ContextifyView>
 
 /**
  * Reset every explicit choice to Natural behavior.
@@ -840,7 +871,7 @@ Durable Context Plan mutations and native Session-family graph reads.
 @Remote('redo') redo(agent: Agent, ref: ContextPlanRef): ContextifyView
 ```
 
-Source: [`packages/context/contextify/src/index.ts:93`](../../packages/context/contextify/src/index.ts)
+Source: [`packages/context/contextify/src/index.ts:169`](../../packages/context/contextify/src/index.ts)
 
 <a id="agent-events"></a>
 

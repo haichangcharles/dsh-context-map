@@ -59,6 +59,7 @@ declare module '@deepseek-ai/cordis' {
 
 interface LoadedFamily {
   readonly graph: ContextFamilyGraph
+  readonly revision: string
   readonly inspections: ReadonlyMap<SessionId, ContextFamilyInspection>
   readonly knownSessionIds: ReadonlySet<SessionId>
 }
@@ -89,6 +90,25 @@ function importedMessage(message: Message): Message {
 
 function contentHash(message: Message): string {
   return createHash('sha256').update(JSON.stringify(message)).digest('hex')
+}
+
+function familyRevision(inspections: ReadonlyMap<SessionId, ContextFamilyInspection>): string {
+  const records = [...inspections.values()]
+    .sort((left, right) => left.meta.id.localeCompare(right.meta.id))
+    .map(({ meta, events }) => ({
+      id: meta.id,
+      parentSession: meta.parentSession ?? null,
+      seedLength: meta.seedLength ?? 0,
+      eventCount: events.length,
+      lastSeq: events.at(-1)?.seq ?? -1,
+    }))
+  return createHash('sha256').update(JSON.stringify(records)).digest('hex')
+}
+
+const CONTEXT_RECOMMENDATION_MAX_OBJECTIVE_CHARS = 4_000
+
+function boundedObjective(value: string): string {
+  return Array.from(value.trim()).slice(0, CONTEXT_RECOMMENDATION_MAX_OBJECTIVE_CHARS).join('')
 }
 
 function resolveNode(graph: ContextFamilyGraph, ref: ContextMessageRef): ContextFamilyGraphNode | undefined {
@@ -201,12 +221,14 @@ export class ContextifyService extends TypertRemoteService {
     if (!Number.isSafeInteger(pageLimit) || pageLimit < 1 || pageLimit > 500) {
       throw new RangeError('family page limit must be 1-500')
     }
-    const { graph } = await this.loadFamily(agent.session)
-    const decoratedNodes = this.decorateNodes(agent.session, graph.nodes)
+    const family = await this.loadFamily(agent.session)
+    const { graph } = family
+    const decoratedNodes = this.decorateNodes(agent.session, graph.nodes, family.inspections)
     const records = decoratedNodes.slice(offset, offset + pageLimit)
     const next = offset + records.length
     return {
       asOfSeq: agent.session.seq - 1,
+      revision: family.revision,
       rootSessionId: graph.rootSessionId,
       activeSessionId: graph.activeSessionId,
       sessions: graph.sessions,
@@ -217,7 +239,13 @@ export class ContextifyService extends TypertRemoteService {
     }
   }
 
-  /** Analyze one exact graph snapshot through an isolated Harness one-shot Agent. */
+  /**
+   * Analyze one exact graph snapshot through an isolated Harness one-shot Agent.
+   * @param agent - Live idle Agent whose route and native Session family are reviewed.
+   * @param base - Expected plan revision, graph watermark, and active Session identity.
+   * @param objective - Optional review objective; the latest user input is the fallback.
+   * @returns An ephemeral, validated proposal that has not mutated the Context Plan.
+   */
   @Remote('recommend')
   async recommend(
     agent: Agent,
@@ -225,14 +253,12 @@ export class ContextifyService extends TypertRemoteService {
     objective?: string,
   ): Promise<ContextRecommendationProposal> {
     this.assertLive(agent)
-    if (agent.status !== 'idle') {
-      throw new ContextifyError('context recommendations require an idle Agent', 'CONTEXTIFY_AGENT_BUSY')
-    }
+    this.assertRecommendationIdle(agent)
     const plan = currentContextPlan(agent.session)
     if (plan.revision !== base.planRevision) {
       throw new ContextifyError('the Context Plan changed before recommendation started', 'CONTEXTIFY_STALE_REVISION')
     }
-    if (base.activeSessionId !== agent.id || base.graphAsOfSeq !== agent.session.seq - 1) {
+    if (base.activeSessionId !== agent.id) {
       throw new ContextifyError('the Context Map changed before recommendation started', 'CONTEXTIFY_STALE_GRAPH')
     }
     if (this.recommending.has(agent.id)) {
@@ -245,7 +271,7 @@ export class ContextifyService extends TypertRemoteService {
     let run: Awaited<ReturnType<typeof this.ctx.subagents.start>> | undefined
     try {
       const family = await this.loadFamily(agent.session)
-      if (agent.session.seq - 1 !== base.graphAsOfSeq) {
+      if (family.revision !== base.graphRevision) {
         throw new ContextifyError('the Context Map changed while it was being read', 'CONTEXTIFY_STALE_GRAPH')
       }
       const replacementByNode = new Map(plan.replacements.map(item => [item.nodeId, item]))
@@ -281,9 +307,9 @@ export class ContextifyService extends TypertRemoteService {
       }
       const fallbackObjective = [...agent.session.events].reverse().find(event =>
         event.type === 'user/message' && event.data.source.kind === 'user')
-      const goal = objective?.trim() || (fallbackObjective?.type === 'user/message'
+      const goal = boundedObjective(objective?.trim() || (fallbackObjective?.type === 'user/message'
         ? recommendationText(fallbackObjective.data)
-        : 'Improve the next response context.')
+        : 'Improve the next response context.'))
       const controller = new AbortController()
       run = await this.ctx.subagents.start('spawn', {
         label: 'Context Map recommendation',
@@ -301,6 +327,15 @@ export class ContextifyService extends TypertRemoteService {
       const result = await run.result
       if (result.stopReason !== 'completed' || result.structured === undefined) {
         throw new ContextifyError('the recommendation Agent did not return a complete structured result', 'CONTEXTIFY_RECOMMENDATION_UNAVAILABLE')
+      }
+      this.assertLive(agent)
+      this.assertRecommendationIdle(agent)
+      if (currentContextPlan(agent.session).revision !== base.planRevision) {
+        throw new ContextifyError('the Context Plan changed while recommendation was running', 'CONTEXTIFY_STALE_REVISION')
+      }
+      const currentFamily = await this.loadFamily(agent.session)
+      if (currentFamily.revision !== base.graphRevision) {
+        throw new ContextifyError('the Context Map changed while recommendation was running', 'CONTEXTIFY_STALE_GRAPH')
       }
       try {
         return validateRecommendation(result.structured, {
@@ -343,6 +378,7 @@ export class ContextifyService extends TypertRemoteService {
    * @param agent - Live Agent whose Session receives durable events.
    * @param ref - Expected current plan revision.
    * @param mutations - Ordered message-mode replacements.
+   * @param expectedGraphRevision - Optional family revision required by recommendation acceptance.
    * @returns The view after one complete plan commits.
    */
   @Remote('setNodeModes')
@@ -350,9 +386,13 @@ export class ContextifyService extends TypertRemoteService {
     agent: Agent,
     ref: ContextPlanRef,
     mutations: readonly ContextNodeMutation[],
+    expectedGraphRevision?: string,
   ): Promise<ContextifyView> {
     const current = this.prepare(agent, ref)
     const family = await this.loadFamily(agent.session)
+    if (expectedGraphRevision !== undefined && family.revision !== expectedGraphRevision) {
+      throw new ContextifyError('the Context Map changed before recommendations were applied', 'CONTEXTIFY_STALE_GRAPH')
+    }
     let excluded = [...current.excluded]
     let included = [...current.included]
     const pendingSnapshots: Array<{ nodeId: string; ref: ContextMessageRef; message: Message; position: number }> = []
@@ -415,7 +455,16 @@ export class ContextifyService extends TypertRemoteService {
     return this.commit(agent.session, plan)
   }
 
-  /** Replace one node's model-visible semantics with a reversible role-preserving placeholder. */
+  /**
+   * Replace one node's model-visible semantics with a reversible role-preserving placeholder.
+   * @param agent - Live idle Agent whose Session receives the snapshot and plan events.
+   * @param ref - Expected current Context Plan revision.
+   * @param nodeRef - Native family message to retain structurally and replace semantically.
+   * @param placeholderText - Bounded model-visible placeholder content.
+   * @param reason - Human-visible reason retained with the replacement overlay.
+   * @param expectedGraphRevision - Optional family revision required by cleanup confirmation.
+   * @returns The committed v3 Contextify view.
+   */
   @Remote('replaceNode')
   async replaceNode(
     agent: Agent,
@@ -423,6 +472,7 @@ export class ContextifyService extends TypertRemoteService {
     nodeRef: ContextMessageRef,
     placeholderText: string,
     reason: string,
+    expectedGraphRevision?: string,
   ): Promise<ContextifyView> {
     const current = this.prepare(agent, ref)
     const text = placeholderText.trim()
@@ -431,6 +481,9 @@ export class ContextifyService extends TypertRemoteService {
       throw new ContextifyError('placeholder and reason must be non-empty and bounded', 'CONTEXTIFY_INVALID_TRANSITION')
     }
     const family = await this.loadFamily(agent.session)
+    if (expectedGraphRevision !== undefined && family.revision !== expectedGraphRevision) {
+      throw new ContextifyError('the Context Map changed before cleanup was confirmed', 'CONTEXTIFY_STALE_GRAPH')
+    }
     const node = resolveNode(family.graph, nodeRef)
     if (node === undefined) throw new ContextifyError('message is not part of the active Context Map', 'CONTEXTIFY_INVALID_NODE')
     const source = family.inspections.get(node.owner.sessionId)
@@ -468,7 +521,13 @@ export class ContextifyService extends TypertRemoteService {
     }))
   }
 
-  /** Restore a node's original semantics while preserving Include/Exclude state. */
+  /**
+   * Restore a node's original semantics while preserving Include/Exclude state.
+   * @param agent - Live idle Agent whose Session owns the replacement overlay.
+   * @param ref - Expected current Context Plan revision.
+   * @param nodeRef - Native family message whose replacement is removed.
+   * @returns The committed Contextify view with original semantics restored.
+   */
   @Remote('restoreNode')
   async restoreNode(agent: Agent, ref: ContextPlanRef, nodeRef: ContextMessageRef): Promise<ContextifyView> {
     const current = this.prepare(agent, ref)
@@ -476,13 +535,36 @@ export class ContextifyService extends TypertRemoteService {
     const node = resolveNode(family.graph, nodeRef)
     if (node === undefined) throw new ContextifyError('message is not part of the active Context Map', 'CONTEXTIFY_INVALID_NODE')
     const nodeId = node.id
+    const replacement = current.replacements.find(item => item.nodeId === nodeId)
     const replacements = current.replacements.filter(item => item.nodeId !== nodeId)
-    if (replacements.length === current.replacements.length) {
+    if (replacement === undefined) {
       throw new ContextifyError('message does not have a placeholder replacement', 'CONTEXTIFY_INVALID_TRANSITION')
+    }
+    let included = current.included
+    if (included.some(item => item.nodeId === nodeId && item.snapshotSeq === replacement.snapshotSeq)) {
+      const source = family.inspections.get(node.owner.sessionId)
+      const exact = source === undefined ? null : exactMessage(source, node.owner.seq)
+      if (exact === null || exact.role !== node.role) {
+        throw new ContextifyError('message source is unavailable', 'CONTEXTIFY_INVALID_NODE')
+      }
+      const message = importedMessage(exact)
+      const snapshot = agent.session.append('context/compiler-snapshot', {
+        id: node.id,
+        message,
+        provenance: {
+          provider: name,
+          sourceId: node.owner.sessionId,
+          sourceSeq: node.owner.seq,
+          contentHash: contentHash(message),
+        },
+      })
+      included = included.map(item => item.nodeId === nodeId && item.snapshotSeq === replacement.snapshotSeq
+        ? { ...item, snapshotSeq: snapshot.seq }
+        : item)
     }
     return this.commit(agent.session, nextPlan(current, {
       excluded: current.excluded,
-      included: current.included,
+      included,
       replacements,
     }))
   }
@@ -550,6 +632,12 @@ export class ContextifyService extends TypertRemoteService {
     }
   }
 
+  private assertRecommendationIdle(agent: Agent): void {
+    if (agent.status !== 'idle') {
+      throw new ContextifyError('context recommendations require an idle Agent', 'CONTEXTIFY_AGENT_BUSY')
+    }
+  }
+
   private commit(session: Session, plan: ContextPlanSnapshot): ContextifyView {
     session.append('contextify/plan', plan)
     return this.view(session)
@@ -573,17 +661,25 @@ export class ContextifyService extends TypertRemoteService {
     }
   }
 
-  private decorateNodes(session: Session, nodes: readonly ContextFamilyGraphNode[]): readonly ContextFamilyGraphNode[] {
+  private decorateNodes(
+    session: Session,
+    nodes: readonly ContextFamilyGraphNode[],
+    inspections: ReadonlyMap<SessionId, ContextFamilyInspection>,
+  ): readonly ContextFamilyGraphNode[] {
     const replacements = new Map(currentContextPlan(session).replacements.map(item => [item.nodeId, item]))
     return Object.freeze(nodes.map((node) => {
       const replacement = replacements.get(node.id)
       if (replacement === undefined) return node
       const event = session.events[replacement.snapshotSeq]
       if (event?.type !== 'context/compiler-snapshot') return node
+      const source = inspections.get(node.owner.sessionId)
+      const original = source === undefined ? null : exactMessage(source, node.owner.seq)
+      if (original === null) return node
       return Object.freeze({
         ...node,
         replacement: Object.freeze({
           preview: recommendationText(event.data.message).slice(0, 240),
+          original: recommendationText(original),
           reason: replacement.reason,
           role: replacement.role,
           originalAvailable: true as const,
@@ -594,8 +690,12 @@ export class ContextifyService extends TypertRemoteService {
 
   private async loadFamily(active: Session): Promise<LoadedFamily> {
     const headers = new Map<SessionId, ContextFamilyInspection['meta']>()
-    for (const header of await this.ctx.sessionPersistence.list()) headers.set(header.id, header)
-    for (const session of this.ctx.sessions.list()) headers.set(session.id, session.header)
+    for (const header of await this.ctx.sessionPersistence.list()) {
+      if (header.origin !== 'subagent') headers.set(header.id, header)
+    }
+    for (const session of this.ctx.sessions.list()) {
+      if (session.header.origin !== 'subagent') headers.set(session.id, session.header)
+    }
     const knownSessionIds = new Set(headers.keys())
 
     let rootId = active.id
@@ -630,7 +730,7 @@ export class ContextifyService extends TypertRemoteService {
       activeSessionId: active.id,
       sessions: [...inspections.values()],
     })
-    return { graph, inspections, knownSessionIds }
+    return { graph, revision: familyRevision(inspections), inspections, knownSessionIds }
   }
 }
 

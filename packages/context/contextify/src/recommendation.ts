@@ -7,10 +7,13 @@ import type {
   ContextSelectionRecommendation,
 } from './types.ts'
 
+/** Maximum complete graph nodes accepted by one review run. */
 export const CONTEXT_RECOMMENDATION_MAX_NODES = 500
+/** Maximum serialized graph projection characters accepted by one review run. */
 export const CONTEXT_RECOMMENDATION_MAX_CHARS = 96_000
 const MAX_ITEM_TEXT = 500
 
+/** One exact, bounded message plus topology metadata supplied as untrusted review data. */
 export interface ContextRecommendationInputNode {
   readonly id: string
   readonly role: 'user' | 'assistant'
@@ -23,6 +26,7 @@ export interface ContextRecommendationInputNode {
   readonly sessionDepths: readonly number[]
 }
 
+/** Complete deterministic graph projection supplied to an isolated review Agent. */
 export interface ContextRecommendationInput {
   readonly activeSessionId: string
   readonly nodes: readonly ContextRecommendationInputNode[]
@@ -46,7 +50,11 @@ function array(value: unknown, label: string): unknown[] {
   return value
 }
 
-/** Build the bounded, instruction-safe JSON value supplied to the review Agent. */
+/**
+ * Build the bounded, instruction-safe JSON value supplied to the review Agent.
+ * @param request - Exact graph, message contents, and current effective selection.
+ * @returns A frozen projection containing every graph node within the hard character budget.
+ */
 export function buildRecommendationInput(request: {
   readonly graph: ContextFamilyGraph
   readonly contents: Readonly<Record<string, string>>
@@ -101,7 +109,12 @@ export function buildRecommendationInput(request: {
   return input
 }
 
-/** Validate untrusted structured Agent output against one exact graph snapshot. */
+/**
+ * Validate untrusted structured Agent output against one exact graph snapshot.
+ * @param value - Untrusted structured output returned by the review Agent.
+ * @param context - Revision base, graph, and effective selection used for semantic validation.
+ * @returns A frozen, field-stripped, review-only proposal.
+ */
 export function validateRecommendation(
   value: unknown,
   context: {
