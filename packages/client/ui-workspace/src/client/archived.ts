@@ -55,8 +55,8 @@ export function deriveArchivedGroups(
   }
   const groups: ArchivedSessionGroup[] = []
   for (const workspace of workspaces) {
-    const sessions = rowsByGroup.get(workspace.workspaceId as string)
-    if (sessions !== undefined) groups.push({ key: workspace.workspaceId as string, title: workspace.title, sessions })
+    const sessions = rowsByGroup.get(workspace.workspaceId)
+    if (sessions !== undefined) groups.push({ key: workspace.workspaceId, title: workspace.title, sessions })
   }
   const ungrouped = rowsByGroup.get(ARCHIVED_UNGROUPED_KEY)
   if (ungrouped !== undefined) groups.push({ key: ARCHIVED_UNGROUPED_KEY, title: undefined, sessions: ungrouped })
