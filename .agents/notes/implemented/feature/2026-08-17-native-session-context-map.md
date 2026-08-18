@@ -20,6 +20,8 @@ The canvas ports the standalone prototype's interaction model without its domain
 
 Locate in Chat delegates to the conversation package through a native Session ID and durable message sequence. The conversation service opens the owning Session, switches its native view ring back to Chat, loads older history pages until the message anchor is available, scrolls that row to the center, and marks it with a temporary highlight. Contextify never queries or owns conversation DOM.
 
+The client projects the graph through the Workspace runtime's native archive set. Archived-only paths are removed. A message inherited by a visible descendant remains in the graph, but its owner reference, lineage depth, and every action target are rebound to an unarchived Session; this preserves useful context without navigating back into a hidden Session. Archiving the active Session remains owned by the Workspace runtime and clears the current selection normally.
+
 ## Alternatives considered
 
 **A second in-Session path model.** The standalone prototype used lightweight paths inside one Session, but retaining that identity alongside native Session forks would make persistence, navigation, naming, and context selection disagree.
@@ -34,7 +36,7 @@ Context changes never edit or delete transcript events. Include writes `context/
 
 ## Testing
 
-Pure projection and compiler tests cover canonical prefix de-duplication, native fork boundaries, Context Plan revisions, same-family snapshots, child reset, and runtime-context filtering. Client component tests cover effective checkbox projection, automatic override removal, optimistic failure rollback, checkbox event isolation, Selection clicks, Shift marquee, batch mutations, right-click actions, transient and committed drag positions, Session-and-sequence reveal, native Chat-tab activation, history paging, exact scrolling, and temporary highlighting. Browser-plugin tests pin Contextify's delegation to native Session, conversation, layout, and Remote faces.
+Pure projection and compiler tests cover canonical prefix de-duplication, native fork boundaries, Context Plan revisions, same-family snapshots, child reset, and runtime-context filtering. Client component tests cover effective checkbox projection, automatic override removal, optimistic failure rollback, checkbox event isolation, Selection clicks, Shift marquee, batch mutations, right-click actions, archive-aware path removal and owner rebinding, transient and committed drag positions, Session-and-sequence reveal, native Chat-tab activation, history paging, exact scrolling, and temporary highlighting. Browser-plugin tests pin Contextify's delegation to native Session, conversation, layout, and Remote faces. Web E2E archives a native parent while its child is active, then verifies map retention, Locate, plan mutation, and reload.
 
 ## Deferred
 

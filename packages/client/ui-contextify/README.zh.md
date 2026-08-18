@@ -10,6 +10,8 @@
 
 沿用独立版画布，节点操作集中在右键菜单：Locate in Chat、Branch from Here，以及仅在存在 manual override 时显示的 Restore automatic。Branch 会在消息对应的 completed Turn boundary 调用 Harness 原生 `sessions.fork`，并打开新的 child Session。Locate 会打开所属原生 Session、切换到 Chat、在需要时加载较早 history，并滚动和高亮准确的持久消息。Batch mode 会在一个 plan revision 中 include、exclude 或恢复多个画布选中节点。Clear manual changes 会移除全部 Include 与 Exclude，但不会重置 graph layout；Undo 和 Redo 操作持久 plan history。
 
+Map 也会订阅 Harness 原生的 Workspace archive set。仅属于已归档 Session 的节点和边会立即消失。由未归档后代继承的消息仍会保留，因为它们仍是该 Session context 的一部分；但它们的 Locate、Branch 与 context-selection 目标会重新绑定到可见后代，而不是已归档 owner。归档 active Session 时则沿用 Harness 的普通行为，清除当前 conversation。
+
 普通 Chat user 消息与已完成 assistant 消息旁提供紧凑的 Auto/Use/Skip/Map control。它们和 graph 使用同一个 controller，所以 Chat 侧修改会同步到 map，并在 reload 后保留。Steering、reasoning、tool 与仅 runtime 可见的 row 不会获得 Context Map control。
 
 Workspace 左侧栏会另外用递归可折叠 tree 展示原生 Session 祖先关系。在 branch family 很密集时，Map 是信息更完整的导航入口。

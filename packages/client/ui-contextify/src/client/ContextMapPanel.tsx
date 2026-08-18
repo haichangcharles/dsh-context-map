@@ -8,7 +8,9 @@ import '@xyflow/react/dist/style.css'
 import type {
   ContextFamilyGraphNode, ContextMessageRef, ContextNodeMutation,
 } from '@deepseek-ai/dsh-contextify/types'
+import type { WorkspaceListState } from '@deepseek-ai/dsh-client-runtime/client'
 import type { HostObservable, PropsStore, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
+import { projectUnarchivedContextFamily } from './archived-family.ts'
 import { ContextMapNode, type ContextMapNodeData, type ContextNodeMode } from './ContextMapNode.tsx'
 import {
   effectiveContextIncluded, intersects, modeForEffectiveContext, reducePositionChanges, type CanvasPoint,
@@ -41,7 +43,10 @@ export interface ContextMapPanelInjected {
 export type ContextMapPanelProps =
   PropsStore<ReturnType<typeof createContextMapStore>>
   & Omit<ContextMapPanelInjected, 'hooks'>
-  & { readonly useContextify: SnapshotSelectorHook<ContextifyControllerSnapshot> }
+  & {
+    readonly useContextify: SnapshotSelectorHook<ContextifyControllerSnapshot>
+    readonly useWorkspaces: SnapshotSelectorHook<WorkspaceListState>
+  }
 
 const nodeTypes = { contextMessage: ContextMapNode }
 const EMPTY_NODES: readonly ContextFamilyGraphNode[] = []
@@ -65,8 +70,11 @@ function modeOf(snapshot: ContextifyControllerSnapshot, node: ContextFamilyGraph
 }
 
 /** The pinned header, graph canvas, search, layouts, history, and batch controls. */
-export function ContextMapPanel({ useContextify, useStore, actions, mapActions }: ContextMapPanelProps) {
+export function ContextMapPanel({
+  useContextify, useWorkspaces, useStore, actions, mapActions,
+}: ContextMapPanelProps) {
   const snapshot = useContextify(value => value)
+  const archivedSessionIds = useWorkspaces(value => value.archivedSessionIds)
   const layout = useStore(value => value.layout)
   const selectedNodeIds = useStore(value => value.selectedNodeIds)
   const positionOverrides = useStore(value => value.positionOverrides)
@@ -82,7 +90,9 @@ export function ContextMapPanel({ useContextify, useStore, actions, mapActions }
   const [transientPositions, setTransientPositions] = useState<Record<string, CanvasPoint>>({})
   const [measurementVersion, setMeasurementVersion] = useState(0)
   const canvasRef = useRef<HTMLDivElement>(null)
-  const graph = snapshot.graph
+  const graph = useMemo(() => snapshot.graph === undefined
+    ? undefined
+    : projectUnarchivedContextFamily(snapshot.graph, archivedSessionIds), [archivedSessionIds, snapshot.graph])
   const records = graph?.nodes ?? EMPTY_NODES
   const mutationPending = snapshot.pending || pendingNodeId !== null
   const visibleSelectedCount = graph === undefined ? 0 : records.filter((record) => {

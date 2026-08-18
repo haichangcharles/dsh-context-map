@@ -20,6 +20,8 @@ Long-horizon 对话同时需要 branch navigation 与下一次模型请求的历
 
 Locate in Chat 通过原生 Session ID 与持久消息序号委托给 conversation 包。Conversation service 会打开所属 Session、把原生 view ring 切回 Chat、持续加载较早 history page 直至消息锚点可用、把该行滚动到中央，并添加临时高亮。Contextify 不查询也不拥有 conversation DOM。
 
+客户端会用 Workspace runtime 的原生 archive set 投影 graph。仅属于已归档 Session 的 path 会被移除。被可见后代继承的消息仍保留在 graph 中，但其 owner reference、lineage depth 与所有 action target 都会重新绑定到未归档 Session；这样既能保留有用 context，也不会导航回隐藏 Session。归档 active Session 仍由 Workspace runtime 负责，并按普通流程清除当前 selection。
+
 ## 考虑过的替代方案
 
 **在单一 Session 中另建 path model。** 独立 prototype 使用一个 Session 内的轻量 path，但若让它与原生 Session fork 同时成为 branch identity，持久化、导航、命名与 context selection 会彼此冲突。
@@ -34,7 +36,7 @@ Context 修改不会 edit 或 delete transcript event。Include 写入 `context/
 
 ## 测试
 
-纯 projection 与 compiler 测试覆盖 canonical prefix 去重、原生 fork boundary、Context Plan revision、same-family snapshot、child reset 与 runtime context 过滤。Client 组件测试覆盖有效 checkbox projection、自动 override 移除、optimistic failure rollback、checkbox event isolation、Selection 点击、Shift 框选、批量 mutation、右键操作、拖动中的临时位置与结束后的持久位置、Session＋seq reveal、原生 Chat tab 激活、history paging、精确滚动与临时高亮。Browser-plugin 测试固定 Contextify 对原生 Session、conversation、layout 与 Remote face 的委托。
+纯 projection 与 compiler 测试覆盖 canonical prefix 去重、原生 fork boundary、Context Plan revision、same-family snapshot、child reset 与 runtime context 过滤。Client 组件测试覆盖有效 checkbox projection、自动 override 移除、optimistic failure rollback、checkbox event isolation、Selection 点击、Shift 框选、批量 mutation、右键操作、archive-aware path 移除与 owner rebinding、拖动中的临时位置与结束后的持久位置、Session＋seq reveal、原生 Chat tab 激活、history paging、精确滚动与临时高亮。Browser-plugin 测试固定 Contextify 对原生 Session、conversation、layout 与 Remote face 的委托。Web E2E 会在 child active 时归档原生 parent，并验证 map 保留、Locate、plan mutation 与 reload。
 
 ## 暂缓
 

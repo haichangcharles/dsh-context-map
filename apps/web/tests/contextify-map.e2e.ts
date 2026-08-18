@@ -58,6 +58,32 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
     if (child === undefined) throw new Error('Context Map did not create a native child Session')
     await expect.poll(() => map.locator('.react-flow__node').count(), { timeout: 10_000 }).toBe(2)
     await expect.poll(() => page.locator('[role="treeitem"]').count(), { timeout: 10_000 }).toBe(3)
+
+    // Archive the native parent through the shipped Workspace action. Its
+    // inherited messages remain useful in the active child, but every map
+    // action must now address that visible child instead of the hidden owner.
+    const sessionActions = page.locator('button[aria-label^="Session actions for "]')
+    await expect.poll(() => sessionActions.count(), { timeout: 5_000 }).toBe(2)
+    const rootAction = sessionActions.first()
+    const rootActionName = await rootAction.getAttribute('aria-label')
+    if (rootActionName === null) throw new Error('Context Map root row action has no accessible name')
+    const rootRow = rootAction.locator('xpath=ancestor::*[@role="treeitem"][1]')
+    await rootRow.hover()
+    await expect.poll(() => rootAction.isVisible(), { timeout: 5_000 }).toBe(true)
+    await rootAction.click()
+    await page.getByRole('menuitem', { name: 'Archive session' }).click()
+    await expect.poll(
+      () => scaffold.ctx.workspaceRegistry.archivedSessionIds.includes(sessionId),
+      { timeout: 10_000 },
+    ).toBe(true)
+    await expect.poll(() => page.getByLabel(rootActionName, { exact: true }).count(), { timeout: 10_000 }).toBe(0)
+    await expect.poll(() => map.locator('.react-flow__node').count(), { timeout: 10_000 }).toBe(2)
+
+    await map.getByRole('article', { name: `User message: ${PROMPT}` }).click({ button: 'right' })
+    await map.getByRole('menuitem', { name: 'Locate in Chat' }).click()
+    await expect.poll(() => page.locator('[data-chat-revealed]').count(), { timeout: 5_000 }).toBe(1)
+    expect(await page.locator('[role="treeitem"][aria-selected="true"]').count()).toBe(1)
+
     await map.getByLabel(`Include ${PROMPT} in context`).click()
     await expect.poll(() => map.getByText(/1 \/ 2 in context/).count(), { timeout: 5_000 }).toBe(1)
     await expect.poll(() => scaffold.ctx.contextify.get(child).plan.excluded.length, { timeout: 5_000 }).toBe(1)

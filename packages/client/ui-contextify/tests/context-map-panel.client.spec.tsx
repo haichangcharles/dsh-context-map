@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SessionId, WorkspaceListState } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ContextFamilyGraphNode } from '@deepseek-ai/dsh-contextify/types'
 import {
   ContextMapPanel, type ContextMapActions,
@@ -98,8 +98,19 @@ function fixture(): ContextifyControllerSnapshot {
   }
 }
 
-function mount(snapshot = fixture(), overrides: Partial<ContextMapActions> = {}) {
+function mount(
+  snapshot = fixture(),
+  overrides: Partial<ContextMapActions> = {},
+  archivedSessionIds: readonly SessionId[] = [],
+) {
   const source = { getSnapshot: () => snapshot, subscribe: () => () => {} }
+  const workspaceSource = {
+    getSnapshot: (): WorkspaceListState => ({
+      items: [], archivedSessionIds, state: 'idle', phase: 'ready', error: null,
+      baselinesReady: true, recentWorkspaceId: undefined,
+    }),
+    subscribe: () => () => {},
+  }
   const store = createContextMapStore().create()
   const mapActions: ContextMapActions = {
     setNodeMode: vi.fn(async () => {}),
@@ -116,6 +127,7 @@ function mount(snapshot = fixture(), overrides: Partial<ContextMapActions> = {})
     <div style={{ width: 720, height: 680 }}>
       <ContextMapPanel
         useContextify={bindSnapshotSelector(source)}
+        useWorkspaces={bindSnapshotSelector(workspaceSource)}
         useStore={bindSnapshotSelector(store)}
         actions={store.actions}
         mapActions={mapActions}
@@ -281,6 +293,53 @@ describe('ContextMapPanel', () => {
     expect(h.store.getSnapshot().layout).toBe('timeline')
     fireEvent.click(screen.getByRole('button', { name: 'tree layout' }))
     expect(h.store.getSnapshot().layout).toBe('tree')
+  })
+
+  it('hides archived-only paths and rebinds inherited nodes to a visible Session', async () => {
+    const original = fixture()
+    const rootOnly = {
+      ...node('root:9', 9, 'assistant', 'archived root tail'),
+      sessionIds: [root],
+    }
+    const snapshot: ContextifyControllerSnapshot = {
+      ...original,
+      graph: {
+        ...original.graph!,
+        nodes: [...original.graph!.nodes, rootOnly],
+        edges: [
+          ...original.graph!.edges,
+          { id: 'root-tail', source: 'root:2', target: 'root:9', sessionIds: [root] },
+        ],
+      },
+    }
+    const h = mount(snapshot, {}, [root])
+
+    expect(await screen.findByLabelText('User message: root requirement')).toBeTruthy()
+    expect(screen.queryByLabelText('Assistant message: archived root tail')).toBeNull()
+    expect(h.view.container.querySelectorAll('.react-flow__node')).toHaveLength(3)
+    expect(screen.getAllByText('Root Session')).toHaveLength(3)
+
+    const inherited = screen.getByLabelText('User message: root requirement')
+    fireEvent.click(within(inherited).getByLabelText('Include root requirement in context'))
+    expect(h.mapActions.setNodeMode).toHaveBeenCalledWith({ sessionId: child, seq: 1 }, 'exclude')
+
+    fireEvent.contextMenu(inherited, {
+      clientX: 120, clientY: 160,
+    })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Locate in Chat' }))
+    expect(h.mapActions.locate).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'root:1',
+      owner: { sessionId: child, seq: 1 },
+      sessionIds: [child],
+    }))
+
+    fireEvent.contextMenu(inherited, { clientX: 120, clientY: 160 })
+    const branch = screen.getByRole('menuitem', { name: 'Branch from Here' })
+    await waitFor(() => { expect((branch as HTMLButtonElement).disabled).toBe(false) })
+    fireEvent.click(branch)
+    expect(h.mapActions.branch).toHaveBeenCalledWith(expect.objectContaining({
+      owner: { sessionId: child, seq: 1 },
+    }))
   })
 
   it('searches cyclically and applies one batch selection mutation', async () => {
