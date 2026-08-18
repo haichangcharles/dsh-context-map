@@ -519,6 +519,55 @@ describe('WorkspaceRuntime', () => {
     await workspaces.refresh()
     expect(workspaces.list.getSnapshot().archivedSessionIds).toEqual([])
   })
+
+  it('restores one archived session without changing selection and shields the echo from a stale list', async () => {
+    const ctx = new Context()
+    const api = new FakeApiClient()
+    const sessions = new SessionRuntime(ctx, api, fakeRemote())
+    const workspaces = new WorkspaceRuntime(ctx, api, sessions)
+    api.onList = () => Promise.resolve(ok({
+      items: [{ sessionId: sid('s-live'), updatedAt: 1, running: false, blank: false }],
+    }) as never)
+    await sessions.refresh()
+    sessions.open(sid('s-live'))
+    workspaces.handleHostEnvelope({
+      rpcId: 'archived' as never,
+      payload: { type: 'host/archived-sessions-changed', archivedSessionIds: [sid('s-old'), sid('s-keep')] },
+    } as never)
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    const gate = deferred<Awaited<ReturnType<FakeApiClient['onWorkspaceList']>>>()
+    api.onWorkspaceList = () => gate.promise
+    const hydration = workspaces.refresh()
+    api.onWorkspaceUnarchiveSession = () => Promise.resolve(ok({ archivedSessionIds: [sid('s-keep')] }))
+    await expect(workspaces.unarchiveSession(sid('s-old'))).resolves.toBeUndefined()
+
+    expect(api.callsOf('workspace.unarchiveSession')).toEqual([{ sessionId: 's-old' }])
+    expect(workspaces.list.getSnapshot().archivedSessionIds).toEqual(['s-keep'])
+    expect(sessions.list.getSnapshot().current).toBe('s-live')
+    gate.resolve(ok({ items: [], archivedSessionIds: [sid('s-old'), sid('s-keep')] }))
+    await hydration
+    expect(workspaces.list.getSnapshot().archivedSessionIds).toEqual(['s-keep'])
+    expect(sessions.list.getSnapshot().current).toBe('s-live')
+  })
+
+  it('retains the authoritative archive set when restore is rejected', async () => {
+    const ctx = new Context()
+    const api = new FakeApiClient()
+    const sessions = new SessionRuntime(ctx, api, fakeRemote())
+    const workspaces = new WorkspaceRuntime(ctx, api, sessions)
+    workspaces.handleHostEnvelope({
+      rpcId: 'archived' as never,
+      payload: { type: 'host/archived-sessions-changed', archivedSessionIds: [sid('s-old')] },
+    } as never)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    api.onWorkspaceUnarchiveSession = () => Promise.resolve(err({
+      code: 'session-not-found', message: 'no archived session', details: { sessionId: sid('s-old') },
+    }))
+
+    await expect(workspaces.unarchiveSession(sid('s-old'))).rejects.toThrow(/session-not-found/)
+    expect(workspaces.list.getSnapshot().archivedSessionIds).toEqual(['s-old'])
+  })
 })
 
 describe('startInitialSelection', () => {

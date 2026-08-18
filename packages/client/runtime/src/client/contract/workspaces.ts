@@ -91,4 +91,10 @@ export interface IWorkspaces {
    * @param sessionId - session to archive.
    */
   archiveSession(sessionId: SessionId): Promise<void>
+  /**
+   * Restore a session from the registry-global archive set without opening
+   * it or changing the current Session selection.
+   * @param sessionId - archived session to restore.
+   */
+  unarchiveSession(sessionId: SessionId): Promise<void>
 }

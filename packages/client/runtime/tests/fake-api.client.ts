@@ -184,7 +184,7 @@ export class FakeApiClient implements IApiClient {
 
   // The archive-set field defaults at the binding below so list stubs keep
   // the pre-archive `{ items }` shape; a stub carrying the field wins.
-  onWorkspaceList: (payload: unknown) => Promise<RpcResponse<{ items: never[]; archivedSessionIds?: never[] }>> =
+  onWorkspaceList: (payload: unknown) => Promise<RpcResponse<{ items: never[]; archivedSessionIds?: SessionId[] }>> =
     () => Promise.resolve(ok({ items: [] }))
   onWorkspaceCreate: (payload: unknown) => Promise<RpcResponse<{ workspace: WorkspaceView; created: boolean }>> =
     () => Promise.resolve(ok({ workspace: fakeWorkspace('fk-ws'), created: true }))
@@ -204,6 +204,9 @@ export class FakeApiClient implements IApiClient {
   onWorkspaceArchiveSession: (payload: unknown) => Promise<RpcResponse<{ archivedSessionIds: SessionId[] }>> =
     payload => Promise.resolve(ok({ archivedSessionIds: [(payload as { sessionId: SessionId }).sessionId] }))
 
+  onWorkspaceUnarchiveSession: (payload: unknown) => Promise<RpcResponse<{ archivedSessionIds: SessionId[] }>> =
+    () => Promise.resolve(ok({ archivedSessionIds: [] }))
+
   readonly workspace: IApiClient['workspace'] = {
     list: (payload: unknown) => this.record('workspace.list', payload, this.onWorkspaceList(payload).then(response => (
       response.result.ok
@@ -219,6 +222,8 @@ export class FakeApiClient implements IApiClient {
       this.record('workspace.insertSessionBefore', payload, this.onWorkspaceInsertSessionBefore(payload)),
     archiveSession: (payload: unknown) =>
       this.record('workspace.archiveSession', payload, this.onWorkspaceArchiveSession(payload)),
+    unarchiveSession: (payload: unknown) =>
+      this.record('workspace.unarchiveSession', payload, this.onWorkspaceUnarchiveSession(payload)),
   }
 
   // Payloads stay `unknown` (lint-lane note above); response rows are the real

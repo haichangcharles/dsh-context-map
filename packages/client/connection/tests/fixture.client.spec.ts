@@ -557,6 +557,35 @@ describe('createFixtureApi', () => {
     expect(reused.result.value).toMatchObject({ created: false, workspace: { workspaceId: 'fx-ws-fixture' } })
   })
 
+  it('workspace archive restore removes only one id and emits each full-set transition', async () => {
+    const api = createFixtureApi()
+    const abort = new AbortController()
+    const seen: HostFrame[] = []
+    const consuming = (async () => {
+      for await (const envelope of api.events.host(req({}), abort.signal)) {
+        if (envelope.payload.type !== 'host/archived-sessions-changed') continue
+        seen.push(envelope.payload)
+        if (seen.length === 3) abort.abort()
+      }
+    })()
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    await api.workspace.archiveSession(req({ sessionId: sid('fx-alpha') }))
+    await api.workspace.archiveSession(req({ sessionId: sid('fx-beta') }))
+    const restored = await api.workspace.unarchiveSession(req({ sessionId: sid('fx-alpha') }))
+    if (!restored.result.ok) throw new Error('restore failed')
+    expect(restored.result.value.archivedSessionIds).toEqual(['fx-beta'])
+    await consuming
+    expect(seen).toEqual([
+      { type: 'host/archived-sessions-changed', archivedSessionIds: ['fx-alpha'] },
+      { type: 'host/archived-sessions-changed', archivedSessionIds: ['fx-alpha', 'fx-beta'] },
+      { type: 'host/archived-sessions-changed', archivedSessionIds: ['fx-beta'] },
+    ])
+
+    const repeated = await api.workspace.unarchiveSession(req({ sessionId: sid('fx-alpha') }))
+    expect(repeated.result).toEqual({ ok: true, value: { archivedSessionIds: ['fx-beta'] } })
+  })
+
   it('workspace.create on a fresh path mints a new entity and pushes host/workspace-changed', async () => {
     const api = createFixtureApi()
     const abort = new AbortController()
