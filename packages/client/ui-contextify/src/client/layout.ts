@@ -8,6 +8,19 @@ import type { ContextMapLayout } from './store.ts'
 export const CONTEXT_MAP_NODE_WIDTH = 224
 /** Height reserved for every deterministic Context Map message card. */
 export const CONTEXT_MAP_NODE_HEIGHT = 116
+/** Minimum vertical gap between measured tree ranks. */
+export const CONTEXT_MAP_RANK_GAP = 86
+/** Minimum horizontal gap between measured sibling bounds. */
+export const CONTEXT_MAP_NODE_GAP = 54
+
+/** Renderer-measured bounds for one Context Map message card. */
+export interface ContextMapNodeSize {
+  readonly width: number
+  readonly height: number
+}
+
+/** Renderer-measured bounds keyed by canonical Context Map node id. */
+export type ContextMapNodeSizes = Readonly<Record<string, ContextMapNodeSize>>
 
 /** Data-independent node position used before renderer callbacks are attached. */
 export interface ContextMapLayoutData extends Record<string, unknown> {
@@ -18,30 +31,36 @@ function dagreLayout(
   records: readonly ContextFamilyGraphNode[],
   edges: readonly ContextFamilyGraphEdge[],
   direction: 'TB' | 'LR',
+  sizes: ContextMapNodeSizes,
 ): Array<Node<ContextMapLayoutData>> {
   const graph = new dagre.graphlib.Graph()
   graph.setDefaultEdgeLabel(() => ({}))
-  graph.setGraph({ rankdir: direction, nodesep: 54, ranksep: 86 })
+  graph.setGraph({ rankdir: direction, nodesep: CONTEXT_MAP_NODE_GAP, ranksep: CONTEXT_MAP_RANK_GAP })
   for (const record of records) {
-    graph.setNode(record.id, { width: CONTEXT_MAP_NODE_WIDTH, height: CONTEXT_MAP_NODE_HEIGHT })
+    graph.setNode(record.id, sizeFor(record.id, sizes))
   }
   for (const edge of edges) graph.setEdge(edge.source, edge.target)
   dagre.layout(graph)
   const horizontal = direction === 'LR'
   return records.map((record) => {
     const point = graph.node(record.id) as { x: number; y: number } | undefined
+    const size = sizeFor(record.id, sizes)
     return {
       id: record.id,
       type: 'contextMessage',
       data: { record },
       position: {
-        x: (point?.x ?? 0) - CONTEXT_MAP_NODE_WIDTH / 2,
-        y: (point?.y ?? 0) - CONTEXT_MAP_NODE_HEIGHT / 2,
+        x: (point?.x ?? 0) - size.width / 2,
+        y: (point?.y ?? 0) - size.height / 2,
       },
       targetPosition: horizontal ? Position.Left : Position.Top,
       sourcePosition: horizontal ? Position.Right : Position.Bottom,
     }
   })
+}
+
+function sizeFor(id: string, sizes: ContextMapNodeSizes): ContextMapNodeSize {
+  return sizes[id] ?? { width: CONTEXT_MAP_NODE_WIDTH, height: CONTEXT_MAP_NODE_HEIGHT }
 }
 
 function mindMapLayout(
@@ -106,7 +125,8 @@ export function layoutContextMap(
   nodes: readonly ContextFamilyGraphNode[],
   edges: readonly ContextFamilyGraphEdge[],
   mode: ContextMapLayout,
+  sizes: ContextMapNodeSizes = {},
 ): Array<Node<ContextMapLayoutData>> {
   if (mode === 'mindmap') return mindMapLayout(nodes, edges)
-  return dagreLayout(nodes, edges, mode === 'timeline' ? 'LR' : 'TB')
+  return dagreLayout(nodes, edges, mode === 'timeline' ? 'LR' : 'TB', sizes)
 }

@@ -17,7 +17,8 @@ import {
 } from './canvas-interactions.ts'
 import { ContextMapMenu } from './ContextMapMenu.tsx'
 import type { ContextifyControllerSnapshot } from './controller.ts'
-import { layoutContextMap } from './layout.ts'
+import { layoutContextMap, type ContextMapNodeSizes } from './layout.ts'
+import { reconcileMeasuredSizes, reduceMeasuredSizes } from './layout-measurements.ts'
 import { createContextMapStore } from './store.ts'
 import css from './ContextMapPanel.module.css'
 
@@ -87,6 +88,7 @@ export function ContextMapPanel({
   const [pendingNodeId, setPendingNodeId] = useState<string | null>(null)
   const [optimisticModes, setOptimisticModes] = useState<Record<string, ContextNodeMode>>({})
   const [transientPositions, setTransientPositions] = useState<Record<string, CanvasPoint>>({})
+  const [measuredSizes, setMeasuredSizes] = useState<ContextMapNodeSizes>({})
   const [graphMeasured, setGraphMeasured] = useState(false)
   const canvasRef = useRef<HTMLDivElement>(null)
   const initialFitCompleted = useRef(false)
@@ -109,6 +111,10 @@ export function ContextMapPanel({
     ? undefined
     : searchResultIds[resultIndex % searchResultIds.length]
   const focusTargetId = snapshot.focusedNodeId ?? activeSearchId
+  const measurementSignature = useMemo(() => Object.entries(measuredSizes)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([id, size]) => `${id}:${size.width}x${size.height}`)
+    .join('|'), [measuredSizes])
 
   const runMutation = useCallback((
     id: string,
@@ -149,6 +155,9 @@ export function ContextMapPanel({
       snapshot.graph.nodes.map(node => node.id),
     )
   }, [actions, records, snapshot.graph])
+  useEffect(() => {
+    setMeasuredSizes(current => reconcileMeasuredSizes(current, records.map(record => record.id)))
+  }, [records])
   useEffect(() => { setResultIndex(0) }, [normalizedQuery])
   useEffect(() => {
     if (menu === null) return
@@ -167,9 +176,9 @@ export function ContextMapPanel({
     const timer = window.setTimeout(() => {
       initialFitCompleted.current = true
       void instance.fitView({ duration: 220 })
-    }, 300)
+    }, 80)
     return () => { window.clearTimeout(timer) }
-  }, [focusTargetId, graphMeasured, instance, records.length])
+  }, [focusTargetId, graphMeasured, instance, measurementSignature, records.length])
   useEffect(() => {
     if (!graphMeasured || instance === null || focusTargetId === undefined) return
     initialFitCompleted.current = true
@@ -187,7 +196,7 @@ export function ContextMapPanel({
     const searchMatches = new Set(searchResultIds)
     const selected = new Set(selectedNodeIds)
     const sessions = new Map(graph.sessions.map(session => [session.id, session]))
-    return layoutContextMap(graph.nodes, graph.edges, 'tree').map((node) => {
+    return layoutContextMap(graph.nodes, graph.edges, 'tree', measuredSizes).map((node) => {
       const record = node.data.record
       const session = sessions.get(record.owner.sessionId)
       const mode = optimisticModes[record.id] ?? modeOf(snapshot, record)
@@ -229,7 +238,7 @@ export function ContextMapPanel({
     })
   }, [
     actions, activeSearchId, graph, interactionMode, mutationPending, optimisticModes,
-    positionOverrides, searchResultIds, selectedNodeIds, setEffectiveMode, snapshot, transientPositions,
+    measuredSizes, positionOverrides, searchResultIds, selectedNodeIds, setEffectiveMode, snapshot, transientPositions,
   ])
 
   const flowEdges = useMemo((): Edge[] => (graph?.edges ?? []).map(edge => ({
@@ -243,6 +252,7 @@ export function ContextMapPanel({
   const onNodesChange = (changes: Array<NodeChange>): void => {
     if (changes.some(change => change.type === 'dimensions')) {
       setGraphMeasured(true)
+      setMeasuredSizes(current => reduceMeasuredSizes(current, changes))
     }
     const positions = changes.flatMap(change => change.type === 'position' && change.position !== undefined
       ? [{ id: change.id, position: change.position, dragging: change.dragging === true }]

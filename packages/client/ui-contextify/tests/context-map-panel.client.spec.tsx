@@ -16,10 +16,12 @@ import { ContextMessageAction } from '../src/client/ContextMessageAction.tsx'
 import {
   effectiveContextIncluded, intersects, modeForEffectiveContext, reducePositionChanges,
 } from '../src/client/canvas-interactions.ts'
+import { CONTEXT_MAP_RANK_GAP } from '../src/client/layout.ts'
 
 const flowHarness = vi.hoisted(() => ({
   fitView: vi.fn(async () => true),
   onNodesChange: undefined as ReactFlowProps['onNodesChange'],
+  nodes: [] as NonNullable<ReactFlowProps['nodes']>,
 }))
 
 vi.mock('@xyflow/react', async (importOriginal) => {
@@ -29,6 +31,7 @@ vi.mock('@xyflow/react', async (importOriginal) => {
     ...actual,
     ReactFlow: (props: ReactFlowProps) => {
       flowHarness.onNodesChange = props.onNodesChange
+      flowHarness.nodes = props.nodes ?? []
       return React.createElement(actual.ReactFlow, {
         ...props,
         onInit: (instance: ReactFlowInstance) => {
@@ -48,6 +51,7 @@ class ResizeObserverStub {
 beforeEach(() => {
   flowHarness.fitView.mockClear()
   flowHarness.onNodesChange = undefined
+  flowHarness.nodes = []
   vi.stubGlobal('ResizeObserver', ResizeObserverStub)
   vi.stubGlobal('DOMMatrixReadOnly', class {
     readonly m22 = 1
@@ -362,6 +366,25 @@ describe('ContextMapPanel', () => {
     })
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 360)) })
     expect(flowHarness.fitView).not.toHaveBeenCalled()
+  })
+
+  it('reflows children below the measured bottom of a tall message card', async () => {
+    mount()
+    expect(await screen.findByLabelText('User message: root requirement')).toBeTruthy()
+
+    act(() => {
+      flowHarness.onNodesChange?.([
+        { id: 'root:1', type: 'dimensions', dimensions: { width: 224, height: 340 } },
+        { id: 'root:2', type: 'dimensions', dimensions: { width: 224, height: 116 } },
+        { id: 'child:8', type: 'dimensions', dimensions: { width: 224, height: 116 } },
+      ])
+    })
+
+    await waitFor(() => {
+      const parent = flowHarness.nodes.find(candidate => candidate.id === 'root:1')!
+      const childNode = flowHarness.nodes.find(candidate => candidate.id === 'root:2')!
+      expect(childNode.position.y - (parent.position.y + 340)).toBeGreaterThanOrEqual(CONTEXT_MAP_RANK_GAP)
+    })
   })
 
   it('restores deterministic node positions and fits the graph through Re-layout', async () => {
