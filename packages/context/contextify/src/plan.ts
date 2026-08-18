@@ -6,6 +6,7 @@ import type {
   ContextIncludedNode,
   ContextPlanSnapshot,
   ContextPlanState,
+  ContextReplacementNode,
   ContextifyCompilation,
 } from './types.ts'
 
@@ -18,6 +19,7 @@ function freezePlan(plan: ContextPlanSnapshot): ContextPlanSnapshot {
     }),
     excluded: Object.freeze(plan.excluded.map(item => Object.freeze({ ...item }))),
     included: Object.freeze(plan.included.map(item => Object.freeze({ ...item }))),
+    replacements: Object.freeze(plan.replacements.map(item => Object.freeze({ ...item }))),
   })
 }
 
@@ -48,6 +50,27 @@ function assertPlanState(state: ContextPlanState): void {
     }
     nodeIds.add(included.nodeId)
   }
+  const replacementNodeIds = new Set<string>()
+  const replacementSnapshotSeqs = new Set<number>()
+  for (const replacement of state.replacements) {
+    if (replacement.nodeId.length === 0 || replacementNodeIds.has(replacement.nodeId)) {
+      throw new Error('Contextify replacement node ids must be non-empty and unique')
+    }
+    if (!Number.isSafeInteger(replacement.snapshotSeq) || replacement.snapshotSeq < 0
+      || replacementSnapshotSeqs.has(replacement.snapshotSeq)) {
+      throw new Error('Contextify replacement snapshot sequences must be non-negative and unique')
+    }
+    if (replacement.originalEventSeq !== null
+      && (!Number.isSafeInteger(replacement.originalEventSeq) || replacement.originalEventSeq < 0)) {
+      throw new Error('Contextify replacement original event sequence must be null or non-negative')
+    }
+    if ((replacement.role !== 'user' && replacement.role !== 'assistant')
+      || replacement.kind !== 'placeholder' || replacement.reason.trim().length === 0) {
+      throw new Error('Contextify replacement metadata is invalid')
+    }
+    replacementNodeIds.add(replacement.nodeId)
+    replacementSnapshotSeqs.add(replacement.snapshotSeq)
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -70,39 +93,76 @@ function isIncludedNode(value: unknown): boolean {
     && (value.position as number) >= 0
 }
 
-/**
- * Test whether durable data is a complete version-two Context Plan.
- * @param value - Unknown event payload loaded from current or legacy persistence.
- * @returns Whether every field needed by compilation and history is present.
- */
-export function isContextPlanSnapshot(value: unknown): value is ContextPlanSnapshot {
-  if (!isRecord(value) || value.kind !== 'contextify/plan' || value.version !== 2
-    || !Number.isSafeInteger(value.revision) || (value.revision as number) < 1
-    || !Number.isSafeInteger(value.stateRevision) || (value.stateRevision as number) < 1
-    || !isRecord(value.history) || !Array.isArray(value.history.past)
-    || !Array.isArray(value.history.future) || !Array.isArray(value.excluded)
-    || !Array.isArray(value.included)) return false
-  return value.history.past.every(revision => Number.isSafeInteger(revision) && revision >= 1)
+function isReplacementNode(value: unknown): value is ContextReplacementNode {
+  return isRecord(value)
+    && typeof value.nodeId === 'string'
+    && Number.isSafeInteger(value.snapshotSeq)
+    && (value.snapshotSeq as number) >= 0
+    && (value.originalEventSeq === null
+      || (Number.isSafeInteger(value.originalEventSeq) && (value.originalEventSeq as number) >= 0))
+    && (value.role === 'user' || value.role === 'assistant')
+    && value.kind === 'placeholder'
+    && typeof value.reason === 'string'
+}
+
+interface ContextPlanSnapshotV2 {
+  readonly kind: 'contextify/plan'
+  readonly version: 2
+  readonly revision: number
+  readonly stateRevision: number
+  readonly history: { readonly past: readonly number[]; readonly future: readonly number[] }
+  readonly excluded: ContextPlanSnapshot['excluded']
+  readonly included: ContextPlanSnapshot['included']
+}
+
+function hasCommonPlanShape(value: Record<string, unknown>): boolean {
+  return Number.isSafeInteger(value.revision) && (value.revision as number) >= 1
+    && Number.isSafeInteger(value.stateRevision) && (value.stateRevision as number) >= 1
+    && isRecord(value.history) && Array.isArray(value.history.past)
+    && Array.isArray(value.history.future) && Array.isArray(value.excluded)
+    && Array.isArray(value.included)
+    && value.history.past.every(revision => Number.isSafeInteger(revision) && revision >= 1)
     && value.history.future.every(revision => Number.isSafeInteger(revision) && revision >= 1)
     && value.excluded.every(isExcludedNode)
     && value.included.every(isIncludedNode)
 }
 
 /**
+ * Test whether durable data is a complete version-three Context Plan.
+ * @param value - Unknown event payload loaded from current or legacy persistence.
+ * @returns Whether every field needed by compilation and history is present.
+ */
+export function isContextPlanSnapshot(value: unknown): value is ContextPlanSnapshot {
+  return isRecord(value) && value.kind === 'contextify/plan' && value.version === 3
+    && hasCommonPlanShape(value) && Array.isArray(value.replacements)
+    && value.replacements.every(isReplacementNode)
+}
+
+/** Normalize supported durable plans without appending a migration event. */
+export function normalizeContextPlanSnapshot(value: unknown): ContextPlanSnapshot | null {
+  if (isContextPlanSnapshot(value)) return freezePlan(value)
+  if (!isRecord(value) || value.kind !== 'contextify/plan' || value.version !== 2
+    || !hasCommonPlanShape(value)) return null
+  const legacy = value as unknown as ContextPlanSnapshotV2
+  return freezePlan({ ...legacy, version: 3, replacements: [] })
+}
+
+/**
  * Create a Natural plan with no explicit message choices.
  * @param revision - First durable revision for a fresh or reset child Session.
- * @returns A deeply frozen version-two Context Plan.
+ * @returns A deeply frozen version-three Context Plan.
  */
 export function createInitialContextPlan(revision = 1): ContextPlanSnapshot {
   assertRevision(revision, 'Contextify plan revision')
   return freezePlan({
     kind: 'contextify/plan',
-    version: 2,
+    version: 3,
     revision,
     stateRevision: revision,
     history: { past: [], future: [] },
     excluded: [],
     included: [],
+    replacements: [],
   })
 }
 
@@ -118,12 +178,13 @@ export function nextPlan(current: ContextPlanSnapshot, state: ContextPlanState):
   assertRevision(revision, 'Contextify plan revision')
   return freezePlan({
     kind: 'contextify/plan',
-    version: 2,
+    version: 3,
     revision,
     stateRevision: revision,
     history: { past: [...current.history.past, current.stateRevision], future: [] },
     excluded: state.excluded,
     included: state.included,
+    replacements: state.replacements,
   })
 }
 
@@ -133,7 +194,7 @@ export function nextPlan(current: ContextPlanSnapshot, state: ContextPlanState):
  * @returns A frozen empty-selection revision.
  */
 export function resetPlan(current: ContextPlanSnapshot): ContextPlanSnapshot {
-  return nextPlan(current, { excluded: [], included: [] })
+  return nextPlan(current, { excluded: [], included: [], replacements: [] })
 }
 
 function planAtStateRevision(session: Session, stateRevision: number): ContextPlanSnapshot {
@@ -142,7 +203,9 @@ function planAtStateRevision(session: Session, stateRevision: number): ContextPl
   if (event?.type !== 'contextify/plan') {
     throw new Error(`Contextify history revision ${String(stateRevision)} is unavailable`)
   }
-  return event.data
+  const plan = normalizeContextPlanSnapshot(event.data)
+  if (plan === null) throw new Error(`Contextify history revision ${String(stateRevision)} is invalid`)
+  return plan
 }
 
 /**
@@ -193,8 +256,8 @@ export function redoPlan(session: Session, current: ContextPlanSnapshot): Contex
  * @returns The latest plan or a detached Natural default before initialization.
  */
 export function currentContextPlan(session: Session): ContextPlanSnapshot {
-  return session.events.findLast(event => event.type === 'contextify/plan')?.data
-    ?? createInitialContextPlan()
+  const latest = session.events.findLast(event => event.type === 'contextify/plan')?.data
+  return normalizeContextPlanSnapshot(latest) ?? createInitialContextPlan()
 }
 
 function eventTurns(events: readonly SessionEvent[]): ReadonlyMap<number, number> {
@@ -233,20 +296,26 @@ function toolGroups(session: Session): ReadonlyMap<number, ReadonlySet<number>> 
   return bySeq
 }
 
-function insertSnapshots(eventSeqs: number[], included: readonly ContextIncludedNode[], session: Session): void {
+function insertSnapshots(
+  eventSeqs: number[],
+  included: readonly ContextIncludedNode[],
+  replacements: ReadonlyMap<string, ContextReplacementNode>,
+  session: Session,
+): void {
   const ordered = [...included].sort((left, right) =>
     left.position - right.position || left.snapshotSeq - right.snapshotSeq)
   let samePositionOffset = 0
   let previousPosition = -1
   for (const item of ordered) {
-    const event = session.events[item.snapshotSeq]
+    const selectedSeq = replacements.get(item.nodeId)?.snapshotSeq ?? item.snapshotSeq
+    const event = session.events[selectedSeq]
     if (event?.type !== 'context/compiler-snapshot') {
-      throw new Error(`Contextify included snapshot event ${String(item.snapshotSeq)} is unavailable`)
+      throw new Error(`Contextify included snapshot event ${String(selectedSeq)} is unavailable`)
     }
-    if (eventSeqs.includes(item.snapshotSeq)) throw new Error('Contextify included snapshot is duplicated')
+    if (eventSeqs.includes(selectedSeq)) throw new Error('Contextify included snapshot is duplicated')
     samePositionOffset = item.position === previousPosition ? samePositionOffset + 1 : 0
     previousPosition = item.position
-    eventSeqs.splice(Math.min(item.position + samePositionOffset, eventSeqs.length), 0, item.snapshotSeq)
+    eventSeqs.splice(Math.min(item.position + samePositionOffset, eventSeqs.length), 0, selectedSeq)
   }
 }
 
@@ -257,6 +326,21 @@ function selectedMessage(session: Session, seq: number): Message {
   const message = session.deriveEventMessage(event)
   if (message === null) throw new Error(`Contextify selected non-message event ${String(seq)}`)
   return message
+}
+
+function validateReplacementEvents(session: Session, replacements: readonly ContextReplacementNode[]): void {
+  for (const replacement of replacements) {
+    const snapshot = session.events[replacement.snapshotSeq]
+    if (snapshot?.type !== 'context/compiler-snapshot' || snapshot.data.message.role !== replacement.role) {
+      throw new Error(`Contextify replacement snapshot ${String(replacement.snapshotSeq)} is unavailable or has the wrong role`)
+    }
+    if (replacement.originalEventSeq === null) continue
+    const original = session.events[replacement.originalEventSeq]
+    const message = original === undefined ? null : session.deriveEventMessage(original)
+    if (message === null || message.role !== replacement.role) {
+      throw new Error(`Contextify replacement original event ${String(replacement.originalEventSeq)} is unavailable or has the wrong role`)
+    }
+  }
 }
 
 /**
@@ -270,6 +354,7 @@ export function compileContextify(request: {
   readonly step: number
 }): ContextifyCompilation {
   const plan = currentContextPlan(request.session)
+  validateReplacementEvents(request.session, plan.replacements)
   const selected = new Set(request.session.surface.nodes)
   const groups = toolGroups(request.session)
   const excludedGroups = new Set<ReadonlySet<number>>()
@@ -288,8 +373,14 @@ export function compileContextify(request: {
     else for (const member of group) selected.add(member)
   }
 
-  const eventSeqs = request.session.surface.nodes.filter(seq => selected.has(seq))
-  insertSnapshots(eventSeqs, plan.included, request.session)
+  const replacements = new Map(plan.replacements.map(item => [item.nodeId, item]))
+  const activeReplacementBySeq = new Map(plan.replacements.flatMap(item =>
+    item.originalEventSeq === null ? [] : [[item.originalEventSeq, item.snapshotSeq] as const]))
+  const eventSeqs = request.session.surface.nodes
+    .filter(seq => selected.has(seq))
+    .map(seq => activeReplacementBySeq.get(seq) ?? seq)
+  if (new Set(eventSeqs).size !== eventSeqs.length) throw new Error('Contextify replacement snapshot is duplicated')
+  insertSnapshots(eventSeqs, plan.included, replacements, request.session)
   const messages = eventSeqs.map(seq => selectedMessage(request.session, seq))
   return Object.freeze({
     eventSeqs: Object.freeze(eventSeqs),

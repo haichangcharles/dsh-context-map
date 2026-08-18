@@ -34,6 +34,16 @@ export interface ContextFamilyGraphNode {
   readonly branchAtSeq: number | null
   readonly sessionIds: readonly SessionId[]
   readonly activeEventSeq: number | null
+  /** Optional role-preserving semantic overlay selected by the active Context Plan. */
+  readonly replacement?: ContextReplacementView
+}
+
+/** Client-safe placeholder state without exposing compiler snapshot internals. */
+export interface ContextReplacementView {
+  readonly preview: string
+  readonly reason: string
+  readonly role: 'user' | 'assistant'
+  readonly originalAvailable: true
 }
 
 /** One causal visible-message edge shared by every Session that traverses it. */
@@ -66,16 +76,27 @@ export interface ContextIncludedNode {
   readonly position: number
 }
 
+/** One reversible semantic placeholder overlay for an existing graph node. */
+export interface ContextReplacementNode {
+  readonly nodeId: string
+  readonly snapshotSeq: number
+  readonly originalEventSeq: number | null
+  readonly role: 'user' | 'assistant'
+  readonly kind: 'placeholder'
+  readonly reason: string
+}
+
 /** Selection fields copied between revisioned Context Plan states. */
 export interface ContextPlanState {
   readonly excluded: readonly ContextExcludedNode[]
   readonly included: readonly ContextIncludedNode[]
+  readonly replacements: readonly ContextReplacementNode[]
 }
 
 /** Complete last-wins context selection and undo history. */
 export interface ContextPlanSnapshot {
   readonly kind: 'contextify/plan'
-  readonly version: 2
+  readonly version: 3
   readonly revision: number
   readonly stateRevision: number
   readonly history: {
@@ -84,6 +105,7 @@ export interface ContextPlanSnapshot {
   }
   readonly excluded: readonly ContextExcludedNode[]
   readonly included: readonly ContextIncludedNode[]
+  readonly replacements: readonly ContextReplacementNode[]
 }
 
 /** Existing durable events and messages selected for one request. */

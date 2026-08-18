@@ -14,7 +14,7 @@ import {
   compileContextify,
   createInitialContextPlan,
   currentContextPlan,
-  isContextPlanSnapshot,
+  normalizeContextPlanSnapshot,
   nextPlan,
   redoPlan,
   resetPlan,
@@ -29,6 +29,7 @@ import type {
   ContextNodeMutation,
   ContextPlanRef,
   ContextPlanSnapshot,
+  ContextReplacementNode,
   ContextRecommendationBase,
   ContextRecommendationProposal,
   ContextifyView,
@@ -39,6 +40,7 @@ export {
   compileContextify,
   createInitialContextPlan,
   currentContextPlan,
+  normalizeContextPlanSnapshot,
   nextPlan,
   projectSessionFamily,
   redoPlan,
@@ -153,7 +155,7 @@ export class ContextifyService extends TypertRemoteService {
     super(ctx, 'contextify')
     ctx.effect(() => ctx.contextCompiler.register({
       id: name,
-      version: 2,
+      version: 3,
       select: request => ({ eventSeqs: compileContextify(request).eventSeqs }),
     }))
     ctx.on('agent/session-start', ({ agent }) => {
@@ -162,7 +164,7 @@ export class ContextifyService extends TypertRemoteService {
       const inherited = agent.session.header.parentSession !== undefined
         && latest !== undefined
         && latest.seq < (agent.session.header.seedLength ?? 0)
-      if (latest === undefined || inherited || !isContextPlanSnapshot(current)) {
+      if (latest === undefined || inherited || normalizeContextPlanSnapshot(current) === null) {
         const priorRevision = isRecordWithRevision(current) ? current.revision : 0
         agent.session.append('contextify/plan', createInitialContextPlan(
           priorRevision + 1,
@@ -200,7 +202,8 @@ export class ContextifyService extends TypertRemoteService {
       throw new RangeError('family page limit must be 1-500')
     }
     const { graph } = await this.loadFamily(agent.session)
-    const records = graph.nodes.slice(offset, offset + pageLimit)
+    const decoratedNodes = this.decorateNodes(agent.session, graph.nodes)
+    const records = decoratedNodes.slice(offset, offset + pageLimit)
     const next = offset + records.length
     return {
       asOfSeq: agent.session.seq - 1,
@@ -209,8 +212,8 @@ export class ContextifyService extends TypertRemoteService {
       sessions: graph.sessions,
       edges: graph.edges,
       records,
-      totalNodeCount: graph.nodes.length,
-      ...(next < graph.nodes.length ? { nextAfter: next } : {}),
+      totalNodeCount: decoratedNodes.length,
+      ...(next < decoratedNodes.length ? { nextAfter: next } : {}),
     }
   }
 
@@ -245,7 +248,15 @@ export class ContextifyService extends TypertRemoteService {
       if (agent.session.seq - 1 !== base.graphAsOfSeq) {
         throw new ContextifyError('the Context Map changed while it was being read', 'CONTEXTIFY_STALE_GRAPH')
       }
+      const replacementByNode = new Map(plan.replacements.map(item => [item.nodeId, item]))
       const contents = Object.fromEntries(family.graph.nodes.map((node) => {
+        const replacement = replacementByNode.get(node.id)
+        if (replacement !== undefined) {
+          const event = agent.session.events[replacement.snapshotSeq]
+          if (event?.type === 'context/compiler-snapshot') {
+            return [node.id, recommendationText(event.data.message)]
+          }
+        }
         const inspection = family.inspections.get(node.owner.sessionId)
         const message = inspection === undefined ? null : exactMessage(inspection, node.owner.seq)
         return [node.id, message === null ? node.preview : recommendationText(message)]
@@ -372,6 +383,11 @@ export class ContextifyService extends TypertRemoteService {
       const message = importedMessage(exact)
       const position = family.graph.nodes.filter(candidate =>
         candidate.sessionIds.includes(agent.session.id) && candidate.time <= node.time).length
+      const replacement = current.replacements.find(item => item.nodeId === node.id)
+      if (replacement !== undefined) {
+        included.push({ nodeId: node.id, snapshotSeq: replacement.snapshotSeq, position })
+        continue
+      }
       pendingSnapshots.push({ nodeId: node.id, ref: mutation.node, message, position })
     }
 
@@ -381,7 +397,9 @@ export class ContextifyService extends TypertRemoteService {
       snapshotSeq: firstSnapshotSeq + index,
       position: snapshot.position,
     }))
-    const plan = nextPlan(current, { excluded, included: [...included, ...appendedIncludes] })
+    const plan = nextPlan(current, {
+      excluded, included: [...included, ...appendedIncludes], replacements: current.replacements,
+    })
     for (const snapshot of pendingSnapshots) {
       agent.session.append('context/compiler-snapshot', {
         id: snapshot.nodeId,
@@ -395,6 +413,78 @@ export class ContextifyService extends TypertRemoteService {
       })
     }
     return this.commit(agent.session, plan)
+  }
+
+  /** Replace one node's model-visible semantics with a reversible role-preserving placeholder. */
+  @Remote('replaceNode')
+  async replaceNode(
+    agent: Agent,
+    ref: ContextPlanRef,
+    nodeRef: ContextMessageRef,
+    placeholderText: string,
+    reason: string,
+  ): Promise<ContextifyView> {
+    const current = this.prepare(agent, ref)
+    const text = placeholderText.trim()
+    const explanation = reason.trim()
+    if (text.length < 1 || text.length > 500 || explanation.length < 1 || explanation.length > 1_000) {
+      throw new ContextifyError('placeholder and reason must be non-empty and bounded', 'CONTEXTIFY_INVALID_TRANSITION')
+    }
+    const family = await this.loadFamily(agent.session)
+    const node = resolveNode(family.graph, nodeRef)
+    if (node === undefined) throw new ContextifyError('message is not part of the active Context Map', 'CONTEXTIFY_INVALID_NODE')
+    const source = family.inspections.get(node.owner.sessionId)
+    const exact = source === undefined ? null : exactMessage(source, node.owner.seq)
+    if (exact === null || exact.role !== node.role) {
+      throw new ContextifyError('message source is unavailable', 'CONTEXTIFY_INVALID_NODE')
+    }
+    const message = importedMessage(exact)
+    const placeholder: Message = structuredClone({
+      ...message,
+      content: [{ type: 'text', text }],
+    })
+    const snapshot = agent.session.append('context/compiler-snapshot', {
+      id: node.id,
+      message: placeholder,
+      provenance: {
+        provider: 'contextify-placeholder',
+        sourceId: node.owner.sessionId,
+        sourceSeq: node.owner.seq,
+        contentHash: contentHash(placeholder),
+      },
+    })
+    const replacement: ContextReplacementNode = {
+      nodeId: node.id,
+      snapshotSeq: snapshot.seq,
+      originalEventSeq: node.activeEventSeq,
+      role: node.role,
+      kind: 'placeholder',
+      reason: explanation,
+    }
+    return this.commit(agent.session, nextPlan(current, {
+      excluded: current.excluded,
+      included: current.included,
+      replacements: [...current.replacements.filter(item => item.nodeId !== node.id), replacement],
+    }))
+  }
+
+  /** Restore a node's original semantics while preserving Include/Exclude state. */
+  @Remote('restoreNode')
+  async restoreNode(agent: Agent, ref: ContextPlanRef, nodeRef: ContextMessageRef): Promise<ContextifyView> {
+    const current = this.prepare(agent, ref)
+    const family = await this.loadFamily(agent.session)
+    const node = resolveNode(family.graph, nodeRef)
+    if (node === undefined) throw new ContextifyError('message is not part of the active Context Map', 'CONTEXTIFY_INVALID_NODE')
+    const nodeId = node.id
+    const replacements = current.replacements.filter(item => item.nodeId !== nodeId)
+    if (replacements.length === current.replacements.length) {
+      throw new ContextifyError('message does not have a placeholder replacement', 'CONTEXTIFY_INVALID_TRANSITION')
+    }
+    return this.commit(agent.session, nextPlan(current, {
+      excluded: current.excluded,
+      included: current.included,
+      replacements,
+    }))
   }
 
   /**
@@ -481,6 +571,25 @@ export class ContextifyService extends TypertRemoteService {
       canUndo: plan.history.past.length > 0,
       canRedo: plan.history.future.length > 0,
     }
+  }
+
+  private decorateNodes(session: Session, nodes: readonly ContextFamilyGraphNode[]): readonly ContextFamilyGraphNode[] {
+    const replacements = new Map(currentContextPlan(session).replacements.map(item => [item.nodeId, item]))
+    return Object.freeze(nodes.map((node) => {
+      const replacement = replacements.get(node.id)
+      if (replacement === undefined) return node
+      const event = session.events[replacement.snapshotSeq]
+      if (event?.type !== 'context/compiler-snapshot') return node
+      return Object.freeze({
+        ...node,
+        replacement: Object.freeze({
+          preview: recommendationText(event.data.message).slice(0, 240),
+          reason: replacement.reason,
+          role: replacement.role,
+          originalAvailable: true as const,
+        }),
+      })
+    }))
   }
 
   private async loadFamily(active: Session): Promise<LoadedFamily> {

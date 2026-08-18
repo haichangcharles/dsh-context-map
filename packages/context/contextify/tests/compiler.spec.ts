@@ -71,6 +71,7 @@ describe('native Contextify plan compiler', () => {
         { nodeId: 'active:5', eventSeq: currentSeq },
       ],
       included: [{ nodeId: 'sibling:8', snapshotSeq: snapshot.seq, position: 1 }],
+      replacements: [],
     }))
 
     const compilation = compileContextify({ session, turn: 2, step: 1 })
@@ -89,11 +90,13 @@ describe('native Contextify plan compiler', () => {
     const excluded = nextPlan(initial, {
       excluded: [{ nodeId: 'root:1', eventSeq: 1 }],
       included: [],
+      replacements: [],
     })
     session.append('contextify/plan', excluded)
     const included = nextPlan(excluded, {
       excluded: excluded.excluded,
       included: [{ nodeId: 'sibling:4', snapshotSeq: 9, position: 1 }],
+      replacements: [],
     })
     session.append('contextify/plan', included)
 
@@ -103,6 +106,7 @@ describe('native Contextify plan compiler', () => {
       stateRevision: excluded.stateRevision,
       excluded: excluded.excluded,
       included: [],
+      replacements: [],
       history: { future: [included.stateRevision] },
     })
     session.append('contextify/plan', undone!)
@@ -163,9 +167,90 @@ describe('native Contextify plan compiler', () => {
     session.append('contextify/plan', nextPlan(initial, {
       excluded: [{ nodeId: 'root:result', eventSeq: firstResultSeq }],
       included: [],
+      replacements: [],
     }))
 
     expect(compileContextify({ session, turn: 2, step: 1 }).eventSeqs).toEqual([promptSeq])
     expect([assistantSeq, firstResultSeq, secondResultSeq]).not.toContain(promptSeq)
+  })
+
+  it('substitutes active and included messages with role-preserving placeholder snapshots', () => {
+    const session = Session.create(SessionId('contextify-replacements'))
+    const initial = createInitialContextPlan()
+    session.append('contextify/plan', initial)
+    const activeSeq = appendUser(session, 'secret active requirement')
+    const activePlaceholder = session.append('context/compiler-snapshot', {
+      id: 'active:user',
+      message: createUserMessage({
+        content: [{ type: 'text', text: '[Earlier user requirement removed]' }],
+        source: { kind: 'plugin', plugin: 'contextify' },
+      }),
+    })
+    const imported = session.append('context/compiler-snapshot', {
+      id: 'sibling:user',
+      message: createUserMessage({
+        content: [{ type: 'text', text: 'secret sibling discovery' }],
+        source: { kind: 'plugin', plugin: 'contextify' },
+      }),
+    })
+    const importedPlaceholder = session.append('context/compiler-snapshot', {
+      id: 'sibling:user',
+      message: createUserMessage({
+        content: [{ type: 'text', text: '[Sibling discovery removed]' }],
+        source: { kind: 'plugin', plugin: 'contextify' },
+      }),
+    })
+    session.append('contextify/plan', nextPlan(initial, {
+      excluded: [],
+      included: [{ nodeId: 'sibling:user', snapshotSeq: imported.seq, position: 1 }],
+      replacements: [
+        {
+          nodeId: 'active:user', snapshotSeq: activePlaceholder.seq, originalEventSeq: activeSeq,
+          role: 'user', kind: 'placeholder', reason: 'obsolete',
+        },
+        {
+          nodeId: 'sibling:user', snapshotSeq: importedPlaceholder.seq, originalEventSeq: null,
+          role: 'user', kind: 'placeholder', reason: 'conflict',
+        },
+      ],
+    }))
+
+    const compilation = compileContextify({ session, turn: 2, step: 1 })
+    expect(compilation.eventSeqs).toEqual([activePlaceholder.seq, importedPlaceholder.seq])
+    expect(compilation.messages.map(text)).toEqual([
+      '[Earlier user requirement removed]', '[Sibling discovery removed]',
+    ])
+    expect(compilation.messages.map(message => message.role)).toEqual(['user', 'user'])
+  })
+
+  it('clears replacement overlays on Reset and restores them through Undo', () => {
+    const session = Session.create(SessionId('contextify-replacement-history'))
+    const initial = createInitialContextPlan()
+    session.append('contextify/plan', initial)
+    const originalSeq = appendAssistant(session, 1, 'original answer')
+    const snapshot = session.append('context/compiler-snapshot', {
+      id: 'active:assistant',
+      message: createAssistantMessage({
+        content: [{ type: 'text', text: '[Earlier answer removed]' }],
+        source: { provider: 'contextify-placeholder', model: 'local' },
+      }),
+    })
+    const replaced = nextPlan(initial, {
+      excluded: [], included: [], replacements: [{
+        nodeId: 'active:assistant', snapshotSeq: snapshot.seq, originalEventSeq: originalSeq,
+        role: 'assistant', kind: 'placeholder', reason: 'redundant',
+      }],
+    })
+    session.append('contextify/plan', replaced)
+    const reset = resetPlan(replaced)
+    session.append('contextify/plan', reset)
+    expect(reset.replacements).toEqual([])
+    expect(compileContextify({ session, turn: 2, step: 1 }).messages.map(text)).toEqual(['original answer'])
+
+    const undone = undoPlan(session, reset)
+    expect(undone?.replacements).toEqual(replaced.replacements)
+    session.append('contextify/plan', undone!)
+    expect(compileContextify({ session, turn: 2, step: 1 }).messages.map(text))
+      .toEqual(['[Earlier answer removed]'])
   })
 })

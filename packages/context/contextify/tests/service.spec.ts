@@ -121,7 +121,7 @@ describe('ContextifyService native Session family', () => {
     expect(session.seq).toBe(before)
   })
 
-  it('migrates a legacy same-Session plan to v2 Natural before compilation', async () => {
+  it('migrates a legacy same-Session plan to v3 Natural before compilation', async () => {
     const { ctx, start } = await harness()
     const session = ctx.sessions.create(SessionId('legacy-plan'))
     session.append('contextify/plan', {
@@ -140,9 +140,79 @@ describe('ContextifyService native Session family', () => {
     const active = start(session)
     const view = ctx.contextify.get(active.agent)
 
-    expect(view.plan).toMatchObject({ version: 2, revision: 2, excluded: [], included: [] })
+    expect(view.plan).toMatchObject({ version: 3, revision: 2, excluded: [], included: [], replacements: [] })
     expect(ctx.contextCompiler.compile({ session, turn: 2, step: 1 }).messages)
       .toEqual(session.deriveMessages())
+  })
+
+  it('normalizes a v2 plan in memory and writes v3 only on the next mutation', async () => {
+    const { ctx, start } = await harness()
+    const session = ctx.sessions.create(SessionId('v2-plan'))
+    session.append('contextify/plan', {
+      kind: 'contextify/plan', version: 2, revision: 8, stateRevision: 8,
+      history: { past: [7], future: [] }, excluded: [], included: [],
+    } as never)
+    const turn = appendClosedTurn(session, 1, 'v2 prompt')
+    const planEventsBefore = session.events.filter(event => event.type === 'contextify/plan').length
+    const active = start(session)
+
+    expect(session.events.filter(event => event.type === 'contextify/plan')).toHaveLength(planEventsBefore)
+    expect(ctx.contextify.get(active.agent).plan).toMatchObject({
+      version: 3, revision: 8, stateRevision: 8, replacements: [],
+    })
+    const changed = await ctx.contextify.setNodeMode(
+      active.agent, { revision: 8 }, { sessionId: session.id, seq: turn.userSeq }, 'exclude',
+    )
+    expect(changed.plan).toMatchObject({ version: 3, revision: 9 })
+    expect(session.events.findLast(event => event.type === 'contextify/plan')?.data.version).toBe(3)
+  })
+
+  it('replaces and restores message semantics without changing the graph node or its edges', async () => {
+    const { ctx, start } = await harness()
+    const session = ctx.sessions.create(SessionId('placeholder'))
+    const active = start(session)
+    const turn = appendClosedTurn(session, 1, 'private requirement', 'public answer')
+    const initial = ctx.contextify.get(active.agent)
+    const graphBefore = await ctx.contextify.familyPage(active.agent, undefined, 100)
+    const nodeBefore = graphBefore.records.find(node => node.owner.seq === turn.userSeq)!
+
+    const replaced = await ctx.contextify.replaceNode(
+      active.agent,
+      { revision: initial.plan.revision },
+      nodeBefore.owner,
+      '[Earlier user requirement removed]',
+      'Obsolete requirement',
+    )
+    expect(replaced.plan.replacements).toMatchObject([{
+      nodeId: nodeBefore.id, role: 'user', kind: 'placeholder', reason: 'Obsolete requirement',
+    }])
+    expect(ctx.contextCompiler.compile({ session, turn: 2, step: 1 }).messages
+      .map(message => message.content)).toEqual(expect.arrayContaining([
+      [{ type: 'text', text: '[Earlier user requirement removed]' }],
+    ]))
+    expect(ctx.contextCompiler.compile({ session, turn: 2, step: 1 }).messages
+      .flatMap(message => message.content).filter(block => block.type === 'text').map(block => block.text))
+      .not.toContain('private requirement')
+
+    const graphAfter = await ctx.contextify.familyPage(active.agent, undefined, 100)
+    const nodeAfter = graphAfter.records.find(node => node.id === nodeBefore.id)!
+    expect(nodeAfter).toMatchObject({
+      id: nodeBefore.id,
+      owner: nodeBefore.owner,
+      branchAtSeq: nodeBefore.branchAtSeq,
+      replacement: {
+        preview: '[Earlier user requirement removed]', originalAvailable: true, role: 'user',
+      },
+    })
+    expect(graphAfter.edges).toEqual(graphBefore.edges)
+
+    const restored = await ctx.contextify.restoreNode(
+      active.agent, { revision: replaced.plan.revision }, nodeBefore.owner,
+    )
+    expect(restored.plan.replacements).toEqual([])
+    expect(ctx.contextCompiler.compile({ session, turn: 2, step: 1 }).messages
+      .flatMap(message => message.content).filter(block => block.type === 'text').map(block => block.text))
+      .toContain('private requirement')
   })
 
   it('pages a de-duplicated family and imports only a same-family message snapshot', async () => {
