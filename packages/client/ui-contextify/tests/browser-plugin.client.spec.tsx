@@ -20,14 +20,21 @@ async function bench() {
   new RemoteService(ctx)
   const view = {
     plan: {
-      kind: 'contextify/plan', version: 2, revision: 4, stateRevision: 4,
-      history: { past: [3], future: [] }, excluded: [], included: [],
+      kind: 'contextify/plan', version: 3, revision: 4, stateRevision: 4,
+      history: { past: [3], future: [] }, excluded: [], included: [], replacements: [],
     },
     graphAsOfSeq: 7, selectedCount: 1, totalNodeCount: 1, canUndo: true, canRedo: false,
   }
   const record = {
     id: 'session-1:7', owner: { sessionId: source, seq: 7 }, role: 'user' as const,
     preview: 'hello', time: 7, branchAtSeq: 9, sessionIds: [source], activeEventSeq: 7,
+  }
+  const proposal = {
+    base: { planRevision: 4, graphAsOfSeq: 7, activeSessionId: source },
+    selection: [{
+      nodeId: record.id, action: 'exclude' as const, reason: 'No longer needed', confidence: 'high' as const,
+    }],
+    cleanup: [],
   }
   const answer = <T,>(method: string, value: T) => (...args: unknown[]) => {
     calls.push({ method, args })
@@ -49,6 +56,9 @@ async function bench() {
     reset: answer('reset', view),
     undo: answer('undo', view),
     redo: answer('redo', view),
+    recommend: answer('recommend', proposal),
+    replaceNode: answer('replaceNode', view),
+    restoreNode: answer('restoreNode', view),
   })
   const openDetails = vi.fn()
   const closeDetails = vi.fn()
@@ -131,5 +141,25 @@ describe('ui-contextify browser plugin', () => {
     expect(b.ctx.slots.entries('conversation.chat.user-actions')).toHaveLength(0)
     expect(b.ctx.slots.entries('conversation.chat.assistant-actions')).toHaveLength(0)
     expect(b.ctx.slots.entries('shell.overlay')).toHaveLength(0)
+  })
+
+  it('keeps recommendations review-only until accepted, then applies one atomic mutation', async () => {
+    const b = await bench()
+    const controller = b.panel.hooks.contextify as never as {
+      refresh: () => Promise<void>
+      getSnapshot: () => { recommendation: { phase: string } }
+    }
+    await controller.refresh()
+
+    await b.panel.mapActions.recommend()
+    expect(controller.getSnapshot().recommendation).toMatchObject({ phase: 'ready' })
+    expect(b.calls.filter(call => call.method === 'setNodeModes')).toHaveLength(0)
+
+    await b.panel.mapActions.applyRecommendations([b.record.id])
+    expect(b.calls.filter(call => call.method === 'setNodeModes')).toEqual([{
+      method: 'setNodeModes',
+      args: [source, { revision: 4 }, [{ node: b.record.owner, mode: 'exclude' }]],
+    }])
+    expect(controller.getSnapshot().recommendation).toMatchObject({ phase: 'idle' })
   })
 })

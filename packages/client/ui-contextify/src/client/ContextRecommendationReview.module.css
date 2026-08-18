@@ -1,0 +1,53 @@
+.sheet {
+  position: absolute;
+  z-index: 9;
+  right: 10px;
+  bottom: 12px;
+  left: 10px;
+  max-height: min(58%, 520px);
+  overflow: auto;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--dsw-alias-bg-elevated) 97%, transparent);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 22%);
+  backdrop-filter: blur(10px);
+}
+
+.header { display: flex; align-items: flex-start; gap: 10px; }
+.header div { flex: 1; }
+.header h3 { margin: 0; font-size: 13px; }
+.header p { margin: 3px 0 0; color: var(--dsw-alias-fg-secondary); font-size: 10px; }
+.header button,
+.actions button,
+.item button {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  padding: 5px 7px;
+  background: var(--dsw-alias-bg-base);
+  color: inherit;
+  cursor: pointer;
+  font-size: 10px;
+}
+.header button:disabled,
+.actions button:disabled,
+.item button:disabled { cursor: default; opacity: 0.45; }
+.stale { margin: 9px 0 0; border-radius: 7px; padding: 7px; background: rgb(245 158 11 / 13%); color: #b56a00; font-size: 10px; }
+.section { margin-top: 12px; }
+.section h4 { margin: 0 0 6px; font-size: 11px; }
+.list { display: grid; gap: 6px; }
+.item { border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 8px; font-size: 10px; }
+.itemTop { display: flex; align-items: flex-start; gap: 7px; }
+.itemTop label { display: flex; flex: 1; align-items: flex-start; gap: 6px; }
+.item strong { font-size: 10px; }
+.item p { margin: 4px 0 0; color: var(--dsw-alias-fg-secondary); line-height: 1.4; }
+.badge { display: inline-block; margin-right: 5px; border-radius: 99px; padding: 2px 5px; background: rgb(79 125 243 / 14%); color: #4f7df3; font-size: 9px; }
+.warning { background: rgb(245 158 11 / 14%); color: #b56a00; }
+.actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 9px; }
+.editor { display: grid; gap: 6px; margin-top: 8px; }
+.editor textarea { min-height: 54px; resize: vertical; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; padding: 6px; background: var(--dsw-alias-bg-base); color: inherit; font: inherit; }
+.preview { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.preview div { min-width: 0; border-radius: 6px; padding: 6px; background: rgb(127 140 165 / 8%); }
+.preview span { display: block; margin-bottom: 3px; color: var(--dsw-alias-fg-secondary); font-size: 9px; }
+.preview p { max-height: 80px; overflow: auto; overflow-wrap: anywhere; }
+.empty { color: var(--dsw-alias-fg-secondary); font-size: 10px; }

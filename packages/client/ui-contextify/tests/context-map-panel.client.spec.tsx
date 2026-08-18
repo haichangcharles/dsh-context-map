@@ -95,11 +95,12 @@ function fixture(): ContextifyControllerSnapshot {
   return {
     phase: 'ready',
     pending: false,
+    recommendation: { phase: 'idle' },
     view: {
       plan: {
-        kind: 'contextify/plan', version: 2, revision: 3, stateRevision: 3,
+        kind: 'contextify/plan', version: 3, revision: 3, stateRevision: 3,
         history: { past: [2], future: [] },
-        excluded: [], included: [],
+        excluded: [], included: [], replacements: [],
       },
       graphAsOfSeq: 20,
       selectedCount: 2,
@@ -155,6 +156,11 @@ function mount(
     reset: vi.fn(async () => {}),
     undo: vi.fn(async () => {}),
     redo: vi.fn(async () => {}),
+    recommend: vi.fn(async () => {}),
+    applyRecommendations: vi.fn(async () => {}),
+    clearRecommendation: vi.fn(),
+    confirmCleanup: vi.fn(async () => {}),
+    restoreNode: vi.fn(async () => {}),
     branch: vi.fn(async () => {}),
     locate: vi.fn(),
     close: vi.fn(),
@@ -484,6 +490,70 @@ describe('ContextMapPanel', () => {
     fireEvent.click(reset)
     expect(h.mapActions.reset).toHaveBeenCalledOnce()
   })
+
+  it('reviews recommendations without changing checkboxes before explicit acceptance', async () => {
+    const original = fixture()
+    const proposal = {
+      base: { planRevision: 3, graphAsOfSeq: 20, activeSessionId: child },
+      selection: [{
+        nodeId: 'root:1', action: 'exclude' as const, reason: 'Superseded', confidence: 'high' as const,
+      }],
+      cleanup: [{
+        nodeId: 'root:2', category: 'obsolete' as const, reason: 'Old draft',
+        evidenceNodeIds: ['child:8'], placeholderText: '[Earlier draft removed]',
+      }],
+    }
+    const snapshot: ContextifyControllerSnapshot = {
+      ...original,
+      recommendation: { phase: 'ready', proposal },
+    }
+    const h = mount(snapshot)
+    const checkbox = await screen.findByLabelText('Include root requirement in context')
+    expect((checkbox as HTMLInputElement).checked).toBe(true)
+    expect(screen.getByText('Suggested exclude')).toBeTruthy()
+    expect(screen.getByRole('dialog', { name: 'Context recommendation review' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /all cleanup/i })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    expect(h.mapActions.applyRecommendations).toHaveBeenCalledWith(['root:1'])
+    expect((checkbox as HTMLInputElement).checked).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Review replacement' }))
+    expect(screen.getByText('Before')).toBeTruthy()
+    expect(screen.getByText('After')).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Placeholder for root:2'), {
+      target: { value: '[Replaced old answer]' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Replace with placeholder' }))
+    expect(h.mapActions.confirmCleanup).toHaveBeenCalledWith(
+      proposal.cleanup[0], '[Replaced old answer]',
+    )
+  })
+
+  it('keeps a replacement on the same node and exposes original/restore from the native menu', async () => {
+    const original = fixture()
+    const records = original.graph!.nodes.map(record => record.id === 'root:2' ? {
+      ...record,
+      replacement: {
+        preview: '[Earlier answer removed]', reason: 'obsolete', role: 'assistant' as const,
+        originalAvailable: true as const,
+      },
+    } : record)
+    const h = mount({ ...original, graph: { ...original.graph!, nodes: records } })
+    const card = await screen.findByLabelText('Assistant message: [Earlier answer removed]')
+    expect(card.dataset.contextNodeId).toBe('root:2')
+    expect(within(card).getByText('Original retained')).toBeTruthy()
+
+    fireEvent.contextMenu(card, { clientX: 160, clientY: 180 })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Show original' }))
+    expect(screen.getByRole('dialog', { name: 'Original message' }).textContent).toContain('old draft')
+    fireEvent.click(screen.getByRole('button', { name: 'Close original message' }))
+
+    fireEvent.contextMenu(card, { clientX: 160, clientY: 180 })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Restore original' }))
+    expect(h.mapActions.restoreNode).toHaveBeenCalledWith({ sessionId: root, seq: 2 })
+    expect(h.view.container.querySelectorAll('.react-flow__node')).toHaveLength(3)
+  })
 })
 
 describe('canvas interaction rules', () => {
@@ -550,6 +620,53 @@ describe('ContextMessageAction', () => {
 })
 
 describe('ContextifyController', () => {
+  it('keeps an equivalent proposal across polling and marks it stale when its graph base changes', async () => {
+    let currentView = fixture().view!
+    let resolveProposal!: (value: Awaited<ReturnType<ContextifyTransport['recommend']>>) => void
+    const proposalPromise = new Promise<Awaited<ReturnType<ContextifyTransport['recommend']>>>((resolve) => {
+      resolveProposal = resolve
+    })
+    const transport: ContextifyTransport = {
+      get: async () => currentView,
+      familyPage: async () => ({
+        asOfSeq: currentView.graphAsOfSeq,
+        rootSessionId: root,
+        activeSessionId: child,
+        sessions: fixture().graph!.sessions,
+        edges: fixture().graph!.edges,
+        records: fixture().graph!.nodes,
+        totalNodeCount: 3,
+      }),
+      setNodeMode: vi.fn(async () => currentView),
+      setNodeModes: vi.fn(async () => currentView),
+      reset: vi.fn(async () => currentView),
+      undo: vi.fn(async () => currentView),
+      redo: vi.fn(async () => currentView),
+      recommend: vi.fn(() => proposalPromise),
+      replaceNode: vi.fn(async () => currentView),
+      restoreNode: vi.fn(async () => currentView),
+    }
+    const controller = new ContextifyController(transport)
+    await controller.refresh()
+    const recommending = controller.recommend()
+    expect(controller.getSnapshot().recommendation.phase).toBe('running')
+    const proposal = {
+      base: { planRevision: 3, graphAsOfSeq: 20, activeSessionId: child },
+      selection: [], cleanup: [],
+    }
+    resolveProposal(proposal)
+    await recommending
+    expect(controller.getSnapshot().recommendation).toMatchObject({ phase: 'ready', proposal })
+
+    await controller.refresh()
+    expect(controller.getSnapshot().recommendation).toMatchObject({ phase: 'ready', proposal })
+    currentView = { ...currentView, graphAsOfSeq: 21 }
+    await controller.refresh()
+    expect(controller.getSnapshot().recommendation).toMatchObject({ phase: 'stale', proposal })
+    controller.clearRecommendation()
+    expect(controller.getSnapshot().recommendation).toEqual({ phase: 'idle' })
+  })
+
   it('waits for an in-flight refresh before choosing the mutation revision', async () => {
     let resolveView!: (value: ContextifyControllerSnapshot['view']) => void
     const viewPromise = new Promise<ContextifyControllerSnapshot['view']>((resolve) => { resolveView = resolve })
@@ -570,6 +687,12 @@ describe('ContextifyController', () => {
       reset: vi.fn(async () => fixture().view!),
       undo: vi.fn(async () => fixture().view!),
       redo: vi.fn(async () => fixture().view!),
+      recommend: vi.fn(async () => ({
+        base: { planRevision: 3, graphAsOfSeq: 20, activeSessionId: child },
+        selection: [], cleanup: [],
+      })),
+      replaceNode: vi.fn(async () => fixture().view!),
+      restoreNode: vi.fn(async () => fixture().view!),
     }
     const controller = new ContextifyController(transport)
     const refresh = controller.refresh()

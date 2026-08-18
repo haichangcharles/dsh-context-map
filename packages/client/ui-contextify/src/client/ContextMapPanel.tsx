@@ -6,7 +6,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type {
-  ContextFamilyGraphNode, ContextMessageRef, ContextNodeMutation,
+  ContextCleanupCandidate, ContextFamilyGraphNode, ContextMessageRef, ContextNodeMutation,
 } from '@deepseek-ai/dsh-contextify/types'
 import type { WorkspaceListState } from '@deepseek-ai/dsh-client-runtime/client'
 import type { HostObservable, PropsStore, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
@@ -16,6 +16,7 @@ import {
   effectiveContextIncluded, intersects, modeForEffectiveContext, reducePositionChanges, type CanvasPoint,
 } from './canvas-interactions.ts'
 import { ContextMapMenu } from './ContextMapMenu.tsx'
+import { ContextRecommendationReview } from './ContextRecommendationReview.tsx'
 import type { ContextifyControllerSnapshot } from './controller.ts'
 import { layoutContextMap, type ContextMapNodeSizes } from './layout.ts'
 import { reconcileMeasuredSizes, reduceMeasuredSizes } from './layout-measurements.ts'
@@ -29,6 +30,11 @@ export interface ContextMapActions {
   reset: () => Promise<void>
   undo: () => Promise<void>
   redo: () => Promise<void>
+  recommend: (objective?: string) => Promise<void>
+  applyRecommendations: (nodeIds?: readonly string[]) => Promise<void>
+  clearRecommendation: () => void
+  confirmCleanup: (candidate: ContextCleanupCandidate, placeholderText?: string) => Promise<void>
+  restoreNode: (node: ContextMessageRef) => Promise<void>
   branch: (node: ContextFamilyGraphNode) => Promise<void>
   locate: (node: ContextFamilyGraphNode) => void
   close: () => void
@@ -84,6 +90,7 @@ export function ContextMapPanel({
   const [interactionMode, setInteractionMode] = useState<'normal' | 'selection'>('normal')
   const [marquee, setMarquee] = useState<MarqueeState | null>(null)
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
+  const [originalPreview, setOriginalPreview] = useState<ContextFamilyGraphNode | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [pendingNodeId, setPendingNodeId] = useState<string | null>(null)
   const [optimisticModes, setOptimisticModes] = useState<Record<string, ContextNodeMode>>({})
@@ -93,6 +100,7 @@ export function ContextMapPanel({
   const canvasRef = useRef<HTMLDivElement>(null)
   const initialFitCompleted = useRef(false)
   const relayoutTimer = useRef<number | undefined>(undefined)
+  const recommendButtonRef = useRef<HTMLButtonElement>(null)
   const graph = useMemo(() => snapshot.graph === undefined
     ? undefined
     : projectUnarchivedContextFamily(snapshot.graph, archivedSessionIds), [archivedSessionIds, snapshot.graph])
@@ -105,7 +113,8 @@ export function ContextMapPanel({
   const normalizedQuery = query.trim().toLocaleLowerCase()
   const searchResultIds = useMemo(() => normalizedQuery === ''
     ? []
-    : records.filter(node => node.preview.toLocaleLowerCase().includes(normalizedQuery)).map(node => node.id),
+    : records.filter(node => (node.replacement?.preview ?? node.preview)
+      .toLocaleLowerCase().includes(normalizedQuery)).map(node => node.id),
   [normalizedQuery, records])
   const activeSearchId = searchResultIds.length === 0
     ? undefined
@@ -115,6 +124,15 @@ export function ContextMapPanel({
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([id, size]) => `${id}:${size.width}x${size.height}`)
     .join('|'), [measuredSizes])
+  const proposal = snapshot.recommendation.phase === 'ready' || snapshot.recommendation.phase === 'stale'
+    ? snapshot.recommendation.proposal
+    : undefined
+  const recommendationByNode = useMemo(() => {
+    const result = new Map<string, 'include' | 'exclude' | 'cleanup'>()
+    for (const item of proposal?.selection ?? []) result.set(item.nodeId, item.action)
+    for (const item of proposal?.cleanup ?? []) result.set(item.nodeId, 'cleanup')
+    return result
+  }, [proposal])
 
   const runMutation = useCallback((
     id: string,
@@ -201,6 +219,7 @@ export function ContextMapPanel({
       const session = sessions.get(record.owner.sessionId)
       const mode = optimisticModes[record.id] ?? modeOf(snapshot, record)
       const active = record.sessionIds.includes(graph.activeSessionId)
+      const recommendation = recommendationByNode.get(record.id)
       const data: ContextMapNodeData = {
         record,
         mode,
@@ -210,6 +229,7 @@ export function ContextMapPanel({
         active,
         focused: snapshot.focusedNodeId === record.id || activeSearchId === record.id,
         searchMatch: searchMatches.has(record.id),
+        ...(recommendation === undefined ? {} : { recommendation }),
         onActivate: (candidate) => {
           if (interactionMode === 'selection') {
             actions.setNodeSelected(candidate.id, !selected.has(candidate.id))
@@ -238,7 +258,8 @@ export function ContextMapPanel({
     })
   }, [
     actions, activeSearchId, graph, interactionMode, mutationPending, optimisticModes,
-    measuredSizes, positionOverrides, searchResultIds, selectedNodeIds, setEffectiveMode, snapshot, transientPositions,
+    measuredSizes, positionOverrides, recommendationByNode, searchResultIds, selectedNodeIds,
+    setEffectiveMode, snapshot, transientPositions,
   ])
 
   const flowEdges = useMemo((): Edge[] => (graph?.edges ?? []).map(edge => ({
@@ -340,6 +361,17 @@ export function ContextMapPanel({
           disabled={instance === null || records.length === 0}
           onClick={relayout}
         >Re-layout</button>
+        <button
+          ref={recommendButtonRef}
+          type="button"
+          disabled={mutationPending || snapshot.recommendation.phase === 'running' || graph === undefined}
+          onClick={() => {
+            setActionError(null)
+            void mapActions.recommend().catch((cause: unknown) => {
+              setActionError(cause instanceof Error ? cause.message : String(cause))
+            })
+          }}
+        >{snapshot.recommendation.phase === 'running' ? 'Reviewing…' : 'Recommend'}</button>
         <span className={css.toolbarSpacer} />
         <button type="button" disabled={mutationPending} onClick={() => { runMutation('__reset__', mapActions.reset) }}>Clear manual changes</button>
         <button type="button" disabled={mutationPending || snapshot.view?.canUndo !== true} onClick={() => { runMutation('__undo__', mapActions.undo) }}>Undo</button>
@@ -446,11 +478,31 @@ export function ContextMapPanel({
             restoreAutomatic={(record) => {
               runMutation(record.id, () => mapActions.setNodeMode(record.owner, 'natural'), 'natural')
             }}
+            showOriginal={(record) => { setOriginalPreview(record) }}
+            restoreOriginal={(record) => {
+              runMutation(record.id, () => mapActions.restoreNode(record.owner))
+            }}
             reportError={(cause) => {
               setActionError(cause instanceof Error ? cause.message : String(cause))
             }}
           />
         )}
+        {graph !== undefined && <ContextRecommendationReview
+          state={snapshot.recommendation}
+          graph={graph}
+          pending={mutationPending}
+          apply={nodeIds => mapActions.applyRecommendations(nodeIds)}
+          confirmCleanup={(candidate, placeholderText) => mapActions.confirmCleanup(candidate, placeholderText)}
+          dismiss={() => {
+            mapActions.clearRecommendation()
+            queueMicrotask(() => { recommendButtonRef.current?.focus() })
+          }}
+          reportError={(cause) => { setActionError(cause instanceof Error ? cause.message : String(cause)) }}
+        />}
+        {originalPreview !== null && <div className={css.originalDialog} role="dialog" aria-label="Original message">
+          <header><h3>Original message</h3><button type="button" aria-label="Close original message" onClick={() => { setOriginalPreview(null) }}>×</button></header>
+          <p>{originalPreview.preview || '(empty message)'}</p>
+        </div>}
       </div>
       {interactionMode === 'selection' && selectedRecords.length > 0 && (
         <div className={css.selectionBar} aria-label="Selected message actions">

@@ -57,6 +57,11 @@ export function apply(ctx: ClientContext): void {
       reset: async ref => valueOf(await remote.reset(sessionId, ref)),
       undo: async ref => valueOf(await remote.undo(sessionId, ref)),
       redo: async ref => valueOf(await remote.redo(sessionId, ref)),
+      recommend: async (base, objective) => valueOf(await remote.recommend(sessionId, base, objective)),
+      replaceNode: async (ref, node, placeholderText, reason) => valueOf(await remote.replaceNode(
+        sessionId, ref, node, placeholderText, reason,
+      )),
+      restoreNode: async (ref, node) => valueOf(await remote.restoreNode(sessionId, ref, node)),
     }
     const controller = new ContextifyController(transport)
     controllers.set(sessionId, controller)
@@ -90,6 +95,11 @@ export function apply(ctx: ClientContext): void {
           reset: () => controller.reset(),
           undo: () => controller.undo(),
           redo: () => controller.redo(),
+          recommend: objective => controller.recommend(objective),
+          applyRecommendations: nodeIds => controller.applyRecommendations(nodeIds),
+          clearRecommendation: () => { controller.clearRecommendation() },
+          confirmCleanup: (candidate, placeholderText) => controller.confirmCleanup(candidate, placeholderText),
+          restoreNode: node => controller.restoreNode(node),
           branch: async (node: ContextFamilyGraphNode) => {
             if (node.branchAtSeq === null) throw new Error('Message has no completed Turn boundary')
             const childId = await ctx.sessions.fork({

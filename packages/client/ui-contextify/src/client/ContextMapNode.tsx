@@ -17,6 +17,7 @@ export interface ContextMapNodeData extends Record<string, unknown> {
   readonly active: boolean
   readonly focused: boolean
   readonly searchMatch: boolean
+  readonly recommendation?: 'include' | 'exclude' | 'cleanup'
   readonly onActivate: (record: ContextFamilyGraphNode) => void
   readonly onIncludedChange: (record: ContextFamilyGraphNode, included: boolean) => void
   readonly onContextMenu: (record: ContextFamilyGraphNode, point: CanvasPoint) => void
@@ -26,7 +27,7 @@ export interface ContextMapNodeData extends Record<string, unknown> {
 export const ContextMapNode = memo(function ContextMapNode({ data, selected, sourcePosition, targetPosition }: NodeProps) {
   const value = data as ContextMapNodeData
   const record = value.record
-  const preview = record.preview || '(empty message)'
+  const preview = record.replacement?.preview || record.preview || '(empty message)'
   return (
     <article
       className={css.mapNode}
@@ -39,6 +40,7 @@ export const ContextMapNode = memo(function ContextMapNode({ data, selected, sou
       data-search-match={value.searchMatch || undefined}
       data-selected={selected || undefined}
       data-context-node-id={record.id}
+      data-replacement={record.replacement === undefined ? undefined : 'placeholder'}
       onContextMenu={(event) => {
         event.preventDefault()
         event.stopPropagation()
@@ -64,6 +66,12 @@ export const ContextMapNode = memo(function ContextMapNode({ data, selected, sou
         </label>
       </header>
       <p className={css.preview} data-preview={preview} aria-hidden="true" />
+      {(value.recommendation !== undefined || record.replacement !== undefined) && <div className={css.nodeBadges}>
+        {value.recommendation !== undefined && <span data-recommendation={value.recommendation}>
+          {value.recommendation === 'include' ? 'Suggested include' : value.recommendation === 'exclude' ? 'Suggested exclude' : 'Cleanup suggested'}
+        </span>}
+        {record.replacement !== undefined && <span data-replacement-badge="">Original retained</span>}
+      </div>}
       <div className={css.nodeMeta}>{value.sessionLabel}</div>
       <Handle type="source" position={sourcePosition ?? Position.Bottom} className={css.handle} />
     </article>

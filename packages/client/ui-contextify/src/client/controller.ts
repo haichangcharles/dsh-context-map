@@ -5,6 +5,9 @@ import type {
   ContextMessageRef,
   ContextNodeMutation,
   ContextPlanRef,
+  ContextRecommendationBase,
+  ContextCleanupCandidate,
+  ContextRecommendationProposal,
   ContextifyView,
 } from '@deepseek-ai/dsh-contextify/types'
 
@@ -21,7 +24,26 @@ export interface ContextifyTransport {
   reset: (ref: ContextPlanRef) => Promise<ContextifyView>
   undo: (ref: ContextPlanRef) => Promise<ContextifyView>
   redo: (ref: ContextPlanRef) => Promise<ContextifyView>
+  recommend: (
+    base: ContextRecommendationBase,
+    objective?: string,
+  ) => Promise<ContextRecommendationProposal>
+  replaceNode: (
+    ref: ContextPlanRef,
+    node: ContextMessageRef,
+    placeholderText: string,
+    reason: string,
+  ) => Promise<ContextifyView>
+  restoreNode: (ref: ContextPlanRef, node: ContextMessageRef) => Promise<ContextifyView>
 }
+
+/** Ephemeral review state. Recommendations never mutate the Context Plan by themselves. */
+export type ContextRecommendationState =
+  | { readonly phase: 'idle' }
+  | { readonly phase: 'running' }
+  | { readonly phase: 'ready'; readonly proposal: ContextRecommendationProposal }
+  | { readonly phase: 'stale'; readonly proposal: ContextRecommendationProposal }
+  | { readonly phase: 'error'; readonly error: string }
 
 /** One immutable publication consumed by both right-panel and Chat controls. */
 export interface ContextifyControllerSnapshot {
@@ -31,13 +53,16 @@ export interface ContextifyControllerSnapshot {
   readonly graph?: ContextFamilyGraph
   readonly focusedNodeId?: string
   readonly error?: string
+  readonly recommendation: ContextRecommendationState
 }
 
 const REFRESH_MS = 1_500
 
 /** Apply-owned Contextify state machine for one active native Session. */
 export class ContextifyController {
-  private snapshot: ContextifyControllerSnapshot = Object.freeze({ phase: 'loading', pending: false })
+  private snapshot: ContextifyControllerSnapshot = Object.freeze({
+    phase: 'loading', pending: false, recommendation: Object.freeze({ phase: 'idle' }),
+  })
   private readonly listeners = new Set<() => void>()
   private refreshPromise: Promise<void> | undefined
   private timer: ReturnType<typeof setInterval> | undefined
@@ -113,6 +138,115 @@ export class ContextifyController {
    */
   async redo(): Promise<void> { await this.mutate(ref => this.transport.redo(ref)) }
 
+  /** Run an isolated, review-only Context recommendation against the current revision. */
+  async recommend(objective?: string): Promise<void> {
+    if (this.snapshot.recommendation.phase === 'running') {
+      throw new Error('Context recommendation is already running')
+    }
+    if (this.refreshPromise !== undefined) await this.refreshPromise
+    if (this.snapshot.view === undefined || this.snapshot.graph === undefined) await this.refresh()
+    const { view, graph } = this.snapshot
+    if (view === undefined || graph === undefined) {
+      throw new Error(this.snapshot.error ?? 'Context Map is unavailable')
+    }
+    const base: ContextRecommendationBase = Object.freeze({
+      planRevision: view.plan.revision,
+      graphAsOfSeq: view.graphAsOfSeq,
+      activeSessionId: graph.activeSessionId,
+    })
+    this.publish({ ...this.snapshot, recommendation: Object.freeze({ phase: 'running' }) })
+    try {
+      const proposal = await this.transport.recommend(base, objective)
+      const stale = this.isProposalStale(proposal)
+      this.publish({
+        ...this.snapshot,
+        recommendation: Object.freeze({ phase: stale ? 'stale' : 'ready', proposal }),
+      })
+    } catch (cause) {
+      const error = cause instanceof Error ? cause.message : String(cause)
+      this.publish({ ...this.snapshot, recommendation: Object.freeze({ phase: 'error', error }) })
+      throw cause
+    }
+  }
+
+  /** Dismiss the current transient recommendation without changing durable context. */
+  clearRecommendation(): void {
+    this.publish({ ...this.snapshot, recommendation: Object.freeze({ phase: 'idle' }) })
+  }
+
+  /** Accept selected Include/Exclude recommendations in one atomic Context Plan revision. */
+  async applyRecommendations(nodeIds?: readonly string[]): Promise<void> {
+    const recommendation = this.snapshot.recommendation
+    if (recommendation.phase === 'stale') throw new Error('Context recommendation is stale')
+    if (recommendation.phase !== 'ready') throw new Error('No Context recommendation is ready')
+    const graph = this.snapshot.graph
+    if (graph === undefined) throw new Error('Context Map is unavailable')
+    const accepted = nodeIds === undefined
+      ? recommendation.proposal.selection
+      : recommendation.proposal.selection.filter(item => nodeIds.includes(item.nodeId))
+    if (accepted.length === 0) return
+    const byId = new Map(graph.nodes.map(node => [node.id, node]))
+    const mutations = accepted.map((item): ContextNodeMutation => {
+      const node = byId.get(item.nodeId)
+      if (node === undefined) throw new Error(`Recommendation references missing node: ${item.nodeId}`)
+      const active = node.sessionIds.includes(graph.activeSessionId)
+      const desired = item.action === 'include'
+      return {
+        node: node.owner,
+        mode: desired === active ? 'natural' : desired ? 'include' : 'exclude',
+      }
+    })
+    try {
+      await this.mutate(ref => this.transport.setNodeModes(ref, mutations))
+    } catch (cause) {
+      this.publish({
+        ...this.snapshot,
+        recommendation: Object.freeze({ phase: 'stale', proposal: recommendation.proposal }),
+      })
+      throw cause
+    }
+    const acceptedIds = new Set(accepted.map(item => item.nodeId))
+    const selection = recommendation.proposal.selection.filter(item => !acceptedIds.has(item.nodeId))
+    this.publish({
+      ...this.snapshot,
+      recommendation: selection.length === 0 && recommendation.proposal.cleanup.length === 0
+        ? Object.freeze({ phase: 'idle' })
+        : Object.freeze({
+          phase: 'stale',
+          proposal: Object.freeze({ ...recommendation.proposal, selection: Object.freeze(selection) }),
+        }),
+    })
+  }
+
+  /** Confirm exactly one cleanup candidate; there is deliberately no bulk cleanup API. */
+  async confirmCleanup(candidate: ContextCleanupCandidate, placeholderText?: string): Promise<void> {
+    const recommendation = this.snapshot.recommendation
+    if (recommendation.phase === 'stale') throw new Error('Context recommendation is stale')
+    if (recommendation.phase !== 'ready'
+      || !recommendation.proposal.cleanup.some(item => item.nodeId === candidate.nodeId)) {
+      throw new Error('Cleanup candidate is unavailable')
+    }
+    const node = this.snapshot.graph?.nodes.find(item => item.id === candidate.nodeId)
+    if (node === undefined) throw new Error(`Cleanup candidate references missing node: ${candidate.nodeId}`)
+    try {
+      await this.mutate(ref => this.transport.replaceNode(
+        ref, node.owner, placeholderText ?? candidate.placeholderText, candidate.reason,
+      ))
+      this.clearRecommendation()
+    } catch (cause) {
+      this.publish({
+        ...this.snapshot,
+        recommendation: Object.freeze({ phase: 'stale', proposal: recommendation.proposal }),
+      })
+      throw cause
+    }
+  }
+
+  /** Restore one placeholder overlay without changing its Include/Exclude mode. */
+  async restoreNode(node: ContextMessageRef): Promise<void> {
+    await this.mutate(ref => this.transport.restoreNode(ref, node))
+  }
+
   private async load(): Promise<void> {
     try {
       const view = await this.transport.get()
@@ -133,11 +267,13 @@ export class ContextifyController {
         edges: Object.freeze([...first.edges]),
         nodes: Object.freeze(nodes),
       })
+      const recommendation = this.reconcileRecommendation(view, graph)
       this.publish(Object.freeze({
         phase: 'ready',
         pending: this.snapshot.pending,
         view,
         graph,
+        recommendation,
         ...(this.snapshot.focusedNodeId === undefined ? {} : { focusedNodeId: this.snapshot.focusedNodeId }),
       }))
     } catch (cause) {
@@ -174,5 +310,28 @@ export class ContextifyController {
   private publish(snapshot: ContextifyControllerSnapshot): void {
     this.snapshot = Object.freeze(snapshot)
     for (const listener of [...this.listeners]) listener()
+  }
+
+  private reconcileRecommendation(
+    view: ContextifyView,
+    graph: ContextFamilyGraph,
+  ): ContextRecommendationState {
+    const current = this.snapshot.recommendation
+    if (current.phase !== 'ready' && current.phase !== 'stale') return current
+    return Object.freeze({
+      phase: this.isProposalStale(current.proposal, view, graph) ? 'stale' : current.phase,
+      proposal: current.proposal,
+    })
+  }
+
+  private isProposalStale(
+    proposal: ContextRecommendationProposal,
+    view = this.snapshot.view,
+    graph = this.snapshot.graph,
+  ): boolean {
+    return view === undefined || graph === undefined
+      || proposal.base.planRevision !== view.plan.revision
+      || proposal.base.graphAsOfSeq !== view.graphAsOfSeq
+      || proposal.base.activeSessionId !== graph.activeSessionId
   }
 }
