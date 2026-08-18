@@ -528,7 +528,7 @@ describe('Host Workspace increments', () => {
     abort.abort()
   })
 
-  it('archives a session into the global set, keeps its accounting, and streams the set once', async () => {
+  it('archives and restores a session through full-set frames without changing accounting', async () => {
     const { api, root } = await harness()
     const workspace = expectOk(await api.workspace.create(request({ path: stageDir(root, 'archive-home') }))).workspace
     const sessionId = SessionId('session-to-archive')
@@ -551,11 +551,21 @@ describe('Host Workspace increments', () => {
     expect(listed.items[0]?.sessionIds).toEqual([sessionId])
     expect(expectOk(await api.sessions.list(request({}))).items.map(item => item.sessionId)).toContain(sessionId)
 
+    const restored = nextHostFrame(stream)
+    expect(expectOk(await api.workspace.unarchiveSession(request({ sessionId }))).archivedSessionIds)
+      .toEqual([])
+    expect(await restored).toMatchObject({
+      payload: { type: 'host/archived-sessions-changed', archivedSessionIds: [] },
+    })
+    const afterRestore = expectOk(await api.workspace.list(request({})))
+    expect(afterRestore.archivedSessionIds).toEqual([])
+    expect(afterRestore.items[0]?.sessionIds).toEqual([sessionId])
+
     // The idempotent repeat emits no second frame: the next observed frame is
-    // the workspace-changed of a later attach, not another archive snapshot.
+    // a later Session increment, not another archive snapshot.
     const after = nextHostFrame(stream)
-    expect(expectOk(await api.workspace.archiveSession(request({ sessionId }))).archivedSessionIds)
-      .toEqual([sessionId])
+    expect(expectOk(await api.workspace.unarchiveSession(request({ sessionId }))).archivedSessionIds)
+      .toEqual([])
     const otherSession = SessionId('session-after-archive')
     expectOk(await api.sessions.create(request({ workspaceId: workspace.workspaceId, sessionId: otherSession })))
     expect((await after).payload.type).not.toBe('host/archived-sessions-changed')
