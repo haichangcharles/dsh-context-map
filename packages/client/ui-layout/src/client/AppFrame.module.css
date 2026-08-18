@@ -48,6 +48,48 @@
   border-left: none;
 }
 
+.detailsReveal {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 22px;
+  height: 40px;
+  padding: 0;
+  transform: translateY(-50%);
+  border: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
+  border-right: 0;
+  border-radius: 10px 0 0 10px;
+  background: var(--dsw-alias-button-floating-fill);
+  color: var(--dsw-alias-label-secondary);
+  box-shadow: var(--dsw-shadow-lv1);
+  cursor: pointer;
+  transition:
+    width var(--ds-transition-duration-fast) var(--ds-ease-in-out),
+    color var(--ds-transition-duration-fast) var(--ds-ease-in-out),
+    background var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+}
+
+.detailsReveal:hover {
+  width: 26px;
+  background: var(--dsw-alias-button-floating-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.detailsReveal:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: -3px;
+}
+
+.detailsReveal span {
+  font-size: 22px;
+  line-height: 1;
+}
+
 /* Drag handles are frame children (columns clip overflow): an 8px hit strip
    centered on the column border via inline left, above column content. Details
    adds a visible 12x32 pill at vertical center; sidebar keeps only the hit strip. */

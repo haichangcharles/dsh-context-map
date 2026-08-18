@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
 import {
   createSnapshotStore, EMPTY_CHAT_SNAPSHOT, EMPTY_CONVERSATION_VIEWS,
@@ -151,7 +151,6 @@ describe('render branch tails', () => {
     localStorage.clear()
     const snap = snapshotBase()
     const chat = createChatStore().create()
-    chat.actions.select({ turnSeq: 1, callId: 'ghost' } satisfies SelectionTarget)
     const closeDetails = vi.fn()
     const emptyList = createSnapshotStore<SessionListState>(
       { ids: [], byId: {}, current: undefined, phase: 'ready', subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined })
@@ -197,12 +196,18 @@ describe('render branch tails', () => {
     )
 
     expect(view.getByRole('tab', { name: 'Context Map' })).toBeTruthy()
-    expect(view.getByRole('tab', { name: '详情' })).toBeTruthy()
+    expect((view.getByRole('tab', { name: '详情' }) as HTMLButtonElement).disabled).toBe(false)
     expect(view.getByText('Context Map mock')).toBeTruthy()
     expect(view.queryByText('该调用不在当前窗口内')).toBeNull()
 
     fireEvent.click(view.getByRole('tab', { name: '详情' }))
     expect(view.queryByText('Context Map mock')).toBeNull()
+    expect(view.getByText('点击消息流中的工具行查看详情')).toBeTruthy()
+    expect(chat.getSnapshot().selection).toBeNull()
+
+    fireEvent.click(view.getByRole('tab', { name: 'Context Map' }))
+    act(() => { chat.actions.select({ turnSeq: 1, callId: 'ghost' } satisfies SelectionTarget) })
+    fireEvent.click(view.getByRole('tab', { name: '详情' }))
     expect(view.getByText('该调用不在当前窗口内')).toBeTruthy()
     expect(chat.getSnapshot().selection).toEqual({ turnSeq: 1, callId: 'ghost' })
 

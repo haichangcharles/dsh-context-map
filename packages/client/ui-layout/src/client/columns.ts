@@ -1,11 +1,11 @@
 /**
  * Pure concession-chain column solver for the three-column AppFrame.
  * Chain order is fixed by contract: keep center >= CENTER_MIN by shrinking
- * details, then auto-closing it (derived zero width — preferred width
- * preferences are never rewritten, so widening the window restores them).
- * The sidebar never concedes: its rendered width is always the drag
- * preference (or the collapsed rail), and center absorbs any remaining
- * deficit as the last resort. Inputs are the layout store's plain width
+ * details toward its minimum, then letting center absorb the remaining
+ * deficit. An explicitly open details column therefore stays reachable even
+ * in a narrow frame; only a frame with no space beyond the sidebar can reduce
+ * it to zero. The sidebar never concedes: its rendered width is always the
+ * drag preference (or the collapsed rail). Inputs are the layout store's plain width
  * preferences (0 = closed); a closed sidebar resolves to the fixed
  * SIDEBAR_COLLAPSED control rail while closed details resolve to zero width.
  * The SIDEBAR_AUTO_COLLAPSE breakpoint is consumed by AppFrame, which decides
@@ -13,11 +13,11 @@
  * breakpoint-free.
  */
 
-/** Resolved widths for one frame; center may drop below CENTER_MIN only at the final fallback. */
+/** Resolved widths for one frame; center may drop below CENTER_MIN after details reaches its floor. */
 export interface Columns { sidebar: number; center: number; details: number }
 
 // Contract-frozen geometry: the three-column concession chain's fixed points.
-/** Center column floor; only the final fallback may go below it. */
+/** Preferred center column floor; an explicitly open details column may squeeze it. */
 export const CENTER_MIN = 640
 /** Sidebar drag clamp floor. */
 export const SIDEBAR_MIN = 264
@@ -71,7 +71,10 @@ export function computeColumns(viewport: number, sidebar: number, details: numbe
   const d1 = d0 === 0 ? 0 : Math.max(DETAILS_MIN, viewport - s - CENTER_MIN)
   if (s + d1 + CENTER_MIN <= viewport) return { sidebar: s, center: CENTER_MIN, details: d1 }
 
-  // Step 3: auto-close details (derived — preferences untouched); center
-  // absorbs any remaining deficit (may drop below CENTER_MIN).
-  return { sidebar: s, center: Math.max(0, viewport - s), details: 0 }
+  // Step 3: an explicitly open details column remains visible. Center
+  // absorbs the deficit after details reaches its minimum; only a viewport
+  // narrower than sidebar + details-min concedes details below that floor.
+  const remaining = Math.max(0, viewport - s)
+  const d2 = d0 === 0 ? 0 : Math.min(DETAILS_MIN, remaining)
+  return { sidebar: s, center: remaining - d2, details: d2 }
 }

@@ -141,7 +141,7 @@ export function DetailsPanel({
     </>
   )
 
-  const activePage = pinned && (requestedPage === 'pinned' || selection === null) ? 'pinned' : 'tool'
+  const activePage = pinned ? requestedPage : 'tool'
 
   return (
     <div className={css.root} data-pinned={pinned || undefined}>
@@ -153,7 +153,6 @@ export function DetailsPanel({
           >Context Map</button>
           <button
             type="button" role="tab" aria-selected={activePage === 'tool'}
-            disabled={selection === null}
             onClick={showToolDetails}
           >{t('details.title')}</button>
         </div>

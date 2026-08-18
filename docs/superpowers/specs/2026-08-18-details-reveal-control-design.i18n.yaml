@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/superpowers/specs/2026-08-18-details-reveal-control-design.md
-2026-08-18-details-reveal-control-design.md: 99ae02aaba5c673ca318ce2a6c188b93ff355be9
-2026-08-18-details-reveal-control-design.zh.md: 183b09d5e6f03fc7fd16e5e790b9fa168386a6ea
+2026-08-18-details-reveal-control-design.md: a264427f93b7846f0d64fc85ed3fbdf6539aedff
+2026-08-18-details-reveal-control-design.zh.md: 368d4b7d5a7571b3c12f979852dfe1b94fede02c

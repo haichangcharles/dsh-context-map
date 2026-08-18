@@ -193,6 +193,16 @@ export function AppFrame({
       <div className={css.overlayLayer} data-shell-overlay>
         {renderSlot('shell.overlay', {})}
       </div>
+      {detailsSession !== undefined && cols.details === 0 && (
+        <button
+          type="button"
+          className={css.detailsReveal}
+          aria-label="Open details panel"
+          onClick={() => { actions.openDetails() }}
+        >
+          <span aria-hidden>‹</span>
+        </button>
+      )}
       {/* The collapsed rail is fixed-width: no resize handle while closed. */}
       {!sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
       {cols.details > 0 && <DragHandle side="details" left={viewport - cols.details} onStart={onDetailsStart} onDrag={onDetailsDrag} onEnd={onDragEnd} />}

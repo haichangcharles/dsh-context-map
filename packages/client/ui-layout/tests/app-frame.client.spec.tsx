@@ -11,7 +11,7 @@
  * resizes are driven through the ResizeObserver stub.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { useSyncExternalStore } from 'react'
 import { AppFrame } from '@deepseek-ai/dsh-client-ui-layout/src/client/AppFrame.tsx'
 import type { AppFrameProps } from '@deepseek-ai/dsh-client-ui-layout/src/client/AppFrame.tsx'
@@ -140,6 +140,35 @@ describe('AppFrame', () => {
   it('renders three tracks from store state', () => {
     const { frame } = mountFrame()
     expect(tracks(frame)).toEqual([280, 0])
+  })
+
+  it('reveals closed details from the right edge without sharing the resize handle', () => {
+    const { frame, getByRole, queryByRole } = mountFrame()
+    const reveal = getByRole('button', { name: 'Open details panel' })
+    expect(frame.querySelector('[data-side="details"]')).toBeNull()
+
+    fireEvent.click(reveal)
+
+    expect(tracks(frame)).toEqual([280, 360])
+    expect(queryByRole('button', { name: 'Open details panel' })).toBeNull()
+    expect(frame.querySelector('[data-side="details"]')).toBeTruthy()
+  })
+
+  it('honors an explicit details reveal in a narrow frame', () => {
+    frameWidth = 900
+    const { frame, getByRole, queryByRole } = mountFrame()
+
+    fireEvent.click(getByRole('button', { name: 'Open details panel' }))
+
+    expect(tracks(frame)).toEqual([SIDEBAR_COLLAPSED, 300])
+    expect(queryByRole('button', { name: 'Open details panel' })).toBeNull()
+    expect(frame.querySelector('[data-side="details"]')).toBeTruthy()
+  })
+
+  it('does not offer details reveal without an active non-blank Session', () => {
+    selectedSession.current = undefined
+    const { queryByRole } = mountFrame()
+    expect(queryByRole('button', { name: 'Open details panel' })).toBeNull()
   })
 
   it('renders the session pair with empty owner shares (sessionId is framework-standard)', () => {
