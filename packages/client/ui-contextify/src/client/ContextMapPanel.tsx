@@ -141,8 +141,12 @@ export function ContextMapPanel({
   }, [graph, mapActions, runMutation])
 
   useEffect(() => {
-    actions.retainNodeIds(records.map(node => node.id))
-  }, [actions, records])
+    if (snapshot.graph === undefined) return
+    actions.reconcileNodeIds(
+      records.map(node => node.id),
+      snapshot.graph.nodes.map(node => node.id),
+    )
+  }, [actions, records, snapshot.graph])
   useEffect(() => { setResultIndex(0) }, [normalizedQuery])
   useEffect(() => {
     if (menu === null) return

@@ -23,7 +23,11 @@ type ContextMapViewActions = {
   clearSelection: (draft: ContextMapViewState) => void
   setPosition: (draft: ContextMapViewState, nodeId: string, position: ContextMapPosition) => void
   clearPositions: (draft: ContextMapViewState) => void
-  retainNodeIds: (draft: ContextMapViewState, nodeIds: readonly string[]) => void
+  reconcileNodeIds: (
+    draft: ContextMapViewState,
+    visibleNodeIds: readonly string[],
+    familyNodeIds: readonly string[],
+  ) => void
 }
 
 /**
@@ -51,11 +55,12 @@ export function createContextMapStore(): EngineStoreHandle<ContextMapViewState, 
         draft.positionOverrides = { ...draft.positionOverrides, [nodeId]: position }
       },
       clearPositions: (draft) => { draft.positionOverrides = {} },
-      retainNodeIds: (draft, nodeIds) => {
-        const retained = new Set(nodeIds)
-        draft.selectedNodeIds = draft.selectedNodeIds.filter(id => retained.has(id))
+      reconcileNodeIds: (draft, visibleNodeIds, familyNodeIds) => {
+        const visible = new Set(visibleNodeIds)
+        const family = new Set(familyNodeIds)
+        draft.selectedNodeIds = draft.selectedNodeIds.filter(id => visible.has(id))
         draft.positionOverrides = Object.fromEntries(
-          Object.entries(draft.positionOverrides).filter(([id]) => retained.has(id)),
+          Object.entries(draft.positionOverrides).filter(([id]) => family.has(id)),
         )
       },
     },
