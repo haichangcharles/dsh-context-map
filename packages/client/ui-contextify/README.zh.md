@@ -6,7 +6,9 @@
 
 ## 用户体验
 
-右侧子页使用 React Flow 以唯一的自上而下 tree 渲染相互连接的原生 Session family，不暴露布局模式或其他布局控件。每条真实 user input 与每个 completed Turn 的最后一条可见 assistant output 对应一个 card；复制的 Session 前缀会去重，中间 assistant step、未完成输出、reasoning 与 tool event 不进入图。每个 card 只有一个有效 context checkbox：勾选表示消息进入下一次模型请求，未勾选表示不进入。Natural 根据 active Session path 得出这个结果；checkbox 偏离自动结果时会写入相应的 Include 或 Exclude override，恢复自动结果时则移除 override。Selection 模式仍是独立的画布操作，提供累加点击、可见的 Shift 拖动框选与批量操作。被拖动的节点会持续跟随指针，只在松开后持久化最终位置。画布选择和拖动位置仅属于 viewing state，不会改变模型输入。
+右侧子页使用 React Flow 以唯一的自上而下 tree 渲染相互连接的原生 Session family，不暴露其他布局模式。每条真实 user input 与每个 completed Turn 的最后一条可见 assistant output 对应一个 card；复制的 Session 前缀会去重，中间 assistant step、未完成输出、reasoning 与 tool event 不进入图。每个 card 只有一个有效 context checkbox：勾选表示消息进入下一次模型请求，未勾选表示不进入。Natural 根据 active Session path 得出这个结果；checkbox 偏离自动结果时会写入相应的 Include 或 Exclude override，恢复自动结果时则移除 override。Selection 模式仍是独立的画布操作，提供累加点击、可见的 Shift 拖动框选与批量操作。被拖动的节点会持续跟随指针，只在松开后持久化最终位置。画布选择和拖动位置仅属于 viewing state，不会改变模型输入。
+
+第一批完成测量的 graph 只会 frame 一次。此后 polling 与普通 graph update 会保留用户当前的 pan 和 zoom；只有 search/Map focus request 会有意移动 viewport。`Re-layout` 会清除全部手动拖拽位置、恢复确定性的 tree coordinate 并 frame 完整 graph，在画布难以阅读时提供明确的恢复操作。
 
 沿用独立版画布，节点操作集中在右键菜单：Locate in Chat、Branch from Here，以及仅在存在 manual override 时显示的 Restore automatic。Branch 会在消息对应的 completed Turn boundary 调用 Harness 原生 `sessions.fork`，并打开新的 child Session。Locate 会打开所属原生 Session、切换到 Chat、在需要时加载较早 history，并滚动和高亮准确的持久消息。Batch mode 会在一个 plan revision 中 include、exclude 或恢复多个画布选中节点。Clear manual changes 会移除全部 Include 与 Exclude，但不会重置 graph layout；Undo 和 Redo 操作持久 plan history。
 
@@ -27,6 +29,6 @@ UI 不添加提示词文本。Auto 跟随 active Session 历史，Skip 排除一
 ## 已知限制与暂缓事项
 
 - Chat 或 Map 存在订阅者时，family update 使用有界的 1.5 秒 polling。
-- Include/exclude recommendation 目前完全手动，自动推进暂缓。
+- Agent 推荐作为统一的未来层暂缓，详见 [Context Map Agent 推荐](FUTURE_WORK.md)。
 - 暂不提供跨 Map import。
 - Graph 暂不能展开 compaction replacement relationship。

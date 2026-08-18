@@ -87,8 +87,10 @@ export function ContextMapPanel({
   const [pendingNodeId, setPendingNodeId] = useState<string | null>(null)
   const [optimisticModes, setOptimisticModes] = useState<Record<string, ContextNodeMode>>({})
   const [transientPositions, setTransientPositions] = useState<Record<string, CanvasPoint>>({})
-  const [measurementVersion, setMeasurementVersion] = useState(0)
+  const [graphMeasured, setGraphMeasured] = useState(false)
   const canvasRef = useRef<HTMLDivElement>(null)
+  const initialFitCompleted = useRef(false)
+  const relayoutTimer = useRef<number | undefined>(undefined)
   const graph = useMemo(() => snapshot.graph === undefined
     ? undefined
     : projectUnarchivedContextFamily(snapshot.graph, archivedSessionIds), [archivedSessionIds, snapshot.graph])
@@ -106,6 +108,7 @@ export function ContextMapPanel({
   const activeSearchId = searchResultIds.length === 0
     ? undefined
     : searchResultIds[resultIndex % searchResultIds.length]
+  const focusTargetId = snapshot.focusedNodeId ?? activeSearchId
 
   const runMutation = useCallback((
     id: string,
@@ -156,17 +159,28 @@ export function ContextMapPanel({
     return () => { window.removeEventListener('keydown', closeOnEscape) }
   }, [menu])
   useEffect(() => {
-    if (measurementVersion === 0 || instance === null || records.length === 0) return
+    if (!graphMeasured || instance === null || records.length === 0 || initialFitCompleted.current) return
+    if (focusTargetId !== undefined) {
+      initialFitCompleted.current = true
+      return
+    }
     const timer = window.setTimeout(() => {
-      const target = snapshot.focusedNodeId ?? activeSearchId
-      if (target === undefined) {
-        void instance.fitView({ duration: 220 })
-        return
-      }
-      void instance.fitView({ nodes: [{ id: target }], duration: 220, maxZoom: 1.2 })
+      initialFitCompleted.current = true
+      void instance.fitView({ duration: 220 })
     }, 300)
     return () => { window.clearTimeout(timer) }
-  }, [activeSearchId, instance, measurementVersion, records.length, snapshot.focusedNodeId])
+  }, [focusTargetId, graphMeasured, instance, records.length])
+  useEffect(() => {
+    if (!graphMeasured || instance === null || focusTargetId === undefined) return
+    initialFitCompleted.current = true
+    const timer = window.setTimeout(() => {
+      void instance.fitView({ nodes: [{ id: focusTargetId }], duration: 220, maxZoom: 1.2 })
+    }, 300)
+    return () => { window.clearTimeout(timer) }
+  }, [focusTargetId, graphMeasured, instance])
+  useEffect(() => () => {
+    if (relayoutTimer.current !== undefined) window.clearTimeout(relayoutTimer.current)
+  }, [])
 
   const flowNodes = useMemo(() => {
     if (graph === undefined) return []
@@ -228,7 +242,7 @@ export function ContextMapPanel({
 
   const onNodesChange = (changes: Array<NodeChange>): void => {
     if (changes.some(change => change.type === 'dimensions')) {
-      setMeasurementVersion(version => version + 1)
+      setGraphMeasured(true)
     }
     const positions = changes.flatMap(change => change.type === 'position' && change.position !== undefined
       ? [{ id: change.id, position: change.position, dragging: change.dragging === true }]
@@ -257,6 +271,17 @@ export function ContextMapPanel({
   const stepSearch = (delta: -1 | 1): void => {
     if (searchResultIds.length === 0) return
     setResultIndex(index => (index + delta + searchResultIds.length) % searchResultIds.length)
+  }
+  const relayout = (): void => {
+    setTransientPositions({})
+    actions.clearPositions()
+    setMenu(null)
+    if (instance === null) return
+    if (relayoutTimer.current !== undefined) window.clearTimeout(relayoutTimer.current)
+    relayoutTimer.current = window.setTimeout(() => {
+      relayoutTimer.current = undefined
+      void instance.fitView({ duration: 220 })
+    }, 0)
   }
   const marqueeRect = marquee === null ? null : {
     x: Math.min(marquee.start.x, marquee.current.x),
@@ -300,6 +325,11 @@ export function ContextMapPanel({
             actions.clearSelection()
           }}
         >Select</button>
+        <button
+          type="button"
+          disabled={instance === null || records.length === 0}
+          onClick={relayout}
+        >Re-layout</button>
         <span className={css.toolbarSpacer} />
         <button type="button" disabled={mutationPending} onClick={() => { runMutation('__reset__', mapActions.reset) }}>Clear manual changes</button>
         <button type="button" disabled={mutationPending || snapshot.view?.canUndo !== true} onClick={() => { runMutation('__undo__', mapActions.undo) }}>Undo</button>

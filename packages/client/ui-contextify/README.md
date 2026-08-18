@@ -6,7 +6,9 @@ English | [中文](README.zh.md)
 
 ## User experience
 
-The right subpage renders the connected native Session family with React Flow in one fixed top-to-bottom tree; no layout mode or alternate-layout control is exposed. Each genuine user input and each completed Turn's final visible assistant output is one card; copied Session prefixes are de-duplicated, while intermediate assistant steps, incomplete output, reasoning, and tool events stay out of the graph. Each card has one effective-context checkbox: checked means the message enters the next model request, and unchecked means it does not. Natural derives that result from the active Session path; changing the checkbox away from that result writes the corresponding Include or Exclude override, while changing it back removes the override. Selection mode remains a separate canvas operation with additive click, a visible Shift-drag marquee, and batch actions. Dragged nodes follow the pointer continuously and persist their final position only after release. Canvas selection and dragged positions are viewing state only and do not affect model input.
+The right subpage renders the connected native Session family with React Flow in one fixed top-to-bottom tree; no alternate layout mode is exposed. Each genuine user input and each completed Turn's final visible assistant output is one card; copied Session prefixes are de-duplicated, while intermediate assistant steps, incomplete output, reasoning, and tool events stay out of the graph. Each card has one effective-context checkbox: checked means the message enters the next model request, and unchecked means it does not. Natural derives that result from the active Session path; changing the checkbox away from that result writes the corresponding Include or Exclude override, while changing it back removes the override. Selection mode remains a separate canvas operation with additive click, a visible Shift-drag marquee, and batch actions. Dragged nodes follow the pointer continuously and persist their final position only after release. Canvas selection and dragged positions are viewing state only and do not affect model input.
+
+The first measured graph is framed once. After that, polling and ordinary graph updates preserve the user's current pan and zoom; only search/Map focus requests deliberately move the viewport. `Re-layout` clears all manual drag positions, restores the deterministic tree coordinates, and frames the complete graph, providing an explicit recovery action when the canvas becomes difficult to read.
 
 Following the standalone canvas, node actions live in the right-click menu: Locate in Chat, Branch from Here, and Restore automatic when a manual override exists. Branch calls Harness native `sessions.fork` at the message's completed Turn boundary and opens the new child Session. Locate opens the owning native Session, switches to Chat, loads older history when required, and scrolls to and highlights the exact durable message. Batch mode includes, excludes, or restores multiple canvas-selected nodes in one plan revision. Clear manual changes removes every Include and Exclude without resetting graph layout; Undo and Redo operate on durable plan history.
 
@@ -27,6 +29,6 @@ The UI adds no prompt prose. Auto follows the active Session history, Skip exclu
 ## Known Limitations and Deferred Work
 
 - Family updates use bounded 1.5-second polling while Chat or the map is subscribed.
-- Include/exclude recommendations are manual; automatic progression is deferred.
+- Agent recommendations are deferred as one future layer; see [Context Map Agent Recommendations](FUTURE_WORK.md).
 - Cross-map import is not exposed.
 - Compaction replacement relationships are not expandable in the graph.

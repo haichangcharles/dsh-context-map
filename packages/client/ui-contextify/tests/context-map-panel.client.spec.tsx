@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
 import type { SessionId, WorkspaceListState } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ContextFamilyGraphNode } from '@deepseek-ai/dsh-contextify/types'
+import type { ReactFlowInstance, ReactFlowProps } from '@xyflow/react'
 import {
   ContextMapPanel, type ContextMapActions,
 } from '../src/client/ContextMapPanel.tsx'
@@ -16,6 +17,28 @@ import {
   effectiveContextIncluded, intersects, modeForEffectiveContext, reducePositionChanges,
 } from '../src/client/canvas-interactions.ts'
 
+const flowHarness = vi.hoisted(() => ({
+  fitView: vi.fn(async () => true),
+  onNodesChange: undefined as ReactFlowProps['onNodesChange'],
+}))
+
+vi.mock('@xyflow/react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@xyflow/react')>()
+  const React = await import('react')
+  return {
+    ...actual,
+    ReactFlow: (props: ReactFlowProps) => {
+      flowHarness.onNodesChange = props.onNodesChange
+      return React.createElement(actual.ReactFlow, {
+        ...props,
+        onInit: (instance: ReactFlowInstance) => {
+          props.onInit?.({ ...instance, fitView: flowHarness.fitView })
+        },
+      })
+    },
+  }
+})
+
 class ResizeObserverStub {
   observe(): void {}
   unobserve(): void {}
@@ -23,6 +46,8 @@ class ResizeObserverStub {
 }
 
 beforeEach(() => {
+  flowHarness.fitView.mockClear()
+  flowHarness.onNodesChange = undefined
   vi.stubGlobal('ResizeObserver', ResizeObserverStub)
   vi.stubGlobal('DOMMatrixReadOnly', class {
     readonly m22 = 1
@@ -103,7 +128,15 @@ function mount(
   overrides: Partial<ContextMapActions> = {},
   archivedSessionIds: readonly SessionId[] = [],
 ) {
-  const source = { getSnapshot: () => snapshot, subscribe: () => () => {} }
+  let currentSnapshot = snapshot
+  const listeners = new Set<() => void>()
+  const source = {
+    getSnapshot: () => currentSnapshot,
+    subscribe: (listener: () => void) => {
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
+    },
+  }
   const workspaceSource = {
     getSnapshot: (): WorkspaceListState => ({
       items: [], archivedSessionIds, state: 'idle', phase: 'ready', error: null,
@@ -134,7 +167,13 @@ function mount(
       />
     </div>,
   )
-  return { view, store, mapActions, snapshot }
+  return {
+    view, store, mapActions, snapshot,
+    publishSnapshot: (next: ContextifyControllerSnapshot) => {
+      currentSnapshot = next
+      for (const listener of [...listeners]) listener()
+    },
+  }
 }
 
 describe('ContextMapPanel', () => {
@@ -298,6 +337,45 @@ describe('ContextMapPanel', () => {
       expect(rootCard.querySelector('.react-flow__handle-bottom')).toBeTruthy()
       expect(rootCard.querySelector('.react-flow__handle-left')).toBeNull()
       expect(rootCard.querySelector('.react-flow__handle-right')).toBeNull()
+    })
+  })
+
+  it('fits the first measured graph once without resetting the viewport after refresh remeasurement', async () => {
+    const h = mount()
+    expect(await screen.findByLabelText('User message: root requirement')).toBeTruthy()
+    act(() => {
+      flowHarness.onNodesChange?.([{
+        id: 'root:1', type: 'dimensions', dimensions: { width: 224, height: 116 },
+      }])
+    })
+    await waitFor(() => { expect(flowHarness.fitView).toHaveBeenCalledTimes(1) }, { timeout: 1_000 })
+
+    flowHarness.fitView.mockClear()
+    act(() => {
+      h.publishSnapshot({
+        ...fixture(),
+        graph: { ...fixture().graph!, nodes: [...fixture().graph!.nodes] },
+      })
+      flowHarness.onNodesChange?.([{
+        id: 'root:1', type: 'dimensions', dimensions: { width: 224, height: 116 },
+      }])
+    })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 360)) })
+    expect(flowHarness.fitView).not.toHaveBeenCalled()
+  })
+
+  it('restores deterministic node positions and fits the graph through Re-layout', async () => {
+    const h = mount()
+    expect(await screen.findByLabelText('User message: root requirement')).toBeTruthy()
+    act(() => { h.store.actions.setPosition('root:1', { x: 900, y: 700 }) })
+    expect(h.store.getSnapshot().positionOverrides).toEqual({ 'root:1': { x: 900, y: 700 } })
+
+    flowHarness.fitView.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: 'Re-layout' }))
+
+    expect(h.store.getSnapshot().positionOverrides).toEqual({})
+    await waitFor(() => {
+      expect(flowHarness.fitView).toHaveBeenCalledWith({ duration: 220 })
     })
   })
 
