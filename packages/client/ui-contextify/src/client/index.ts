@@ -60,8 +60,8 @@ export function apply(ctx: ClientContext): void {
       undo: async ref => valueOf(await remote.undo(sessionId, ref)),
       redo: async ref => valueOf(await remote.redo(sessionId, ref)),
       recommend: async (base, objective) => valueOf(await remote.recommend(sessionId, base, objective)),
-      replaceNode: async (ref, node, placeholderText, reason, expectedGraphRevision) => valueOf(await remote.replaceNode(
-        sessionId, ref, node, placeholderText, reason, expectedGraphRevision,
+      replaceNode: async (ref, node, reason, expectedGraphRevision) => valueOf(await remote.replaceNode(
+        sessionId, ref, node, reason, expectedGraphRevision,
       )),
       restoreNode: async (ref, node) => valueOf(await remote.restoreNode(sessionId, ref, node)),
     }
@@ -100,7 +100,7 @@ export function apply(ctx: ClientContext): void {
           recommend: objective => controller.recommend(objective),
           applyRecommendations: nodeIds => controller.applyRecommendations(nodeIds),
           clearRecommendation: () => { controller.clearRecommendation() },
-          confirmCleanup: (candidate, placeholderText) => controller.confirmCleanup(candidate, placeholderText),
+          confirmCleanup: candidate => controller.confirmCleanup(candidate),
           restoreNode: node => controller.restoreNode(node),
           branch: async (node: ContextFamilyGraphNode) => {
             if (node.branchAtSeq === null) throw new Error('Message has no completed Turn boundary')

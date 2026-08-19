@@ -830,12 +830,11 @@ Durable Context Plan mutations and native Session-family graph reads.
  * @param agent - Live idle Agent whose Session receives the snapshot and plan events.
  * @param ref - Expected current Context Plan revision.
  * @param nodeRef - Native family message to retain structurally and replace semantically.
- * @param placeholderText - Bounded model-visible placeholder content.
  * @param reason - Human-visible reason retained with the replacement overlay.
  * @param expectedGraphRevision - Optional family revision required by cleanup confirmation.
  * @returns The committed v3 Contextify view.
  */
-@Remote('replaceNode') async replaceNode( agent: Agent, ref: ContextPlanRef, nodeRef: ContextMessageRef, placeholderText: string, reason: string, expectedGraphRevision?: string, ): Promise<ContextifyView>
+@Remote('replaceNode') async replaceNode( agent: Agent, ref: ContextPlanRef, nodeRef: ContextMessageRef, reason: string, expectedGraphRevision?: string, ): Promise<ContextifyView>
 
 /**
  * Restore a node's original semantics while preserving Include/Exclude state.

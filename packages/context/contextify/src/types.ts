@@ -2,6 +2,9 @@
 import type { Message } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session/types'
 
+/** Deterministic model-visible content for a semantically empty graph node. */
+export const CONTEXTIFY_EMPTY_PLACEHOLDER_TEXT = '[Placeholder: intentionally empty]'
+
 /** Immutable Session data consumed by the native family projection. */
 export interface ContextFamilyInspection {
   readonly meta: SessionHeader
@@ -169,7 +172,6 @@ export interface ContextCleanupCandidate {
   readonly category: 'obsolete' | 'conflict' | 'redundant'
   readonly reason: string
   readonly evidenceNodeIds: readonly string[]
-  readonly placeholderText: string
 }
 
 /** Ephemeral, revision-scoped Agent output. Nothing here is a mutation. */

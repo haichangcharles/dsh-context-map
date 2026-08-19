@@ -49,13 +49,16 @@ describe('Contextify recommendation protocol', () => {
       selection: [{ nodeId: 'root:1', action: 'exclude', reason: 'Superseded', confidence: 'high' }],
       cleanup: [{
         nodeId: 'root:1', category: 'obsolete', reason: 'Conflicts with the newer answer',
-        evidenceNodeIds: ['root:2'], placeholderText: '[Removed obsolete requirement]',
+        evidenceNodeIds: ['root:2'], placeholderText: 'Agent-authored text must be ignored',
       }],
     }, { base, graph, effectiveIncludedNodeIds: ['root:1', 'root:2'] })
 
     expect(proposal.base).toEqual(base)
     expect(proposal.selection).toHaveLength(1)
-    expect(proposal.cleanup).toHaveLength(1)
+    expect(proposal.cleanup).toEqual([{
+      nodeId: 'root:1', category: 'obsolete', reason: 'Conflicts with the newer answer',
+      evidenceNodeIds: ['root:2'],
+    }])
     expect(Object.isFrozen(proposal)).toBe(true)
   })
 
@@ -66,10 +69,7 @@ describe('Contextify recommendation protocol', () => {
       { nodeId: 'root:1', action: 'exclude', reason: 'y', confidence: 'low' },
     ], cleanup: [] }],
     ['invalid evidence', { selection: [], cleanup: [{
-      nodeId: 'root:1', category: 'conflict', reason: 'x', evidenceNodeIds: ['missing'], placeholderText: '[Removed]',
-    }] }],
-    ['empty placeholder', { selection: [], cleanup: [{
-      nodeId: 'root:1', category: 'redundant', reason: 'x', evidenceNodeIds: [], placeholderText: '',
+      nodeId: 'root:1', category: 'conflict', reason: 'x', evidenceNodeIds: ['missing'],
     }] }],
     ['no-op include', { selection: [
       { nodeId: 'root:1', action: 'include', reason: 'already included', confidence: 'medium' },

@@ -16,7 +16,7 @@ Family projector 从原生 root Session 遍历全部原生后代；标记为 `or
 - **Exclude**：从下一次 compilation 中移除一条 Natural 历史消息。
 - **Include**：把同一原生 family 内其他 Session 的消息复制到本地 `context/compiler-snapshot` 事件，并按稳定位置插入。
 
-Plan v3 还支持可恢复的 **placeholder replacement** overlay。用户确认 cleanup 后，同一个 graph node、role、edge、原生 fork boundary 与 append-only Session 原事件全部保留，只在后续模型请求中选择一条本地、保持 role 的 compiler snapshot。Restore 只移除 overlay。Reset 会同时清空 Include、Exclude 与 replacement；Undo/Redo 会回放三者。已有 v2 plan 在内存中规范化，读取不会写入迁移事件，下一次 mutation 才持久化 v3。
+Plan v3 还支持可恢复的 **空 placeholder replacement** overlay。推荐 Agent 只识别 cleanup candidate；用户逐项确认后，由服务端固定写入 `[Placeholder: intentionally empty]`，不接受 Agent 或客户端生成的替换文本。同一个 graph node、role、edge、原生 fork boundary 与 append-only Session 原事件全部保留。Restore 只移除 overlay。Reset 会同时清空 Include、Exclude 与 replacement；Undo/Redo 会回放三者。已有 v2 plan 在内存中规范化；已有 v3 replacement snapshot（包括旧版自定义文本）仍可读取和恢复。
 
 每次 plan mutation 都按 revision 做 compare-and-set，并记录完整 undo/redo 状态；Reset 回到 Natural。跨 family 引用、不可用消息、旧 revision、不支持的状态变化以及非 idle Agent 都会失败，不会产生部分更新。跨 Map import 暂不在范围内。
 

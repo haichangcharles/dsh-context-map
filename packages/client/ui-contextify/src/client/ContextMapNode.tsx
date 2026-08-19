@@ -27,11 +27,13 @@ export interface ContextMapNodeData extends Record<string, unknown> {
 export const ContextMapNode = memo(function ContextMapNode({ data, selected, sourcePosition, targetPosition }: NodeProps) {
   const value = data as ContextMapNodeData
   const record = value.record
-  const preview = record.replacement?.preview || record.preview || '(empty message)'
+  const emptyPlaceholder = record.replacement !== undefined
+  const preview = emptyPlaceholder ? '' : record.preview || '(empty message)'
+  const role = record.role === 'user' ? 'User' : 'Assistant'
   return (
     <article
       className={css.mapNode}
-      aria-label={`${record.role === 'user' ? 'User' : 'Assistant'} message: ${preview}`}
+      aria-label={emptyPlaceholder ? `${role} empty placeholder` : `${role} message: ${preview}`}
       data-role={record.role}
       data-mode={value.mode}
       data-included={value.included || undefined}
@@ -59,7 +61,7 @@ export const ContextMapNode = memo(function ContextMapNode({ data, selected, sou
             type="checkbox"
             checked={value.included}
             disabled={value.pending}
-            aria-label={`Include ${preview} in context`}
+            aria-label={emptyPlaceholder ? `Include ${role.toLocaleLowerCase()} empty placeholder in context` : `Include ${preview} in context`}
             onChange={(event) => { value.onIncludedChange(record, event.target.checked) }}
           />
           <span aria-hidden="true">Context</span>

@@ -424,7 +424,7 @@ Source: [`packages/context/context-compiler/src/index.ts:114`](../packages/conte
 'contextify/plan': ContextPlanSnapshot
 ```
 
-Source: [`packages/context/contextify/src/types.ts:194`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:196`](../packages/context/contextify/src/types.ts)
 
 ### `feedback/*`
 

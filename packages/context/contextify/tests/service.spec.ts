@@ -7,6 +7,7 @@ import SessionStore, { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import type { SessionInspection } from '@deepseek-ai/dsh-session-persistence'
 import SubagentRuntime, { type SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
 import ContextifyService from '../src/index.ts'
+import { CONTEXTIFY_EMPTY_PLACEHOLDER_TEXT } from '../src/types.ts'
 
 function stubAgent(session: Session): { agent: Agent; setStatus: (status: AgentStatus) => void } {
   const inbox = new Inbox(session, { inserted() {}, discarded() {}, claimed() {} })
@@ -225,7 +226,6 @@ describe('ContextifyService native Session family', () => {
       active.agent,
       { revision: initial.plan.revision },
       nodeBefore.owner,
-      '[Earlier user requirement removed]',
       'Obsolete requirement',
     )
     expect(replaced.plan.replacements).toMatchObject([{
@@ -233,7 +233,7 @@ describe('ContextifyService native Session family', () => {
     }])
     expect(ctx.contextCompiler.compile({ session, turn: 2, step: 1 }).messages
       .map(message => message.content)).toEqual(expect.arrayContaining([
-      [{ type: 'text', text: '[Earlier user requirement removed]' }],
+      [{ type: 'text', text: CONTEXTIFY_EMPTY_PLACEHOLDER_TEXT }],
     ]))
     expect(ctx.contextCompiler.compile({ session, turn: 2, step: 1 }).messages
       .flatMap(message => message.content).filter(block => block.type === 'text').map(block => block.text))
@@ -246,7 +246,7 @@ describe('ContextifyService native Session family', () => {
       owner: nodeBefore.owner,
       branchAtSeq: nodeBefore.branchAtSeq,
       replacement: {
-        preview: '[Earlier user requirement removed]', original: 'private requirement',
+        preview: CONTEXTIFY_EMPTY_PLACEHOLDER_TEXT, original: 'private requirement',
         originalAvailable: true, role: 'user',
       },
     })
@@ -334,7 +334,7 @@ describe('ContextifyService native Session family', () => {
     const initial = ctx.contextify.get(active.agent)
     const replaced = await ctx.contextify.replaceNode(
       active.agent, { revision: initial.plan.revision },
-      { sessionId: sibling.id, seq: siblingTurn.userSeq }, '[Sibling detail removed]', 'obsolete',
+      { sessionId: sibling.id, seq: siblingTurn.userSeq }, 'obsolete',
     )
     const included = await ctx.contextify.setNodeMode(
       active.agent, { revision: replaced.plan.revision },
@@ -342,7 +342,7 @@ describe('ContextifyService native Session family', () => {
     )
     expect(ctx.contextCompiler.compile({ session: activeSession, turn: 2, step: 1 }).messages
       .flatMap(message => message.content).filter(block => block.type === 'text').map(block => block.text))
-      .toContain('[Sibling detail removed]')
+      .toContain(CONTEXTIFY_EMPTY_PLACEHOLDER_TEXT)
 
     await ctx.contextify.restoreNode(
       active.agent, { revision: included.plan.revision },
@@ -351,7 +351,7 @@ describe('ContextifyService native Session family', () => {
     const compiledText = ctx.contextCompiler.compile({ session: activeSession, turn: 2, step: 1 }).messages
       .flatMap(message => message.content).filter(block => block.type === 'text').map(block => block.text)
     expect(compiledText).toContain('original sibling semantics')
-    expect(compiledText).not.toContain('[Sibling detail removed]')
+    expect(compiledText).not.toContain(CONTEXTIFY_EMPTY_PLACEHOLDER_TEXT)
   })
 
   it('rejects accepted recommendations after a sibling changes', async () => {

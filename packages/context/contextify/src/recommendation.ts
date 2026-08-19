@@ -165,7 +165,6 @@ export function validateRecommendation(
       category: item.category,
       reason: boundedText(item.reason, 'cleanup reason'),
       evidenceNodeIds: Object.freeze(evidenceNodeIds),
-      placeholderText: boundedText(item.placeholderText, 'cleanup placeholder'),
     })
   })
   return Object.freeze({

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-19-context-map-reviewed-semantics.md
-2026-08-19-context-map-reviewed-semantics.md: d13f69936308439b01e97db5e508c5be1a29b5a2
-2026-08-19-context-map-reviewed-semantics.zh.md: 518140f8cbfaa97851c318ee0692909654b3dfc4
+2026-08-19-context-map-reviewed-semantics.md: f8d76abd58eaf8a68d82f4d9cf4612f9d1fea660
+2026-08-19-context-map-reviewed-semantics.zh.md: 8f45dcd44979c54a7c45bdbab36f09f40f5d32b4

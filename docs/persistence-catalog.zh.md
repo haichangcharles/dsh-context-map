@@ -426,7 +426,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 'contextify/plan': ContextPlanSnapshot
 ```
 
-来源：[`packages/context/contextify/src/types.ts:194`](../packages/context/contextify/src/types.ts)
+来源：[`packages/context/contextify/src/types.ts:196`](../packages/context/contextify/src/types.ts)
 
 ### `feedback/*`
 

@@ -11,7 +11,7 @@ const source = sid('session-1')
 const child = sid('session-child')
 
 /** Mount the browser plugin over real Cordis slots and deterministic fake service faces. */
-async function bench() {
+async function bench(withCleanup = false) {
   const ctx = new Context()
   const calls: Array<{ method: string; args: unknown[] }> = []
   class RemoteService extends Service {
@@ -34,7 +34,12 @@ async function bench() {
     selection: [{
       nodeId: record.id, action: 'exclude' as const, reason: 'No longer needed', confidence: 'high' as const,
     }],
-    cleanup: [],
+    cleanup: withCleanup ? [{
+      nodeId: record.id,
+      category: 'obsolete' as const,
+      reason: 'No longer meaningful',
+      evidenceNodeIds: [],
+    }] : [],
   }
   const answer = <T,>(method: string, value: T) => (...args: unknown[]) => {
     calls.push({ method, args })
@@ -162,5 +167,25 @@ describe('ui-contextify browser plugin', () => {
       args: [source, { revision: 4 }, [{ node: b.record.owner, mode: 'exclude' }], 'family-7'],
     }])
     expect(controller.getSnapshot().recommendation).toMatchObject({ phase: 'idle' })
+  })
+
+  it('confirms cleanup without forwarding Agent-authored replacement content', async () => {
+    const b = await bench(true)
+    const controller = b.panel.hooks.contextify as never as { refresh: () => Promise<void> }
+    await controller.refresh()
+    await b.panel.mapActions.recommend()
+    const candidate = {
+      nodeId: b.record.id,
+      category: 'obsolete' as const,
+      reason: 'No longer meaningful',
+      evidenceNodeIds: [],
+    }
+
+    await b.panel.mapActions.confirmCleanup(candidate)
+
+    expect(b.calls.filter(call => call.method === 'replaceNode')).toEqual([{
+      method: 'replaceNode',
+      args: [source, { revision: 4 }, b.record.owner, candidate.reason, 'family-7'],
+    }])
   })
 })

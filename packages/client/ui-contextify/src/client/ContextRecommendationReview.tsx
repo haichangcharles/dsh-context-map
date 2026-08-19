@@ -11,7 +11,7 @@ export interface ContextRecommendationReviewProps {
   readonly graph: ContextFamilyGraph
   readonly pending: boolean
   readonly apply: (nodeIds: readonly string[]) => Promise<void>
-  readonly confirmCleanup: (candidate: ContextCleanupCandidate, placeholderText: string) => Promise<void>
+  readonly confirmCleanup: (candidate: ContextCleanupCandidate) => Promise<void>
   readonly dismiss: () => void
   readonly reportError: (cause: unknown) => void
 }
@@ -25,14 +25,10 @@ function ProposalReview({
   const [selected, setSelected] = useState<readonly string[]>(() => proposal.selection.map(item => item.nodeId))
   const [reviewing, setReviewing] = useState<string | null>(null)
   const [kept, setKept] = useState<readonly string[]>([])
-  const [drafts, setDrafts] = useState<Readonly<Record<string, string>>>(() => Object.fromEntries(
-    proposal.cleanup.map(item => [item.nodeId, item.placeholderText]),
-  ))
   useEffect(() => {
     setSelected(proposal.selection.map(item => item.nodeId))
     setReviewing(null)
     setKept([])
-    setDrafts(Object.fromEntries(proposal.cleanup.map(item => [item.nodeId, item.placeholderText])))
   }, [proposal])
   const nodes = useMemo(() => new Map(graph.nodes.map(node => [node.id, node])), [graph.nodes])
   const run = (operation: () => Promise<void>): void => {
@@ -87,7 +83,6 @@ function ProposalReview({
           const node = nodes.get(item.nodeId)
           const inbound = graph.edges.filter(edge => edge.target === item.nodeId).length
           const outbound = graph.edges.filter(edge => edge.source === item.nodeId).length
-          const draft = drafts[item.nodeId] ?? item.placeholderText
           return <article className={css.item} key={`cleanup:${item.nodeId}`}>
             <span className={`${css.badge} ${css.warning}`}>{item.category}</span><strong>{node?.preview ?? item.nodeId}</strong>
             <p>{item.reason}</p>
@@ -98,14 +93,13 @@ function ProposalReview({
               <button type="button" disabled={stale || pending} onClick={() => { setReviewing(item.nodeId) }}>Review replacement</button>
             </div>
             {reviewing === item.nodeId && <div className={css.editor}>
-              <label>Placeholder text<textarea aria-label={`Placeholder for ${item.nodeId}`} value={draft} maxLength={500} onChange={(event) => { setDrafts(current => ({ ...current, [item.nodeId]: event.target.value })) }} /></label>
               <div className={css.preview}>
                 <div><span>Before</span><p>{node?.preview ?? '(unavailable)'}</p></div>
-                <div><span>After</span><p>{draft}</p></div>
+                <div><span>After</span><p>Empty placeholder</p></div>
               </div>
               <div className={css.actions}>
                 <button type="button" onClick={() => { setReviewing(null) }}>Cancel</button>
-                <button type="button" disabled={stale || pending || draft.trim().length === 0} onClick={() => { run(() => confirmCleanup(item, draft)) }}>Replace with placeholder</button>
+                <button type="button" disabled={stale || pending} onClick={() => { run(() => confirmCleanup(item)) }}>Confirm empty placeholder</button>
               </div>
             </div>}
           </article>

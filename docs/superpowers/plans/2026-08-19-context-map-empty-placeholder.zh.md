@@ -1,6 +1,6 @@
-# Context Map Deterministic Empty Placeholder Implementation Plan
+# Context Map 确定性空占位节点实施计划
 
-English | [中文](2026-08-19-context-map-empty-placeholder.zh.md)
+[English](2026-08-19-context-map-empty-placeholder.md) | 中文
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

@@ -35,7 +35,6 @@ export interface ContextifyTransport {
   replaceNode: (
     ref: ContextPlanRef,
     node: ContextMessageRef,
-    placeholderText: string,
     reason: string,
     expectedGraphRevision?: string,
   ) => Promise<ContextifyView>
@@ -235,9 +234,8 @@ export class ContextifyController {
   /**
    * Confirm exactly one cleanup candidate; there is deliberately no bulk cleanup API.
    * @param candidate - Proposal-owned cleanup item being explicitly confirmed.
-   * @param placeholderText - Optional user-edited placeholder text.
    */
-  async confirmCleanup(candidate: ContextCleanupCandidate, placeholderText?: string): Promise<void> {
+  async confirmCleanup(candidate: ContextCleanupCandidate): Promise<void> {
     const recommendation = this.snapshot.recommendation
     if (recommendation.phase === 'stale') throw new Error('Context recommendation is stale')
     if (recommendation.phase !== 'ready'
@@ -248,7 +246,7 @@ export class ContextifyController {
     if (node === undefined) throw new Error(`Cleanup candidate references missing node: ${candidate.nodeId}`)
     try {
       await this.mutate(ref => this.transport.replaceNode(
-        ref, node.owner, placeholderText ?? candidate.placeholderText, candidate.reason,
+        ref, node.owner, candidate.reason,
         recommendation.proposal.base.graphRevision,
       ))
       this.clearRecommendation()

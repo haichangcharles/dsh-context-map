@@ -501,7 +501,7 @@ describe('ContextMapPanel', () => {
       }],
       cleanup: [{
         nodeId: 'root:2', category: 'obsolete' as const, reason: 'Old draft',
-        evidenceNodeIds: ['child:8'], placeholderText: '[Earlier draft removed]',
+        evidenceNodeIds: ['child:8'],
       }],
     }
     const snapshot: ContextifyControllerSnapshot = {
@@ -522,13 +522,10 @@ describe('ContextMapPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Review replacement' }))
     expect(screen.getByText('Before')).toBeTruthy()
     expect(screen.getByText('After')).toBeTruthy()
-    fireEvent.change(screen.getByLabelText('Placeholder for root:2'), {
-      target: { value: '[Replaced old answer]' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Replace with placeholder' }))
-    expect(h.mapActions.confirmCleanup).toHaveBeenCalledWith(
-      proposal.cleanup[0], '[Replaced old answer]',
-    )
+    expect(screen.queryByRole('textbox', { name: 'Placeholder for root:2' })).toBeNull()
+    expect(screen.getByText('Empty placeholder')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm empty placeholder' }))
+    expect(h.mapActions.confirmCleanup).toHaveBeenCalledWith(proposal.cleanup[0])
   })
 
   it('keeps a replacement on the same node and exposes original/restore from the native menu', async () => {
@@ -542,9 +539,15 @@ describe('ContextMapPanel', () => {
       },
     } : record)
     const h = mount({ ...original, graph: { ...original.graph!, nodes: records } })
-    const card = await screen.findByLabelText('Assistant message: [Earlier answer removed]')
+    const card = await screen.findByLabelText('Assistant empty placeholder')
     expect(card.dataset.contextNodeId).toBe('root:2')
+    expect(card.querySelector('p')?.dataset.preview).toBe('')
+    expect(card.textContent).not.toContain('[Earlier answer removed]')
     expect(within(card).getByText('Original retained')).toBeTruthy()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search Context Map' }), {
+      target: { value: '[Earlier answer removed]' },
+    })
+    expect(screen.getByText('0 / 0')).toBeTruthy()
 
     fireEvent.contextMenu(card, { clientX: 160, clientY: 180 })
     fireEvent.click(screen.getByRole('menuitem', { name: 'Show original' }))

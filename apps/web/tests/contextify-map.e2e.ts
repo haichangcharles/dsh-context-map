@@ -4,6 +4,7 @@ import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
 import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
+import { CONTEXTIFY_EMPTY_PLACEHOLDER_TEXT } from '@deepseek-ai/dsh-contextify/types'
 import {
   acknowledgeReloadConnectionLoss, compareOrRefreshGolden, launchWebScaffold, watchConsole, webSnapshotMode,
   type WebScaffold,
@@ -53,7 +54,6 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
               category: 'obsolete',
               reason: 'Exercise one-item cleanup confirmation',
               evidenceNodeIds: [answerNode.id],
-              placeholderText: '[Earlier request retained as a placeholder]',
             }],
           }
       },
@@ -146,7 +146,7 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
       .some(block => block.type === 'text' && block.text === PROMPT)).toBe(true)
     await review.getByRole('button', { name: 'Review replacement' }).click()
     expect(scaffold.ctx.contextify.get(child).plan.replacements).toHaveLength(0)
-    await review.getByRole('button', { name: 'Replace with placeholder' }).click()
+    await review.getByRole('button', { name: 'Confirm empty placeholder' }).click()
     await expect.poll(() => scaffold.ctx.contextify.get(child).plan.replacements.length, { timeout: 5_000 }).toBe(1)
 
     const compiledPlaceholder = scaffold.ctx.contextCompiler.compile({
@@ -154,11 +154,11 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
     }).messages.flatMap(message => message.content)
       .filter(block => block.type === 'text')
       .map(block => block.text)
-      .filter(text => text === PROMPT || text.includes('retained as a placeholder'))
+      .filter(text => text === PROMPT || text === CONTEXTIFY_EMPTY_PLACEHOLDER_TEXT)
       .join('\n')
     await compareOrRefreshGolden(COMPILED_PLACEHOLDER_EXPECTED, compiledPlaceholder, MODE)
     const placeholderCard = map.getByRole('article', {
-      name: 'User message: [Earlier request retained as a placeholder]',
+      name: 'User empty placeholder',
     })
     await placeholderCard.waitFor({ timeout: 10_000 })
     await placeholderCard.click({ button: 'right' })

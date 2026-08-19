@@ -563,9 +563,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'The view after one complete plan commits.',
       },
       {
-        signature: '@Remote(\'replaceNode\') async replaceNode( agent: Agent, ref: ContextPlanRef, nodeRef: ContextMessageRef, placeholderText: string, reason: string, expectedGraphRevision?: string, ): Promise<ContextifyView>',
+        signature: '@Remote(\'replaceNode\') async replaceNode( agent: Agent, ref: ContextPlanRef, nodeRef: ContextMessageRef, reason: string, expectedGraphRevision?: string, ): Promise<ContextifyView>',
         description: 'Replace one node\'s model-visible semantics with a reversible role-preserving placeholder.',
-        parameters: [{ name: 'agent', description: 'Live idle Agent whose Session receives the snapshot and plan events.' }, { name: 'ref', description: 'Expected current Context Plan revision.' }, { name: 'nodeRef', description: 'Native family message to retain structurally and replace semantically.' }, { name: 'placeholderText', description: 'Bounded model-visible placeholder content.' }, { name: 'reason', description: 'Human-visible reason retained with the replacement overlay.' }, { name: 'expectedGraphRevision', description: 'Optional family revision required by cleanup confirmation.' }],
+        parameters: [{ name: 'agent', description: 'Live idle Agent whose Session receives the snapshot and plan events.' }, { name: 'ref', description: 'Expected current Context Plan revision.' }, { name: 'nodeRef', description: 'Native family message to retain structurally and replace semantically.' }, { name: 'reason', description: 'Human-visible reason retained with the replacement overlay.' }, { name: 'expectedGraphRevision', description: 'Optional family revision required by cleanup confirmation.' }],
         returns: 'The committed v3 Contextify view.',
       },
       {
@@ -2943,7 +2943,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContextCleanupCandidate',
-    declaration: 'export interface ContextCleanupCandidate {\n    readonly nodeId: string;\n    readonly category: \'obsolete\' | \'conflict\' | \'redundant\';\n    readonly reason: string;\n    readonly evidenceNodeIds: readonly string[];\n    readonly placeholderText: string;\n}',
+    declaration: 'export interface ContextCleanupCandidate {\n    readonly nodeId: string;\n    readonly category: \'obsolete\' | \'conflict\' | \'redundant\';\n    readonly reason: string;\n    readonly evidenceNodeIds: readonly string[];\n}',
   },
   {
     name: 'ContextCompilation',

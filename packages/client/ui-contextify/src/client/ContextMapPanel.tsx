@@ -33,7 +33,7 @@ export interface ContextMapActions {
   recommend: (objective?: string) => Promise<void>
   applyRecommendations: (nodeIds?: readonly string[]) => Promise<void>
   clearRecommendation: () => void
-  confirmCleanup: (candidate: ContextCleanupCandidate, placeholderText?: string) => Promise<void>
+  confirmCleanup: (candidate: ContextCleanupCandidate) => Promise<void>
   restoreNode: (node: ContextMessageRef) => Promise<void>
   branch: (node: ContextFamilyGraphNode) => Promise<void>
   locate: (node: ContextFamilyGraphNode) => void
@@ -113,7 +113,7 @@ export function ContextMapPanel({
   const normalizedQuery = query.trim().toLocaleLowerCase()
   const searchResultIds = useMemo(() => normalizedQuery === ''
     ? []
-    : records.filter(node => (node.replacement?.preview ?? node.preview)
+    : records.filter(node => node.replacement === undefined && node.preview
       .toLocaleLowerCase().includes(normalizedQuery)).map(node => node.id),
   [normalizedQuery, records])
   const activeSearchId = searchResultIds.length === 0
@@ -492,7 +492,7 @@ export function ContextMapPanel({
           graph={graph}
           pending={mutationPending}
           apply={nodeIds => mapActions.applyRecommendations(nodeIds)}
-          confirmCleanup={(candidate, placeholderText) => mapActions.confirmCleanup(candidate, placeholderText)}
+          confirmCleanup={candidate => mapActions.confirmCleanup(candidate)}
           dismiss={() => {
             mapActions.clearRecommendation()
             queueMicrotask(() => { recommendButtonRef.current?.focus() })

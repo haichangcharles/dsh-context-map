@@ -12,13 +12,13 @@ Status: implemented
 
 `dsh-contextify` 继续以原生 Session 消息、边、fork 边界、归档投影和所有权作为图结构权威。Map 只投影每个已完成 Turn 的首个用户输入和最终 assistant 输出。Include 与 Exclude 是持久化 Context Plan 选择；reasoning、工具和 assistant 中间步骤仍保留在原生轨迹中，但不会成为 Map 节点。
 
-隔离的 Harness spawn Agent 接收某个精确 family revision 的有界 JSON 投影，并只返回供审阅的选择与清理建议。消息内容按不可信数据处理，工具被禁用，结构化输出会针对已审阅图校验，任何建议都不会修改父 Session。选择变更仅在用户明确同意后执行。清理没有批量操作：每个候选都必须单独确认，并且只把模型可见语义替换为保留角色的 placeholder。
+隔离的 Harness spawn Agent 接收某个精确 family revision 的有界 JSON 投影，并只返回供审阅的选择与清理建议。消息内容按不可信数据处理，工具被禁用，结构化输出会针对已审阅图校验，任何建议都不会修改父 Session。选择变更仅在用户明确同意后执行。清理没有批量操作：每个候选都必须单独确认，Agent 不生成替换文本，并由服务端按规则把模型可见语义固定替换为 `[Placeholder: intentionally empty]`。
 
 Context Plan version 3 将替换 overlay 与原生消息分开保存。替换会保留节点 id、角色、边、fork 点、原始内容以及 Include 或 Exclude 状态。Restore 会移除 overlay；如果 off-path Include 指向 placeholder snapshot，恢复时会把它重新绑定到新建的原始消息 snapshot。Reset 会清除所有显式选择与替换。Version 2 plan 在内存中归一化，并在下一次修改时写为 version 3。
 
 推荐新鲜度同时使用 Context Plan revision、active Session 身份，以及覆盖 family 内每个原生聊天 Session header 和追加位置的哈希。标记为 `origin: subagent` 的 Session 不进入 graph 及其 revision，因为 review Agent 自己就是临时 child 实现细节。服务会在启动前、隔离运行完成后，以及真正接受选择或清理修改前校验该 revision。因此 parent、sibling、原生 descendant、plan 或 active Agent 状态发生变化时都会 fail closed。
 
-Client 将 Map 作为固定在右侧详情栏的页面，与原生 Details 页面并列。React Flow 使用测量后的节点边界定位，因此 parent 底部到 child 顶部以及 sibling 边界会保持固定图空间间距，测量后也不会重置用户视口。原始消息弹窗接收完整文本，卡片仍使用有界预览。
+Client 将 Map 作为固定在右侧详情栏的页面，与原生 Details 页面并列。React Flow 使用测量后的节点边界定位，因此 parent 底部到 child 顶部以及 sibling 边界会保持固定图空间间距，测量后也不会重置用户视口。普通卡片仍使用有界预览；replacement 卡片正文为空，隐藏标记不参与搜索，完整原文仍可从原生菜单打开。
 
 ## Verification
 
