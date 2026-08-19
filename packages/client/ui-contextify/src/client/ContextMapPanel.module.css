@@ -93,15 +93,22 @@
 }
 
 .contextMenu {
+  /* This sheet also contains the scrolling original-message dialog. Rebind
+     inherited scrollbar colors whenever the menu elevation is present. */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+
   position: absolute;
-  z-index: 10;
+  z-index: 30;
   display: flex;
   flex-direction: column;
   width: 188px;
   padding: 5px;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 9px;
-  background: var(--dsw-alias-bg-elevated);
+  background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-1));
+  opacity: 1;
+  backdrop-filter: none;
   box-shadow: 0 12px 32px rgb(0 0 0 / 24%);
 }
 
@@ -158,7 +165,7 @@
 .nodeMeta { overflow: hidden; color: var(--dsw-alias-fg-secondary); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .nodeBadges { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 5px; }
 .nodeBadges span { border-radius: 99px; padding: 2px 5px; background: rgb(79 125 243 / 14%); color: #4f7df3; font-size: 8px; }
-.nodeBadges span[data-recommendation='cleanup'] { background: rgb(245 158 11 / 14%); color: #b56a00; }
+.nodeBadges span[data-recommendation='archive'] { background: rgb(245 158 11 / 14%); color: #b56a00; }
 .nodeBadges span[data-replacement-badge] { background: rgb(22 163 74 / 12%); color: #16803c; }
 
 .originalDialog {

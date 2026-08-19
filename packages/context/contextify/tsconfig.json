@@ -13,6 +13,8 @@
     { "path": "../../llm/llm" },
     { "path": "../../core/session" },
     { "path": "../../session/session-persistence" },
+    { "path": "../../settings/settings" },
+    { "path": "../../../vendor/schemastery" },
     { "path": "../../subagent/subagent" },
     { "path": "../../typert/protocol" }
   ]

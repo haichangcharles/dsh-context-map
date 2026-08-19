@@ -142,10 +142,11 @@ function familyRoot(
 function orderedFamily(
   root: ContextFamilyInspection,
   inspections: readonly ContextFamilyInspection[],
+  parents: ReadonlyMap<SessionId, SessionId>,
 ): Array<{ inspection: ContextFamilyInspection; depth: number }> {
   const children = new Map<SessionId, ContextFamilyInspection[]>()
   for (const inspection of inspections) {
-    const parent = inspection.meta.parentSession
+    const parent = parents.get(inspection.meta.id)
     if (parent === undefined) continue
     const list = children.get(parent) ?? []
     list.push(inspection)
@@ -164,6 +165,28 @@ function orderedFamily(
 }
 
 /**
+ * Collapse a native child forked again at an inherited boundary back beside
+ * its siblings. A fork at a branch-local boundary remains a real child.
+ */
+function canonicalSessionParents(
+  inspections: readonly ContextFamilyInspection[],
+  byId: ReadonlyMap<SessionId, ContextFamilyInspection>,
+): ReadonlyMap<SessionId, SessionId> {
+  const parents = new Map<SessionId, SessionId>()
+  for (const inspection of inspections) {
+    const actualParent = inspection.meta.parentSession
+    if (actualParent === undefined) continue
+    const seedLength = inspection.meta.seedLength ?? 0
+    const forkEvent = seedLength > 0 ? inspection.events[seedLength - 1] : undefined
+    parents.set(
+      inspection.meta.id,
+      forkEvent === undefined ? actualParent : canonicalOwner(inspection, forkEvent, byId).sessionId,
+    )
+  }
+  return parents
+}
+
+/**
  * Project one active Session's connected native fork family.
  * @param input - Active identity and immutable Session inspections.
  * @returns A frozen graph with inherited messages de-duplicated by their earliest owner.
@@ -176,7 +199,8 @@ export function projectSessionFamily(input: {
   const active = byId.get(input.activeSessionId)
   if (active === undefined) throw new Error(`active Session "${input.activeSessionId}" is unavailable`)
   const root = familyRoot(active, byId)
-  const ordered = orderedFamily(root, input.sessions)
+  const canonicalParents = canonicalSessionParents(input.sessions, byId)
+  const ordered = orderedFamily(root, input.sessions, canonicalParents)
   const nodes = new Map<string, MutableNode>()
   const edges = new Map<string, MutableEdge>()
   const sessions: ContextFamilySession[] = []
@@ -215,11 +239,10 @@ export function projectSessionFamily(input: {
       }
       path.push(id)
     }
+    const parentSessionId = canonicalParents.get(inspection.meta.id)
     sessions.push(Object.freeze({
       id: inspection.meta.id,
-      ...(inspection.meta.parentSession === undefined
-        ? {}
-        : { parentSessionId: inspection.meta.parentSession }),
+      ...(parentSessionId === undefined ? {} : { parentSessionId }),
       seedLength: inspection.meta.seedLength ?? 0,
       depth,
       tipNodeId: path.at(-1) ?? null,

@@ -1,6 +1,6 @@
 /** Deterministic recommendation prompt projection and fail-closed result validation. */
 import type {
-  ContextCleanupCandidate,
+  ContextArchiveCandidate,
   ContextFamilyGraph,
   ContextRecommendationBase,
   ContextRecommendationProposal,
@@ -126,50 +126,70 @@ export function validateRecommendation(
   const root = record(value, 'recommendation')
   const nodeIds = new Set(context.graph.nodes.map(node => node.id))
   const effective = new Set(context.effectiveIncludedNodeIds)
-  const seenSelection = new Set<string>()
-  const selection = array(root.selection, 'selection').map((raw, index): ContextSelectionRecommendation => {
+  const selectionByNode = new Map<string, ContextSelectionRecommendation>()
+  for (const [index, raw] of array(root.selection, 'selection').entries()) {
     const item = record(raw, `selection[${String(index)}]`)
     const nodeId = boundedText(item.nodeId, 'selection nodeId')
     if (!nodeIds.has(nodeId)) throw new Error(`selection node "${nodeId}" is unavailable`)
-    if (seenSelection.has(nodeId)) throw new Error(`selection node "${nodeId}" is duplicated`)
-    seenSelection.add(nodeId)
     if (item.action !== 'include' && item.action !== 'exclude') throw new Error('selection action is invalid')
-    if ((item.action === 'include') === effective.has(nodeId)) throw new Error(`selection node "${nodeId}" is already ${item.action}d`)
     if (item.confidence !== 'high' && item.confidence !== 'medium' && item.confidence !== 'low') {
       throw new Error('selection confidence is invalid')
     }
-    return Object.freeze({
+    const parsed: ContextSelectionRecommendation = Object.freeze({
       nodeId,
       action: item.action,
       reason: boundedText(item.reason, 'selection reason'),
       confidence: item.confidence,
     })
-  })
-  const seenCleanup = new Set<string>()
-  const cleanup = array(root.cleanup, 'cleanup').map((raw, index): ContextCleanupCandidate => {
-    const item = record(raw, `cleanup[${String(index)}]`)
-    const nodeId = boundedText(item.nodeId, 'cleanup nodeId')
-    if (!nodeIds.has(nodeId)) throw new Error(`cleanup node "${nodeId}" is unavailable`)
-    if (seenCleanup.has(nodeId)) throw new Error(`cleanup node "${nodeId}" is duplicated`)
-    seenCleanup.add(nodeId)
-    if (item.category !== 'obsolete' && item.category !== 'conflict' && item.category !== 'redundant') {
-      throw new Error('cleanup category is invalid')
+    const prior = selectionByNode.get(nodeId)
+    if (prior !== undefined && prior.action !== parsed.action) {
+      throw new Error(`selection node "${nodeId}" has conflicting actions`)
     }
-    const evidenceNodeIds = array(item.evidenceNodeIds, 'cleanup evidence').map((candidate) => {
-      const evidence = boundedText(candidate, 'cleanup evidence nodeId')
-      if (!nodeIds.has(evidence)) throw new Error(`cleanup evidence node "${evidence}" is unavailable`)
+    if (prior === undefined) selectionByNode.set(nodeId, parsed)
+  }
+  const graphOrder = context.graph.nodes.map(node => node.id)
+  const selection = graphOrder.flatMap((nodeId) => {
+    const item = selectionByNode.get(nodeId)
+    if (item === undefined || (item.action === 'include') === effective.has(nodeId)) return []
+    return [item]
+  })
+  const seenArchive = new Set<string>()
+  const archiveItems = root.archive === undefined ? [] : array(root.archive, 'archive')
+  const archive = archiveItems.map((raw, index): ContextArchiveCandidate => {
+    const item = record(raw, `archive[${String(index)}]`)
+    const nodeId = boundedText(item.nodeId, 'archive nodeId')
+    if (!nodeIds.has(nodeId)) throw new Error(`archive node "${nodeId}" is unavailable`)
+    if (seenArchive.has(nodeId)) throw new Error(`archive node "${nodeId}" is duplicated`)
+    seenArchive.add(nodeId)
+    if (item.category !== 'obsolete' && item.category !== 'conflict' && item.category !== 'redundant') {
+      throw new Error('archive category is invalid')
+    }
+    const evidenceNodeIds = array(item.evidenceNodeIds, 'archive evidence').map((candidate) => {
+      const evidence = boundedText(candidate, 'archive evidence nodeId')
+      if (!nodeIds.has(evidence)) throw new Error(`archive evidence node "${evidence}" is unavailable`)
       return evidence
     })
     return Object.freeze({
       nodeId,
       category: item.category,
-      reason: boundedText(item.reason, 'cleanup reason'),
+      reason: boundedText(item.reason, 'archive reason'),
       evidenceNodeIds: Object.freeze(evidenceNodeIds),
     })
   })
+  const proposed = new Set(effective)
+  for (const item of selection) {
+    if (item.action === 'include') proposed.add(item.nodeId)
+    else proposed.delete(item.nodeId)
+  }
+  const currentNodeIds = graphOrder.filter(nodeId => effective.has(nodeId))
+  const proposedNodeIds = graphOrder.filter(nodeId => proposed.has(nodeId))
   return Object.freeze({
     base: Object.freeze({ ...context.base }),
+    currentNodeIds: Object.freeze(currentNodeIds),
+    proposedNodeIds: Object.freeze(proposedNodeIds),
+    addedNodeIds: Object.freeze(proposedNodeIds.filter(nodeId => !effective.has(nodeId))),
+    removedNodeIds: Object.freeze(currentNodeIds.filter(nodeId => !proposed.has(nodeId))),
     selection: Object.freeze(selection),
-    cleanup: Object.freeze(cleanup),
+    archive: Object.freeze(archive),
   })
 }

@@ -9,6 +9,7 @@
  * declared action set, delivered as the registration's bound actions.
  */
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
+import { SIDEBAR_AUTO_COLLAPSE } from './columns.ts'
 import type { createLayoutStore } from './stores.ts'
 
 /** The layout store's bound action set (framework-baked, draft params peeled). */
@@ -21,6 +22,8 @@ export type PanelActions = BoundActions<ReturnType<typeof createLayoutStore>>
  * only).
  */
 export interface ILayout {
+  /** Shared viewport breakpoint below which optional panels should auto-collapse. */
+  autoCollapseBreakpoint(): number
   /** Toggle the sidebar panel (closed ⟷ contract default width). */
   toggleSidebar(): void
   /** Open the details panel (no-op when already open). */
@@ -32,6 +35,11 @@ export interface ILayout {
 /** Cross-plugin panel-action face (ctx.layout). */
 export class LayoutController implements ILayout {
   #panels: PanelActions | undefined
+
+  /** Shared viewport breakpoint below which optional panels should auto-collapse. */
+  autoCollapseBreakpoint(): number {
+    return SIDEBAR_AUTO_COLLAPSE
+  }
 
   /**
    * Adopt the root entry's bound store actions. Called from the root

@@ -17,7 +17,7 @@ export interface ContextMapNodeData extends Record<string, unknown> {
   readonly active: boolean
   readonly focused: boolean
   readonly searchMatch: boolean
-  readonly recommendation?: 'include' | 'exclude' | 'cleanup'
+  readonly recommendation?: 'include' | 'exclude' | 'archive'
   readonly onActivate: (record: ContextFamilyGraphNode) => void
   readonly onIncludedChange: (record: ContextFamilyGraphNode, included: boolean) => void
   readonly onContextMenu: (record: ContextFamilyGraphNode, point: CanvasPoint) => void
@@ -70,9 +70,9 @@ export const ContextMapNode = memo(function ContextMapNode({ data, selected, sou
       <p className={css.preview} data-preview={preview} aria-hidden="true" />
       {(value.recommendation !== undefined || record.replacement !== undefined) && <div className={css.nodeBadges}>
         {value.recommendation !== undefined && <span data-recommendation={value.recommendation}>
-          {value.recommendation === 'include' ? 'Suggested include' : value.recommendation === 'exclude' ? 'Suggested exclude' : 'Cleanup suggested'}
+          {value.recommendation === 'include' ? 'Suggested include' : value.recommendation === 'exclude' ? 'Suggested exclude' : 'Archive suggested'}
         </span>}
-        {record.replacement !== undefined && <span data-replacement-badge="">Original retained</span>}
+        {record.replacement !== undefined && <span data-replacement-badge="">Archived</span>}
       </div>}
       <div className={css.nodeMeta}>{value.sessionLabel}</div>
       <Handle type="source" position={sourcePosition ?? Position.Bottom} className={css.handle} />

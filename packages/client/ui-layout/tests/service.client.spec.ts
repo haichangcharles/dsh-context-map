@@ -5,6 +5,7 @@
  * unwired fail-loud, and re-attach overwriting a stale action set.
  */
 import { describe, expect, it, vi } from 'vitest'
+import { SIDEBAR_AUTO_COLLAPSE } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
 import { LayoutController } from '@deepseek-ai/dsh-client-ui-layout/src/client/service.ts'
 import type { PanelActions } from '@deepseek-ai/dsh-client-ui-layout/src/client/service.ts'
 
@@ -20,6 +21,10 @@ function fakePanels(): PanelActions {
 }
 
 describe('LayoutController', () => {
+  it('exposes the shared compact-layout breakpoint without requiring panel wiring', () => {
+    expect(new LayoutController().autoCollapseBreakpoint()).toBe(SIDEBAR_AUTO_COLLAPSE)
+  })
+
   it('forwards the three panel actions to the attached set', () => {
     const service = new LayoutController()
     const panels = fakePanels()

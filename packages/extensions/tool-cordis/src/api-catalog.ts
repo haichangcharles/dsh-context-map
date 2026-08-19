@@ -563,10 +563,16 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'The view after one complete plan commits.',
       },
       {
-        signature: '@Remote(\'replaceNode\') async replaceNode( agent: Agent, ref: ContextPlanRef, nodeRef: ContextMessageRef, reason: string, expectedGraphRevision?: string, ): Promise<ContextifyView>',
-        description: 'Replace one node\'s model-visible semantics with a reversible role-preserving placeholder.',
-        parameters: [{ name: 'agent', description: 'Live idle Agent whose Session receives the snapshot and plan events.' }, { name: 'ref', description: 'Expected current Context Plan revision.' }, { name: 'nodeRef', description: 'Native family message to retain structurally and replace semantically.' }, { name: 'reason', description: 'Human-visible reason retained with the replacement overlay.' }, { name: 'expectedGraphRevision', description: 'Optional family revision required by cleanup confirmation.' }],
+        signature: '@Remote(\'archiveNode\') async archiveNode( agent: Agent, ref: ContextPlanRef, nodeRef: ContextMessageRef, reason: string, expectedGraphRevision?: string, ): Promise<ContextifyView>',
+        description: 'Archive one node\'s model-visible semantics with a reversible role-preserving placeholder.',
+        parameters: [{ name: 'agent', description: 'Live idle Agent whose Session receives the snapshot and plan events.' }, { name: 'ref', description: 'Expected current Context Plan revision.' }, { name: 'nodeRef', description: 'Native family message to retain structurally and replace semantically.' }, { name: 'reason', description: 'Human-visible reason retained with the replacement overlay.' }, { name: 'expectedGraphRevision', description: 'Optional family revision required by archive confirmation.' }],
         returns: 'The committed v3 Contextify view.',
+      },
+      {
+        signature: '@Remote(\'acceptBranchSuggestion\') async acceptBranchSuggestion(agent: Agent, suggestionId: string): Promise<ContextBranchRelocationResult>',
+        description: 'Move one suggested completed Q&A into a deterministic native child Branch.',
+        parameters: [{ name: 'agent', description: 'Live idle Agent whose source Session owns the reviewed Turn.' }, { name: 'suggestionId', description: 'Durable suggestion identity returned by `get`.' }],
+        returns: 'The native child Session created by, or recovered for, this relocation.',
       },
       {
         signature: '@Remote(\'restoreNode\') async restoreNode(agent: Agent, ref: ContextPlanRef, nodeRef: ContextMessageRef): Promise<ContextifyView>',
@@ -2942,8 +2948,20 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ContentBlockType = keyof ContentBlockMap;',
   },
   {
-    name: 'ContextCleanupCandidate',
-    declaration: 'export interface ContextCleanupCandidate {\n    readonly nodeId: string;\n    readonly category: \'obsolete\' | \'conflict\' | \'redundant\';\n    readonly reason: string;\n    readonly evidenceNodeIds: readonly string[];\n}',
+    name: 'ContextArchiveCandidate',
+    declaration: 'export interface ContextArchiveCandidate {\n    readonly nodeId: string;\n    readonly category: \'obsolete\' | \'conflict\' | \'redundant\';\n    readonly reason: string;\n    readonly evidenceNodeIds: readonly string[];\n}',
+  },
+  {
+    name: 'ContextBranchCandidate',
+    declaration: 'export interface ContextBranchCandidate {\n    readonly sourceSessionId: SessionId;\n    readonly turn: number;\n    readonly boundaryBefore: number;\n    readonly boundaryAfter: number;\n    readonly input: ContextMessageRef;\n    readonly output: ContextMessageRef;\n    readonly inputPreview: string;\n    readonly outputPreview: string;\n}',
+  },
+  {
+    name: 'ContextBranchRelocationResult',
+    declaration: 'export interface ContextBranchRelocationResult {\n    readonly childSessionId: SessionId;\n}',
+  },
+  {
+    name: 'ContextBranchSuggestion',
+    declaration: 'export interface ContextBranchSuggestion extends ContextBranchCandidate {\n    readonly id: string;\n    readonly confidence: number;\n    readonly reason: string;\n    readonly planRevision: number;\n    readonly graphRevision: string;\n}',
   },
   {
     name: 'ContextCompilation',
@@ -2987,7 +3005,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContextifyView',
-    declaration: 'export interface ContextifyView {\n    readonly plan: ContextPlanSnapshot;\n    readonly graphAsOfSeq: number;\n    readonly selectedCount: number;\n    readonly totalNodeCount: number;\n    readonly canUndo: boolean;\n    readonly canRedo: boolean;\n}',
+    declaration: 'export interface ContextifyView {\n    readonly plan: ContextPlanSnapshot;\n    readonly graphAsOfSeq: number;\n    readonly selectedCount: number;\n    readonly totalNodeCount: number;\n    readonly canUndo: boolean;\n    readonly canRedo: boolean;\n    readonly branchSuggestion?: ContextBranchSuggestion;\n}',
   },
   {
     name: 'ContextIncludedNode',
@@ -3015,7 +3033,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContextRecommendationProposal',
-    declaration: 'export interface ContextRecommendationProposal {\n    readonly base: ContextRecommendationBase;\n    readonly selection: readonly ContextSelectionRecommendation[];\n    readonly cleanup: readonly ContextCleanupCandidate[];\n}',
+    declaration: 'export interface ContextRecommendationProposal {\n    readonly base: ContextRecommendationBase;\n    readonly currentNodeIds: readonly string[];\n    readonly proposedNodeIds: readonly string[];\n    readonly addedNodeIds: readonly string[];\n    readonly removedNodeIds: readonly string[];\n    readonly selection: readonly ContextSelectionRecommendation[];\n    readonly archive: readonly ContextArchiveCandidate[];\n}',
   },
   {
     name: 'ContextReplacementNode',

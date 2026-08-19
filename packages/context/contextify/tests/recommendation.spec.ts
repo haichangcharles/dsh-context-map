@@ -44,36 +44,51 @@ describe('Contextify recommendation protocol', () => {
     expect(JSON.stringify(input).length).toBeLessThanOrEqual(96_000)
   })
 
-  it('validates a review-only selection and cleanup proposal', () => {
+  it('normalizes a delta into complete Current and Proposed versions', () => {
     const proposal = validateRecommendation({
-      selection: [{ nodeId: 'root:1', action: 'exclude', reason: 'Superseded', confidence: 'high' }],
-      cleanup: [{
+      selection: [
+        { nodeId: 'root:1', action: 'include', reason: 'Already selected', confidence: 'low' },
+        { nodeId: 'root:2', action: 'exclude', reason: 'Superseded', confidence: 'high' },
+        { nodeId: 'root:2', action: 'exclude', reason: 'Superseded', confidence: 'high' },
+      ],
+      archive: [{
         nodeId: 'root:1', category: 'obsolete', reason: 'Conflicts with the newer answer',
         evidenceNodeIds: ['root:2'], placeholderText: 'Agent-authored text must be ignored',
       }],
     }, { base, graph, effectiveIncludedNodeIds: ['root:1', 'root:2'] })
 
     expect(proposal.base).toEqual(base)
+    expect(proposal.currentNodeIds).toEqual(['root:1', 'root:2'])
+    expect(proposal.proposedNodeIds).toEqual(['root:1'])
+    expect(proposal.addedNodeIds).toEqual([])
+    expect(proposal.removedNodeIds).toEqual(['root:2'])
     expect(proposal.selection).toHaveLength(1)
-    expect(proposal.cleanup).toEqual([{
+    expect(proposal.selection[0]?.nodeId).toBe('root:2')
+    expect(proposal.archive).toEqual([{
       nodeId: 'root:1', category: 'obsolete', reason: 'Conflicts with the newer answer',
       evidenceNodeIds: ['root:2'],
     }])
     expect(Object.isFrozen(proposal)).toBe(true)
   })
 
+  it('treats an omitted advisory archive list as no archive candidates', () => {
+    const proposal = validateRecommendation({
+      selection: [{ nodeId: 'root:2', action: 'exclude', reason: 'Superseded', confidence: 'high' }],
+    }, { base, graph, effectiveIncludedNodeIds: ['root:1', 'root:2'] })
+
+    expect(proposal.removedNodeIds).toEqual(['root:2'])
+    expect(proposal.archive).toEqual([])
+  })
+
   it.each([
-    ['unknown node', { selection: [{ nodeId: 'missing', action: 'exclude', reason: 'x', confidence: 'high' }], cleanup: [] }],
-    ['duplicate selection', { selection: [
+    ['unknown node', { selection: [{ nodeId: 'missing', action: 'exclude', reason: 'x', confidence: 'high' }], archive: [] }],
+    ['conflicting selection', { selection: [
       { nodeId: 'root:1', action: 'exclude', reason: 'x', confidence: 'high' },
-      { nodeId: 'root:1', action: 'exclude', reason: 'y', confidence: 'low' },
-    ], cleanup: [] }],
-    ['invalid evidence', { selection: [], cleanup: [{
+      { nodeId: 'root:1', action: 'include', reason: 'y', confidence: 'low' },
+    ], archive: [] }],
+    ['invalid evidence', { selection: [], archive: [{
       nodeId: 'root:1', category: 'conflict', reason: 'x', evidenceNodeIds: ['missing'],
     }] }],
-    ['no-op include', { selection: [
-      { nodeId: 'root:1', action: 'include', reason: 'already included', confidence: 'medium' },
-    ], cleanup: [] }],
   ])('rejects %s', (_label, value) => {
     expect(() => validateRecommendation(value, {
       base, graph, effectiveIncludedNodeIds: ['root:1', 'root:2'],

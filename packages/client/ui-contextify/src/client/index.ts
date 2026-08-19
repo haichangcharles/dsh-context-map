@@ -7,10 +7,14 @@ import type { ContextFamilyGraphNode } from '@deepseek-ai/dsh-contextify/types'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+import type {} from '@deepseek-ai/dsh-client-locale/client'
 import { ContextMapPanel, type ContextMapPanelInjected } from './ContextMapPanel.tsx'
 import { ContextMessageAction, type ContextMessageActionInjected } from './ContextMessageAction.tsx'
 import { ContextifyController, type ContextifyTransport } from './controller.ts'
 import { createContextMapStore } from './store.ts'
+import { ContextifyPromptSettingsSection } from './ContextifyPromptSettings.tsx'
+import type { ContextifyPromptSettings } from '@deepseek-ai/dsh-contextify/types'
 
 export { ContextMapPanel } from './ContextMapPanel.tsx'
 export type { ContextMapActions, ContextMapPanelInjected, ContextMapPanelProps } from './ContextMapPanel.tsx'
@@ -27,9 +31,25 @@ function valueOf<T>(result: RemoteResult<T>): T {
   throw new Error(result.error.message)
 }
 
-/** Invisible root entry that reopens details whenever a non-blank Session takes ownership. */
-function DetailsOpener({ open, useSessions }: {
+/**
+ * Resolve the canonical native Session and completed-Turn boundary for a fork.
+ * @param node - Canonical Context Map message node.
+ * @returns Native Session fork input with title increment enabled.
+ */
+export function nativeBranchSource(node: ContextFamilyGraphNode): {
+  sessionId: SessionId
+  atSeq: number
+  increaseTitle: true
+} {
+  if (node.branchAtSeq === null) throw new Error('Message has no completed Turn boundary')
+  return { sessionId: node.owner.sessionId, atSeq: node.branchAtSeq, increaseTitle: true }
+}
+
+/** Invisible root entry that opens wide Sessions and restores the narrow reveal affordance. */
+function DetailsOpener({ open, close, autoCollapseBreakpoint, useSessions }: {
   open: () => void
+  close: () => void
+  autoCollapseBreakpoint: number
   useSessions: SnapshotSelectorHook<SessionListState>
 }) {
   const sessionId = useSessions((state) => {
@@ -37,8 +57,16 @@ function DetailsOpener({ open, useSessions }: {
     return current !== undefined && state.byId[current]?.blank === false ? current : undefined
   })
   useEffect(() => {
-    if (sessionId !== undefined) open()
-  }, [open, sessionId])
+    if (sessionId === undefined) return
+    const wide = window.matchMedia(`(min-width: ${String(autoCollapseBreakpoint)}px)`)
+    const synchronize = (): void => {
+      if (wide.matches) open()
+      else close()
+    }
+    synchronize()
+    wide.addEventListener('change', synchronize)
+    return () => { wide.removeEventListener('change', synchronize) }
+  }, [autoCollapseBreakpoint, close, open, sessionId])
   return null
 }
 
@@ -46,6 +74,18 @@ function DetailsOpener({ open, useSessions }: {
 export function apply(ctx: ClientContext): void {
   const remote = ctx.remote.contextify
   const controllers = new Map<SessionId, ContextifyController>()
+  ctx.inject(['settingsScope', 'locale', 'connection'], (settingsCtx) => {
+    const promptScope = settingsCtx.settingsScope.bind<ContextifyPromptSettings>({ namespace: 'contextify' })
+    settingsCtx.slots.inject('settings.section', () => settingsCtx.slots.register({
+      name: 'settings.section',
+      id: 'contextify-prompts',
+      order: 25,
+      label: () => settingsCtx.locale.getSnapshot().active.startsWith('zh')
+        ? 'Context Map 提示词'
+        : 'Context Map prompts',
+      inject: () => ({ scope: promptScope }),
+    }, ContextifyPromptSettingsSection))
+  })
   const controllerFor = (sessionId: SessionId): ContextifyController => {
     const existing = controllers.get(sessionId)
     if (existing !== undefined) return existing
@@ -60,10 +100,13 @@ export function apply(ctx: ClientContext): void {
       undo: async ref => valueOf(await remote.undo(sessionId, ref)),
       redo: async ref => valueOf(await remote.redo(sessionId, ref)),
       recommend: async (base, objective) => valueOf(await remote.recommend(sessionId, base, objective)),
-      replaceNode: async (ref, node, reason, expectedGraphRevision) => valueOf(await remote.replaceNode(
+      archiveNode: async (ref, node, reason, expectedGraphRevision) => valueOf(await remote.archiveNode(
         sessionId, ref, node, reason, expectedGraphRevision,
       )),
       restoreNode: async (ref, node) => valueOf(await remote.restoreNode(sessionId, ref, node)),
+      acceptBranchSuggestion: async suggestionId => valueOf(
+        await remote.acceptBranchSuggestion(sessionId, suggestionId),
+      ),
     }
     const controller = new ContextifyController(transport)
     controllers.set(sessionId, controller)
@@ -78,6 +121,10 @@ export function apply(ctx: ClientContext): void {
         controller.focus(nodeId)
         ctx.conversation.openPinnedDetails(sessionId)
         ctx.layout.openDetails()
+      },
+      moveBranchSuggestion: async (suggestionId) => {
+        const result = await controller.acceptBranchSuggestion(suggestionId)
+        ctx.sessions.open(result.childSessionId)
       },
     }
   }
@@ -98,17 +145,13 @@ export function apply(ctx: ClientContext): void {
           undo: () => controller.undo(),
           redo: () => controller.redo(),
           recommend: objective => controller.recommend(objective),
-          applyRecommendations: nodeIds => controller.applyRecommendations(nodeIds),
+          applyRecommendations: () => controller.applyRecommendations(),
           clearRecommendation: () => { controller.clearRecommendation() },
-          confirmCleanup: candidate => controller.confirmCleanup(candidate),
+          confirmArchive: candidate => controller.confirmArchive(candidate),
+          archiveNode: node => controller.archiveNode(node),
           restoreNode: node => controller.restoreNode(node),
           branch: async (node: ContextFamilyGraphNode) => {
-            if (node.branchAtSeq === null) throw new Error('Message has no completed Turn boundary')
-            const childId = await ctx.sessions.fork({
-              sessionId: node.owner.sessionId,
-              atSeq: node.branchAtSeq,
-              increaseTitle: true,
-            })
+            const childId = await ctx.sessions.fork(nativeBranchSource(node))
             ctx.sessions.open(childId)
           },
           locate: (node) => { ctx.conversation.revealMessage(node.owner.sessionId, node.owner.seq) },
@@ -135,6 +178,10 @@ export function apply(ctx: ClientContext): void {
     name: 'shell.overlay',
     id: 'contextify-open-details',
     order: -100,
-    inject: () => ({ open: () => { ctx.layout.openDetails() } }),
+    inject: () => ({
+      open: () => { ctx.layout.openDetails() },
+      close: () => { ctx.layout.closeDetails() },
+      autoCollapseBreakpoint: ctx.layout.autoCollapseBreakpoint(),
+    }),
   }, DetailsOpener))
 }

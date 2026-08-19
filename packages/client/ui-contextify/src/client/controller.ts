@@ -1,12 +1,13 @@
 /** Shared observable bridge between Chat actions, Context Map, and Contextify Remote. */
 import type {
+  ContextBranchRelocationResult,
   ContextFamilyGraph,
   ContextFamilyGraphPage,
   ContextMessageRef,
   ContextNodeMutation,
   ContextPlanRef,
   ContextRecommendationBase,
-  ContextCleanupCandidate,
+  ContextArchiveCandidate,
   ContextRecommendationProposal,
   ContextifyView,
 } from '@deepseek-ai/dsh-contextify/types'
@@ -32,13 +33,14 @@ export interface ContextifyTransport {
     base: ContextRecommendationBase,
     objective?: string,
   ) => Promise<ContextRecommendationProposal>
-  replaceNode: (
+  archiveNode: (
     ref: ContextPlanRef,
     node: ContextMessageRef,
     reason: string,
     expectedGraphRevision?: string,
   ) => Promise<ContextifyView>
   restoreNode: (ref: ContextPlanRef, node: ContextMessageRef) => Promise<ContextifyView>
+  acceptBranchSuggestion: (suggestionId: string) => Promise<ContextBranchRelocationResult>
 }
 
 /** Ephemeral review state. Recommendations never mutate the Context Plan by themselves. */
@@ -183,18 +185,15 @@ export class ContextifyController {
   }
 
   /**
-   * Accept selected Include/Exclude recommendations in one atomic Context Plan revision.
-   * @param nodeIds - Selected recommendation node IDs; omitted accepts all selection items.
+   * Replace the effective Context version in one atomic Context Plan revision.
    */
-  async applyRecommendations(nodeIds?: readonly string[]): Promise<void> {
+  async applyRecommendations(): Promise<void> {
     const recommendation = this.snapshot.recommendation
     if (recommendation.phase === 'stale') throw new Error('Context recommendation is stale')
     if (recommendation.phase !== 'ready') throw new Error('No Context recommendation is ready')
     const graph = this.snapshot.graph
     if (graph === undefined) throw new Error('Context Map is unavailable')
-    const accepted = nodeIds === undefined
-      ? recommendation.proposal.selection
-      : recommendation.proposal.selection.filter(item => nodeIds.includes(item.nodeId))
+    const accepted = recommendation.proposal.selection
     if (accepted.length === 0) return
     const byId = new Map(graph.nodes.map(node => [node.id, node]))
     const mutations = accepted.map((item): ContextNodeMutation => {
@@ -218,34 +217,24 @@ export class ContextifyController {
       })
       throw cause
     }
-    const acceptedIds = new Set(accepted.map(item => item.nodeId))
-    const selection = recommendation.proposal.selection.filter(item => !acceptedIds.has(item.nodeId))
-    this.publish({
-      ...this.snapshot,
-      recommendation: selection.length === 0 && recommendation.proposal.cleanup.length === 0
-        ? Object.freeze({ phase: 'idle' })
-        : Object.freeze({
-          phase: 'stale',
-          proposal: Object.freeze({ ...recommendation.proposal, selection: Object.freeze(selection) }),
-        }),
-    })
+    this.clearRecommendation()
   }
 
   /**
-   * Confirm exactly one cleanup candidate; there is deliberately no bulk cleanup API.
-   * @param candidate - Proposal-owned cleanup item being explicitly confirmed.
+   * Confirm exactly one archive candidate; there is deliberately no bulk archive API.
+   * @param candidate - Proposal-owned archive item being explicitly confirmed.
    */
-  async confirmCleanup(candidate: ContextCleanupCandidate): Promise<void> {
+  async confirmArchive(candidate: ContextArchiveCandidate): Promise<void> {
     const recommendation = this.snapshot.recommendation
     if (recommendation.phase === 'stale') throw new Error('Context recommendation is stale')
     if (recommendation.phase !== 'ready'
-      || !recommendation.proposal.cleanup.some(item => item.nodeId === candidate.nodeId)) {
-      throw new Error('Cleanup candidate is unavailable')
+      || !recommendation.proposal.archive.some(item => item.nodeId === candidate.nodeId)) {
+      throw new Error('Archive candidate is unavailable')
     }
     const node = this.snapshot.graph?.nodes.find(item => item.id === candidate.nodeId)
-    if (node === undefined) throw new Error(`Cleanup candidate references missing node: ${candidate.nodeId}`)
+    if (node === undefined) throw new Error(`Archive candidate references missing node: ${candidate.nodeId}`)
     try {
-      await this.mutate(ref => this.transport.replaceNode(
+      await this.mutate(ref => this.transport.archiveNode(
         ref, node.owner, candidate.reason,
         recommendation.proposal.base.graphRevision,
       ))
@@ -257,6 +246,27 @@ export class ContextifyController {
       })
       throw cause
     }
+  }
+
+  /**
+   * Archive one input or final output using the fixed server-owned placeholder.
+   * @param node - Native family message whose model-visible semantics are removed.
+   */
+  async archiveNode(node: ContextMessageRef): Promise<void> {
+    await this.mutate(ref => this.transport.archiveNode(
+      ref, node, 'Archived by user', this.snapshot.graphRevision,
+    ))
+  }
+
+  /**
+   * Accept one durable post-Turn suggestion and refresh the native family.
+   * @param suggestionId - Suggestion identity exposed by the Host view.
+   * @returns The native Branch relocation result.
+   */
+  async acceptBranchSuggestion(suggestionId: string): Promise<ContextBranchRelocationResult> {
+    const result = await this.transport.acceptBranchSuggestion(suggestionId)
+    await this.refresh()
+    return result
   }
 
   /**

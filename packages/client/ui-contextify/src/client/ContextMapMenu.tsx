@@ -12,6 +12,7 @@ export interface ContextMapMenuProps {
   readonly locate: (record: ContextFamilyGraphNode) => void
   readonly branch: (record: ContextFamilyGraphNode) => Promise<void>
   readonly restoreAutomatic: (record: ContextFamilyGraphNode) => void
+  readonly archive: (record: ContextFamilyGraphNode) => void
   readonly showOriginal: (record: ContextFamilyGraphNode) => void
   readonly restoreOriginal: (record: ContextFamilyGraphNode) => void
   readonly reportError: (cause: unknown) => void
@@ -19,7 +20,7 @@ export interface ContextMapMenuProps {
 
 /** Pointer-positioned node actions backed only by Harness-native operations. */
 export function ContextMapMenu({
-  point, record, mode, pending, close, locate, branch, restoreAutomatic, showOriginal, restoreOriginal, reportError,
+  point, record, mode, pending, close, locate, branch, restoreAutomatic, archive, showOriginal, restoreOriginal, reportError,
 }: ContextMapMenuProps) {
   const run = (action: () => void | Promise<void>): void => {
     try {
@@ -35,6 +36,7 @@ export function ContextMapMenu({
       role="menu"
       aria-label="Message actions"
       data-context-map-menu=""
+      data-opaque-surface="true"
       className={`${css.contextMenu} nodrag nopan`}
       style={{ left: point.x, top: point.y }}
       onPointerDown={(event) => { event.stopPropagation() }}
@@ -48,10 +50,14 @@ export function ContextMapMenu({
         disabled={pending || record.branchAtSeq === null}
         onClick={() => { run(() => branch(record)) }}
       >Branch from Here</button>
+      {record.replacement === undefined && <>
+        <div className={css.contextMenuSeparator} />
+        <button type="button" role="menuitem" disabled={pending} onClick={() => { run(() => { archive(record) }) }}>Archive node</button>
+      </>}
       {record.replacement !== undefined && <>
         <div className={css.contextMenuSeparator} />
         <button type="button" role="menuitem" onClick={() => { run(() => { showOriginal(record) }) }}>Show original</button>
-        <button type="button" role="menuitem" disabled={pending} onClick={() => { run(() => { restoreOriginal(record) }) }}>Restore original</button>
+        <button type="button" role="menuitem" disabled={pending} onClick={() => { run(() => { restoreOriginal(record) }) }}>Restore node</button>
       </>}
       {mode !== 'natural' && <>
         <div className={css.contextMenuSeparator} />

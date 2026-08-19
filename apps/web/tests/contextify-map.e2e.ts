@@ -45,14 +45,14 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
             selection: [{
               nodeId: answerNode.id, action: 'exclude', reason: 'Exercise explicit approval', confidence: 'high',
             }],
-            cleanup: [],
+            archive: [],
           }
           : {
             selection: [],
-            cleanup: [{
+            archive: [{
               nodeId: promptNode.id,
               category: 'obsolete',
-              reason: 'Exercise one-item cleanup confirmation',
+              reason: 'Exercise one-item archive confirmation',
               evidenceNodeIds: [answerNode.id],
             }],
           }
@@ -131,7 +131,7 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
     expect(scaffold.ctx.contextify.get(child).plan.revision).toBe(beforeProposal.plan.revision)
     expect(scaffold.ctx.contextCompiler.compile({ session: child.session, turn: 2, step: 1 }).messages)
       .toEqual(beforeProposalMessages)
-    await review.getByRole('button', { name: 'Apply selected to next context' }).click()
+    await review.getByRole('button', { name: 'Apply proposed context' }).click()
     await expect.poll(() => scaffold.ctx.contextify.get(child).plan.excluded.length, { timeout: 5_000 }).toBe(1)
     expect(scaffold.ctx.contextCompiler.compile({ session: child.session, turn: 2, step: 1 }).messages
       .flatMap(message => message.content)
@@ -144,9 +144,9 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
     expect(scaffold.ctx.contextCompiler.compile({ session: child.session, turn: 2, step: 1 }).messages
       .flatMap(message => message.content)
       .some(block => block.type === 'text' && block.text === PROMPT)).toBe(true)
-    await review.getByRole('button', { name: 'Review replacement' }).click()
+    await review.getByRole('button', { name: 'Review archive' }).click()
     expect(scaffold.ctx.contextify.get(child).plan.replacements).toHaveLength(0)
-    await review.getByRole('button', { name: 'Confirm empty placeholder' }).click()
+    await review.getByRole('button', { name: 'Archive node' }).click()
     await expect.poll(() => scaffold.ctx.contextify.get(child).plan.replacements.length, { timeout: 5_000 }).toBe(1)
 
     const compiledPlaceholder = scaffold.ctx.contextCompiler.compile({
@@ -166,7 +166,7 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
     expect(await map.getByRole('dialog', { name: 'Original message' }).textContent()).toContain(PROMPT)
     await map.getByRole('button', { name: 'Close original message' }).click()
     await placeholderCard.click({ button: 'right' })
-    await map.getByRole('menuitem', { name: 'Restore original' }).click()
+    await map.getByRole('menuitem', { name: 'Restore node' }).click()
     await map.getByRole('article', { name: `User message: ${PROMPT}` }).waitFor({ timeout: 10_000 })
 
     await map.getByLabel('Include LIGHTHOUSE in context').click()

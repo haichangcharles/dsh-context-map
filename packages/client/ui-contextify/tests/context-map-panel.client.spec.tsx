@@ -160,7 +160,8 @@ function mount(
     recommend: vi.fn(async () => {}),
     applyRecommendations: vi.fn(async () => {}),
     clearRecommendation: vi.fn(),
-    confirmCleanup: vi.fn(async () => {}),
+    confirmArchive: vi.fn(async () => {}),
+    archiveNode: vi.fn(async () => {}),
     restoreNode: vi.fn(async () => {}),
     branch: vi.fn(async () => {}),
     locate: vi.fn(),
@@ -496,10 +497,14 @@ describe('ContextMapPanel', () => {
     const original = fixture()
     const proposal = {
       base: { planRevision: 3, graphRevision: 'family-20', activeSessionId: child },
+      currentNodeIds: ['root:1', 'root:2', 'child:8'],
+      proposedNodeIds: ['root:2', 'child:8'],
+      addedNodeIds: [],
+      removedNodeIds: ['root:1'],
       selection: [{
         nodeId: 'root:1', action: 'exclude' as const, reason: 'Superseded', confidence: 'high' as const,
       }],
-      cleanup: [{
+      archive: [{
         nodeId: 'root:2', category: 'obsolete' as const, reason: 'Old draft',
         evidenceNodeIds: ['child:8'],
       }],
@@ -513,19 +518,22 @@ describe('ContextMapPanel', () => {
     expect((checkbox as HTMLInputElement).checked).toBe(true)
     expect(screen.getByText('Suggested exclude')).toBeTruthy()
     expect(screen.getByRole('dialog', { name: 'Context recommendation review' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /all cleanup/i })).toBeNull()
+    expect(screen.getByText('Current context')).toBeTruthy()
+    expect(screen.getByText('Proposed context')).toBeTruthy()
+    expect(screen.getByText('0 added')).toBeTruthy()
+    expect(screen.getByText('1 removed')).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
-    expect(h.mapActions.applyRecommendations).toHaveBeenCalledWith(['root:1'])
+    fireEvent.click(screen.getByRole('button', { name: 'Apply proposed context' }))
+    expect(h.mapActions.applyRecommendations).toHaveBeenCalledWith()
     expect((checkbox as HTMLInputElement).checked).toBe(true)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Review replacement' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Review archive' }))
     expect(screen.getByText('Before')).toBeTruthy()
     expect(screen.getByText('After')).toBeTruthy()
     expect(screen.queryByRole('textbox', { name: 'Placeholder for root:2' })).toBeNull()
     expect(screen.getByText('Empty placeholder')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm empty placeholder' }))
-    expect(h.mapActions.confirmCleanup).toHaveBeenCalledWith(proposal.cleanup[0])
+    fireEvent.click(screen.getByRole('button', { name: 'Archive node' }))
+    expect(h.mapActions.confirmArchive).toHaveBeenCalledWith(proposal.archive[0])
   })
 
   it('keeps a replacement on the same node and exposes original/restore from the native menu', async () => {
@@ -543,21 +551,32 @@ describe('ContextMapPanel', () => {
     expect(card.dataset.contextNodeId).toBe('root:2')
     expect(card.querySelector('p')?.dataset.preview).toBe('')
     expect(card.textContent).not.toContain('[Earlier answer removed]')
-    expect(within(card).getByText('Original retained')).toBeTruthy()
+    expect(within(card).getByText('Archived')).toBeTruthy()
     fireEvent.change(screen.getByRole('textbox', { name: 'Search Context Map' }), {
       target: { value: '[Earlier answer removed]' },
     })
     expect(screen.getByText('0 / 0')).toBeTruthy()
 
     fireEvent.contextMenu(card, { clientX: 160, clientY: 180 })
+    expect(screen.getByRole('menu').getAttribute('data-opaque-surface')).toBe('true')
     fireEvent.click(screen.getByRole('menuitem', { name: 'Show original' }))
     expect(screen.getByRole('dialog', { name: 'Original message' }).textContent).toContain('old draft')
     fireEvent.click(screen.getByRole('button', { name: 'Close original message' }))
 
     fireEvent.contextMenu(card, { clientX: 160, clientY: 180 })
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Restore original' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Restore node' }))
     expect(h.mapActions.restoreNode).toHaveBeenCalledWith({ sessionId: root, seq: 2 })
     expect(h.view.container.querySelectorAll('.react-flow__node')).toHaveLength(3)
+  })
+
+  it('archives an individual input or output from the native node menu', async () => {
+    const h = mount()
+    const card = await screen.findByLabelText('Assistant message: old draft')
+
+    fireEvent.contextMenu(card, { clientX: 160, clientY: 180 })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Archive node' }))
+
+    expect(h.mapActions.archiveNode).toHaveBeenCalledWith({ sessionId: root, seq: 2 })
   })
 })
 
@@ -615,6 +634,7 @@ describe('ContextMessageAction', () => {
         useContextify={bindSnapshotSelector({ getSnapshot: () => snapshot, subscribe: () => () => {} })}
         setNodeMode={setNodeMode}
         locate={locate}
+        moveBranchSuggestion={vi.fn(async () => {})}
       />,
     )
     fireEvent.click(screen.getByRole('button', { name: 'exclude context for branch follow-up' }))
@@ -649,8 +669,9 @@ describe('ContextifyController', () => {
       undo: vi.fn(async () => currentView),
       redo: vi.fn(async () => currentView),
       recommend: vi.fn(() => proposalPromise),
-      replaceNode: vi.fn(async () => currentView),
+      archiveNode: vi.fn(async () => currentView),
       restoreNode: vi.fn(async () => currentView),
+      acceptBranchSuggestion: vi.fn(async () => ({ childSessionId: child })),
     }
     const controller = new ContextifyController(transport)
     await controller.refresh()
@@ -658,7 +679,8 @@ describe('ContextifyController', () => {
     expect(controller.getSnapshot().recommendation.phase).toBe('running')
     const proposal = {
       base: { planRevision: 3, graphRevision: 'family-20', activeSessionId: child },
-      selection: [], cleanup: [],
+      currentNodeIds: ['root:1', 'root:2', 'child:8'], proposedNodeIds: ['root:1', 'root:2', 'child:8'],
+      addedNodeIds: [], removedNodeIds: [], selection: [], archive: [],
     }
     resolveProposal(proposal)
     await recommending
@@ -696,10 +718,12 @@ describe('ContextifyController', () => {
       redo: vi.fn(async () => fixture().view!),
       recommend: vi.fn(async () => ({
         base: { planRevision: 3, graphRevision: 'family-20', activeSessionId: child },
-        selection: [], cleanup: [],
+        currentNodeIds: ['root:1', 'root:2', 'child:8'], proposedNodeIds: ['root:1', 'root:2', 'child:8'],
+        addedNodeIds: [], removedNodeIds: [], selection: [], archive: [],
       })),
-      replaceNode: vi.fn(async () => fixture().view!),
+      archiveNode: vi.fn(async () => fixture().view!),
       restoreNode: vi.fn(async () => fixture().view!),
+      acceptBranchSuggestion: vi.fn(async () => ({ childSessionId: child })),
     }
     const controller = new ContextifyController(transport)
     const refresh = controller.refresh()

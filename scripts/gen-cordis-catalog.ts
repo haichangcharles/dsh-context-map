@@ -266,6 +266,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   MessageFeedbackVersionConflict: 'feedback.md',
   UserMessage: 'session.md',
   ContextCompilation: 'core.md',
+  ContextBranchRelocationResult: 'core.md',
   ContextCompileRequest: 'core.md',
   ContextCompilerDefinition: 'core.md',
   ContextCompilerDescriptor: 'core.md',

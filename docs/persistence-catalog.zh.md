@@ -417,6 +417,35 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 
 ### `contextify/*`
 
+<a id="contextifybranch-relocation--log-only"></a>
+
+#### `contextify/branch-relocation` — log-only
+
+```ts persistence-catalog
+/** Marker used to deduplicate deterministic Q+A relocation. */
+'contextify/branch-relocation': {
+  readonly key: string
+  readonly sourceSessionId: SessionId
+  readonly sourceTurnEndSeq: number
+}
+```
+
+来源：[`packages/context/contextify/src/types.ts:232`](../packages/context/contextify/src/types.ts)
+
+<a id="contextifybranch-review--log-only"></a>
+
+#### `contextify/branch-review` — log-only
+
+```ts persistence-catalog
+/** Durable result preventing repeated post-Turn Branch review. */
+'contextify/branch-review': {
+  readonly suggestion: ContextBranchSuggestion | null
+  readonly turnEndSeq: number
+}
+```
+
+来源：[`packages/context/contextify/src/types.ts:227`](../packages/context/contextify/src/types.ts)
+
 <a id="contextifyplan--log-only"></a>
 
 #### `contextify/plan` — log-only
@@ -426,7 +455,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 'contextify/plan': ContextPlanSnapshot
 ```
 
-来源：[`packages/context/contextify/src/types.ts:196`](../packages/context/contextify/src/types.ts)
+来源：[`packages/context/contextify/src/types.ts:225`](../packages/context/contextify/src/types.ts)
 
 ### `feedback/*`
 

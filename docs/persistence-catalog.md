@@ -415,6 +415,35 @@ Source: [`packages/context/context-compiler/src/index.ts:114`](../packages/conte
 
 ### `contextify/*`
 
+<a id="contextifybranch-relocation--log-only"></a>
+
+#### `contextify/branch-relocation` — log-only
+
+```ts persistence-catalog
+/** Marker used to deduplicate deterministic Q+A relocation. */
+'contextify/branch-relocation': {
+  readonly key: string
+  readonly sourceSessionId: SessionId
+  readonly sourceTurnEndSeq: number
+}
+```
+
+Source: [`packages/context/contextify/src/types.ts:291`](../packages/context/contextify/src/types.ts)
+
+<a id="contextifybranch-review--log-only"></a>
+
+#### `contextify/branch-review` — log-only
+
+```ts persistence-catalog
+/** Durable result preventing repeated post-Turn Branch review. */
+'contextify/branch-review': {
+  readonly suggestion: ContextBranchSuggestion | null
+  readonly turnEndSeq: number
+}
+```
+
+Source: [`packages/context/contextify/src/types.ts:286`](../packages/context/contextify/src/types.ts)
+
 <a id="contextifyplan--log-only"></a>
 
 #### `contextify/plan` — log-only
@@ -424,7 +453,7 @@ Source: [`packages/context/context-compiler/src/index.ts:114`](../packages/conte
 'contextify/plan': ContextPlanSnapshot
 ```
 
-Source: [`packages/context/contextify/src/types.ts:196`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:284`](../packages/context/contextify/src/types.ts)
 
 ### `feedback/*`
 

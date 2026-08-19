@@ -32,6 +32,8 @@ export const KNOWN_SESSION_EVENT_TYPES: ReadonlySet<string> = new Set([
   'compaction/summary',
   'context/compiler',
   'context/compiler-snapshot',
+  'contextify/branch-relocation',
+  'contextify/branch-review',
   'contextify/plan',
   'feedback/record',
   'goal/change',

@@ -6,7 +6,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type {
-  ContextCleanupCandidate, ContextFamilyGraphNode, ContextMessageRef, ContextNodeMutation,
+  ContextArchiveCandidate, ContextFamilyGraphNode, ContextMessageRef, ContextNodeMutation,
 } from '@deepseek-ai/dsh-contextify/types'
 import type { WorkspaceListState } from '@deepseek-ai/dsh-client-runtime/client'
 import type { HostObservable, PropsStore, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
@@ -31,9 +31,10 @@ export interface ContextMapActions {
   undo: () => Promise<void>
   redo: () => Promise<void>
   recommend: (objective?: string) => Promise<void>
-  applyRecommendations: (nodeIds?: readonly string[]) => Promise<void>
+  applyRecommendations: () => Promise<void>
   clearRecommendation: () => void
-  confirmCleanup: (candidate: ContextCleanupCandidate) => Promise<void>
+  confirmArchive: (candidate: ContextArchiveCandidate) => Promise<void>
+  archiveNode: (node: ContextMessageRef) => Promise<void>
   restoreNode: (node: ContextMessageRef) => Promise<void>
   branch: (node: ContextFamilyGraphNode) => Promise<void>
   locate: (node: ContextFamilyGraphNode) => void
@@ -128,9 +129,9 @@ export function ContextMapPanel({
     ? snapshot.recommendation.proposal
     : undefined
   const recommendationByNode = useMemo(() => {
-    const result = new Map<string, 'include' | 'exclude' | 'cleanup'>()
+    const result = new Map<string, 'include' | 'exclude' | 'archive'>()
     for (const item of proposal?.selection ?? []) result.set(item.nodeId, item.action)
-    for (const item of proposal?.cleanup ?? []) result.set(item.nodeId, 'cleanup')
+    for (const item of proposal?.archive ?? []) result.set(item.nodeId, 'archive')
     return result
   }, [proposal])
 
@@ -478,6 +479,9 @@ export function ContextMapPanel({
             restoreAutomatic={(record) => {
               runMutation(record.id, () => mapActions.setNodeMode(record.owner, 'natural'), 'natural')
             }}
+            archive={(record) => {
+              runMutation(record.id, () => mapActions.archiveNode(record.owner))
+            }}
             showOriginal={(record) => { setOriginalPreview(record) }}
             restoreOriginal={(record) => {
               runMutation(record.id, () => mapActions.restoreNode(record.owner))
@@ -491,8 +495,8 @@ export function ContextMapPanel({
           state={snapshot.recommendation}
           graph={graph}
           pending={mutationPending}
-          apply={nodeIds => mapActions.applyRecommendations(nodeIds)}
-          confirmCleanup={candidate => mapActions.confirmCleanup(candidate)}
+          apply={mapActions.applyRecommendations}
+          confirmArchive={candidate => mapActions.confirmArchive(candidate)}
           dismiss={() => {
             mapActions.clearRecommendation()
             queueMicrotask(() => { recommendButtonRef.current?.focus() })

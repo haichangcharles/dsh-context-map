@@ -177,13 +177,18 @@ describe('projectSessionFamily', () => {
     const childAMessage = appendUserTurn(childA, 2, 'child A question')
     const childB = ctx.sessions.fork(root, rootBoundary, SessionId('child-b'))
     appendUserTurn(childB, 2, 'child B question')
+    const samePointBranch = ctx.sessions.fork(childA, rootBoundary, SessionId('same-point-branch'))
+    appendUserTurn(samePointBranch, 2, 'same point question')
     const grandchild = ctx.sessions.fork(childA, childA.events.at(-1)!.seq, SessionId('grandchild'))
     appendUserTurn(grandchild, 3, 'grandchild question')
     const emptyChild = ctx.sessions.fork(root, rootBoundary, SessionId('empty-child'))
 
     const graph = projectSessionFamily({
       activeSessionId: childA.id,
-      sessions: [inspect(root), inspect(childA), inspect(childB), inspect(grandchild), inspect(emptyChild)],
+      sessions: [
+        inspect(root), inspect(childA), inspect(childB), inspect(samePointBranch),
+        inspect(grandchild), inspect(emptyChild),
+      ],
     })
 
     expect(graph.rootSessionId).toBe(root.id)
@@ -193,6 +198,7 @@ describe('projectSessionFamily', () => {
       'child A question',
       'grandchild question',
       'child B question',
+      'same point question',
     ])
     expect(graph.nodes.filter(node => node.preview === 'root answer')).toHaveLength(1)
     expect(graph.nodes.find(node => node.preview === 'root question')?.branchAtSeq).toBe(rootBoundary)
@@ -203,11 +209,20 @@ describe('projectSessionFamily', () => {
     expect(graph.edges.filter(edge => edge.source === rootAnswerId).map(edge => edge.target).sort()).toEqual([
       `${childA.id}:${childAMessage}`,
       `${childB.id}:${childAMessage}`,
+      `${samePointBranch.id}:${childAMessage}`,
     ])
     expect(graph.sessions.find(item => item.id === emptyChild.id)?.tipNodeId).toBe(rootAnswerId)
     expect(graph.nodes.find(node => node.id === `${childA.id}:${childAMessage}`)?.activeEventSeq)
       .toBe(childAMessage)
     expect(graph.nodes.find(node => node.id === `${childB.id}:${childAMessage}`)?.activeEventSeq)
       .toBeNull()
+    expect(graph.sessions.find(item => item.id === samePointBranch.id)).toMatchObject({
+      parentSessionId: root.id,
+      depth: 1,
+    })
+    expect(graph.sessions.find(item => item.id === grandchild.id)).toMatchObject({
+      parentSessionId: childA.id,
+      depth: 2,
+    })
   })
 })

@@ -16,13 +16,19 @@ Family projector 从原生 root Session 遍历全部原生后代；标记为 `or
 - **Exclude**：从下一次 compilation 中移除一条 Natural 历史消息。
 - **Include**：把同一原生 family 内其他 Session 的消息复制到本地 `context/compiler-snapshot` 事件，并按稳定位置插入。
 
-Plan v3 还支持可恢复的 **空 placeholder replacement** overlay。推荐 Agent 只识别 cleanup candidate；用户逐项确认后，由服务端固定写入 `[Placeholder: intentionally empty]`，不接受 Agent 或客户端生成的替换文本。同一个 graph node、role、edge、原生 fork boundary 与 append-only Session 原事件全部保留。Restore 只移除 overlay。Reset 会同时清空 Include、Exclude 与 replacement；Undo/Redo 会回放三者。已有 v2 plan 在内存中规范化；已有 v3 replacement snapshot（包括旧版自定义文本）仍可读取和恢复。
+Plan v3 还支持针对单条 user input 或最终 assistant output 的可恢复 **Archive** overlay。Archive 与 context 选择刻意分离：服务端只把模型可见语义替换成固定标记 `[Placeholder: intentionally empty]`，不接受 Agent 或客户端生成的替换文本。同一个 graph node、role、edge、原生 fork boundary 与 append-only Session 原事件全部保留。Restore 只移除 overlay。Reset 会同时清空 Include、Exclude 与 Archive overlay；Undo/Redo 会回放三者。已有 v2 plan 在内存中规范化；已有 v3 replacement snapshot（包括旧版自定义文本）仍可读取和恢复。
 
 每次 plan mutation 都按 revision 做 compare-and-set，并记录完整 undo/redo 状态；Reset 回到 Natural。跨 family 引用、不可用消息、旧 revision、不支持的状态变化以及非 idle Agent 都会失败，不会产生部分更新。跨 Map import 暂不在范围内。
 
-`contextify` Remote namespace 提供 `get`、分页 `familyPage`、仅建议的 `recommend`、`setNodeMode`、批量 `setNodeModes`、`replaceNode`、`restoreNode`、`reset`、`undo` 和 `redo`。
+导航使用规范化后的原生 branch 祖先关系。从 parent 继承的边界再次 fork，会与已有 branch 同级；只有在 branch 自己新增的边界上 fork，才成为它的 child。两种情况下，graph 都继续显示真实共享的消息支点。
 
-`recommend` 使用 parent Agent 的 provider/model route，在隔离的 Harness one-shot `spawn` subagent 中运行。它读取精确但有界的同 family graph projection 与 objective，不能使用继承的工具，也不会把 prompt、reasoning 或结果写入 parent Session。返回的 Include/Exclude 与 cleanup candidate 只存在于内存，并同时绑定 plan 以及覆盖 family 内每个 Session append position 的哈希。服务会在返回或应用 proposal 前拒绝 family 变化；只有用户接受选择修改或逐项确认 cleanup 才会改变 plan。
+`contextify` Remote namespace 提供 `get`、分页 `familyPage`、仅建议的 `recommend`、`setNodeMode`、批量 `setNodeModes`、`archiveNode`、`acceptBranchSuggestion`、`restoreNode`、`reset`、`undo` 和 `redo`。
+
+`recommend` 使用 parent Agent 的 provider/model route，在隔离的 Harness one-shot `spawn` subagent 中运行。它读取精确但有界的同 family graph projection 与 objective，不能使用继承的工具，也不会把 prompt、reasoning 或结果写入 parent Session。Validator 会把 Agent 输出与当前有效集合比较，过滤无害的重复／no-op Include 或 Exclude，拒绝未知节点与互相冲突的动作，并返回一份完整的 Current → Proposed 替换。应用 proposal 只提交一个 compare-and-set plan revision，因此 Undo 会整体恢复旧版本。谨慎的 Archive candidate 仍然只供建议，并要求逐项确认。
+
+自动 Branch review 在 Profile Prompt Dashboard 中显式开启。开启后，每个成功 completed Turn 都会在 parent Agent idle 后调度一次有界、禁用工具的辅助模型调用；它不会创建可见 subagent，也不会运行 Agent loop。只有高置信度的离题或平行 Q&A 才会产生持久建议。接受建议时，系统用确定性 placeholder 归档源 input 与最终 output，在前一个 completed boundary fork 一个原生 child，并把原始 Q&A 精确回放到 child。搬迁具有确定性 key，可安全重试；若后续对话事件已经让建议过期，则拒绝执行。
+
+三类 review Agent 都使用 Profile 所有的设置。Package 默认 prompt 是只读基线；用户通常只追加自定义规则，也可以显式解锁完整 override。Context selection、Archive advice 与 Branch routing 分别配置，并继续使用 parent Agent 的 Harness provider/model route。
 
 ## 模型体验
 
@@ -43,7 +49,7 @@ Compiler 不添加任何提示词文本。Exclude 可以减少对话历史的 in
 ## 已知限制与暂缓事项
 
 - Web surface 有订阅者时每 1.5 秒轮询 family；后续可改为专用 projection event。
-- 推荐目前由用户手动触发；自动推荐时机与路由推荐仍暂缓。
+- 自动 Branch review 默认关闭，因为每个 completed Turn 会增加一次辅助模型调用；普通聊天与手动 Context Map 操作永远不依赖它。
 - 跨 Map import 暂缓；目前只能引用连接到同一原生 root 的 Session。
 - Contextify placeholder 是原节点的 overlay；其他 compaction relationship 尚未展开成 shadow node。
 - 在 compiler、Remote、replay 与 UI seam 稳定前，package 继续保留在本 Harness fork 中。

@@ -31,10 +31,14 @@ async function bench(withCleanup = false) {
   }
   const proposal = {
     base: { planRevision: 4, graphRevision: 'family-7', activeSessionId: source },
+    currentNodeIds: [record.id],
+    proposedNodeIds: [],
+    addedNodeIds: [],
+    removedNodeIds: [record.id],
     selection: [{
       nodeId: record.id, action: 'exclude' as const, reason: 'No longer needed', confidence: 'high' as const,
     }],
-    cleanup: withCleanup ? [{
+    archive: withCleanup ? [{
       nodeId: record.id,
       category: 'obsolete' as const,
       reason: 'No longer meaningful',
@@ -63,12 +67,18 @@ async function bench(withCleanup = false) {
     undo: answer('undo', view),
     redo: answer('redo', view),
     recommend: answer('recommend', proposal),
-    replaceNode: answer('replaceNode', view),
+    archiveNode: answer('archiveNode', view),
     restoreNode: answer('restoreNode', view),
+    acceptBranchSuggestion: answer('acceptBranchSuggestion', { childSessionId: child }),
   })
   const openDetails = vi.fn()
   const closeDetails = vi.fn()
-  ctx.provide('layout', { openDetails, closeDetails, toggleSidebar: vi.fn() })
+  ctx.provide('layout', {
+    autoCollapseBreakpoint: () => 1024,
+    openDetails,
+    closeDetails,
+    toggleSidebar: vi.fn(),
+  })
   const fork = vi.fn(async () => child)
   const open = vi.fn()
   ctx.provide('sessions', { fork, open })
@@ -161,7 +171,7 @@ describe('ui-contextify browser plugin', () => {
     expect(controller.getSnapshot().recommendation).toMatchObject({ phase: 'ready' })
     expect(b.calls.filter(call => call.method === 'setNodeModes')).toHaveLength(0)
 
-    await b.panel.mapActions.applyRecommendations([b.record.id])
+    await b.panel.mapActions.applyRecommendations()
     expect(b.calls.filter(call => call.method === 'setNodeModes')).toEqual([{
       method: 'setNodeModes',
       args: [source, { revision: 4 }, [{ node: b.record.owner, mode: 'exclude' }], 'family-7'],
@@ -169,7 +179,7 @@ describe('ui-contextify browser plugin', () => {
     expect(controller.getSnapshot().recommendation).toMatchObject({ phase: 'idle' })
   })
 
-  it('confirms cleanup without forwarding Agent-authored replacement content', async () => {
+  it('confirms archive without forwarding Agent-authored placeholder content', async () => {
     const b = await bench(true)
     const controller = b.panel.hooks.contextify as never as { refresh: () => Promise<void> }
     await controller.refresh()
@@ -181,10 +191,10 @@ describe('ui-contextify browser plugin', () => {
       evidenceNodeIds: [],
     }
 
-    await b.panel.mapActions.confirmCleanup(candidate)
+    await b.panel.mapActions.confirmArchive(candidate)
 
-    expect(b.calls.filter(call => call.method === 'replaceNode')).toEqual([{
-      method: 'replaceNode',
+    expect(b.calls.filter(call => call.method === 'archiveNode')).toEqual([{
+      method: 'archiveNode',
       args: [source, { revision: 4 }, b.record.owner, candidate.reason, 'family-7'],
     }])
   })

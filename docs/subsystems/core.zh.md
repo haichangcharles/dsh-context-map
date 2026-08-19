@@ -826,15 +826,23 @@ Durable Context Plan mutations and native Session-family graph reads.
 @Remote('setNodeModes') async setNodeModes( agent: Agent, ref: ContextPlanRef, mutations: readonly ContextNodeMutation[], expectedGraphRevision?: string, ): Promise<ContextifyView>
 
 /**
- * Replace one node's model-visible semantics with a reversible role-preserving placeholder.
+ * Archive one node's model-visible semantics with a reversible role-preserving placeholder.
  * @param agent - Live idle Agent whose Session receives the snapshot and plan events.
  * @param ref - Expected current Context Plan revision.
  * @param nodeRef - Native family message to retain structurally and replace semantically.
  * @param reason - Human-visible reason retained with the replacement overlay.
- * @param expectedGraphRevision - Optional family revision required by cleanup confirmation.
+ * @param expectedGraphRevision - Optional family revision required by archive confirmation.
  * @returns The committed v3 Contextify view.
  */
-@Remote('replaceNode') async replaceNode( agent: Agent, ref: ContextPlanRef, nodeRef: ContextMessageRef, reason: string, expectedGraphRevision?: string, ): Promise<ContextifyView>
+@Remote('archiveNode') async archiveNode( agent: Agent, ref: ContextPlanRef, nodeRef: ContextMessageRef, reason: string, expectedGraphRevision?: string, ): Promise<ContextifyView>
+
+/**
+ * Move one suggested completed Q&A into a deterministic native child Branch.
+ * @param agent - Live idle Agent whose source Session owns the reviewed Turn.
+ * @param suggestionId - Durable suggestion identity returned by `get`.
+ * @returns The native child Session created by, or recovered for, this relocation.
+ */
+@Remote('acceptBranchSuggestion') async acceptBranchSuggestion(agent: Agent, suggestionId: string): Promise<ContextBranchRelocationResult>
 
 /**
  * Restore a node's original semantics while preserving Include/Exclude state.
@@ -870,7 +878,7 @@ Durable Context Plan mutations and native Session-family graph reads.
 @Remote('redo') redo(agent: Agent, ref: ContextPlanRef): ContextifyView
 ```
 
-Source: [`packages/context/contextify/src/index.ts:169`](../../packages/context/contextify/src/index.ts)
+Source: [`packages/context/contextify/src/index.ts:179`](../../packages/context/contextify/src/index.ts)
 
 <a id="agent-events"></a>
 

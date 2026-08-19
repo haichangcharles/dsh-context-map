@@ -16,13 +16,19 @@ The durable plan has three selection modes:
 - **Exclude** omits one Natural historical message from the next compilation.
 - **Include** copies a message from another Session in the same native family into a local `context/compiler-snapshot` event and inserts it at a stable position.
 
-Plan v3 also supports a reversible **empty placeholder replacement** overlay. The recommendation Agent only identifies cleanup candidates; after individual confirmation, the service writes the fixed marker `[Placeholder: intentionally empty]` without accepting Agent- or client-authored replacement text. The same graph node, role, edges, native fork boundary, and original append-only Session event remain intact. Restore removes only the overlay. Reset clears Include, Exclude, and replacements; Undo and Redo replay all three. Existing v2 plans are normalized in memory without writing during reads, and existing v3 replacement snapshots—including older custom text—remain readable and restorable.
+Plan v3 also supports reversible, per-message **Archive** overlays for a user input or finalized assistant output. Archive is deliberately independent from context selection: the service replaces only the model-visible semantics with the fixed marker `[Placeholder: intentionally empty]`, without accepting Agent- or client-authored replacement text. The same graph node, role, edges, native fork boundary, and original append-only Session event remain intact. Restore removes only the overlay. Reset clears Include, Exclude, and Archive overlays; Undo and Redo replay all three. Existing v2 plans are normalized in memory without writing during reads, and existing v3 replacement snapshots—including older custom text—remain readable and restorable.
 
 Every plan mutation is compare-and-set by revision and records complete undo/redo state. Reset returns to Natural. Cross-family references, unavailable messages, stale revisions, unsupported transitions, and non-idle Agents fail without a partial plan change. Cross-map import is deliberately out of scope.
 
-The `contextify` Remote namespace exposes `get`, paged `familyPage`, review-only `recommend`, `setNodeMode`, batched `setNodeModes`, `replaceNode`, `restoreNode`, `reset`, `undo`, and `redo`.
+Native branch ancestry is canonicalized for navigation. Re-forking from a boundary inherited from a parent produces a sibling of the existing branch; forking from a boundary created inside a branch produces its child. The graph continues to show the real shared message pivot either way.
 
-`recommend` runs an isolated one-shot Harness `spawn` subagent using the parent Agent's provider/model route. It receives an exact but bounded same-family graph projection and objective, cannot use inherited tools, and does not append its prompt, reasoning, or result to the parent Session. Returned Include/Exclude and cleanup candidates are ephemeral and bound to the plan plus a hash of every Session append position in the family. The service rejects family changes before returning or applying a proposal; accepted selection changes and individually confirmed cleanup are the only mutation paths.
+The `contextify` Remote namespace exposes `get`, paged `familyPage`, review-only `recommend`, `setNodeMode`, batched `setNodeModes`, `archiveNode`, `acceptBranchSuggestion`, `restoreNode`, `reset`, `undo`, and `redo`.
+
+`recommend` runs an isolated one-shot Harness `spawn` subagent using the parent Agent's provider/model route. It receives an exact but bounded same-family graph projection and objective, cannot use inherited tools, and does not append its prompt, reasoning, or result to the parent Session. The validator compares the Agent output with the current effective set, filters harmless duplicate/no-op Include or Exclude actions, rejects unknown nodes and contradictory actions, and returns one complete Current → Proposed replacement. Applying that proposal is one compare-and-set plan revision, so Undo restores the previous version as a unit. Conservative Archive candidates remain advisory and require individual confirmation.
+
+Automatic Branch review is opt-in in the Profile Prompt Dashboard. When enabled, every successful completed Turn schedules one bounded, tool-free auxiliary model call after the parent Agent becomes idle. It does not create a visible subagent or run an Agent loop. Only a high-confidence off-topic or parallel Q&A produces a durable suggestion. Accepting it archives the source input and final output with deterministic placeholders, forks one native child at the preceding completed boundary, and replays the exact Q&A into that child. The relocation has a deterministic key and is idempotent; it is rejected if later conversation events made the suggestion stale.
+
+All three review agents use Profile-owned settings. Package default prompts remain the read-only baseline; users normally append additional instructions and may explicitly unlock a full override. Context selection, Archive advice, and Branch routing have independent sections and use the same Harness provider/model path as the parent Agent.
 
 ## Model Experience
 
@@ -43,7 +49,7 @@ Any earlier change to the selected message prefix can reduce KV-cache reuse from
 ## Known Limitations and Deferred Work
 
 - The Web client polls the family at 1.5-second intervals while a surface is subscribed; a dedicated projection event can replace this later.
-- Recommendations are manual-on-demand; automatic timing and routing recommendations remain deferred.
+- Automatic Branch review is off by default because it adds one auxiliary model call per completed Turn. Manual chat and Context Map operations never depend on it.
 - Cross-map import is deferred; only Sessions connected to the same native root are addressable.
 - Contextify placeholders are overlays on existing nodes; unrelated compaction relationships are not expanded into shadow nodes.
 - The package remains in this Harness fork while its compiler, Remote, replay, and UI seams stabilize.

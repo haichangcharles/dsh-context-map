@@ -258,6 +258,7 @@ describe('web e2e: navigation & panes over a rich seeded session', () => {
     await expect.poll(() => page.locator('tr[data-turn-start="true"]').count(), { timeout: 15_000 }).toBe(2)
     await expect.poll(() => page.getByRole('columnheader').count(), { timeout: 10_000 }).toBe(0)
     await page.locator('tr[data-kind="tool"]').first().click()
+    await page.getByRole('tab', { name: 'Details' }).click()
     const details = page.getByRole('complementary', { name: 'Event details' })
     await expect.poll(() => details.count(), { timeout: 10_000 }).toBe(1)
     expect(await details.getByRole('tabpanel').evaluate(panel => getComputedStyle(panel).overflowX))

@@ -38,6 +38,9 @@
   - text: DeepSeek-V4-Flash
   - img
 - button "Send message" [disabled]
+- tablist "Details pages":
+  - tab "Context Map" [selected]
+  - tab "Details"
 - region "Context Map":
   - heading "Context Map" [level=2]
   - paragraph: 0 / 0 in context
@@ -48,10 +51,9 @@
   - text: 0 / 0
   - button "Previous search result": ↑
   - button "Next search result": ↓
-  - button "tree layout" [pressed]: Tree
-  - button "mindmap layout": Mind map
-  - button "timeline layout": Timeline
   - button "Selection mode": Select
+  - button "Re-layout" [disabled]
+  - button "Recommend"
   - button "Clear manual changes"
   - button "Undo" [disabled]
   - button "Redo" [disabled]

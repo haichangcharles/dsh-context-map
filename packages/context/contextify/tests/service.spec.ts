@@ -1,17 +1,32 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { agentEvents, Inbox, type Agent, type AgentStatus } from '@deepseek-ai/dsh-agent'
 import ContextCompilerRegistry from '@deepseek-ai/dsh-context-compiler'
-import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, {
+  createAssistantMessage,
+  createUserMessage,
+  type GenerateOptions,
+  LlmAdapter,
+  type StreamChunk,
+} from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import type { SessionInspection } from '@deepseek-ai/dsh-session-persistence'
 import SubagentRuntime, { type SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
 import ContextifyService from '../src/index.ts'
-import { CONTEXTIFY_EMPTY_PLACEHOLDER_TEXT } from '../src/types.ts'
+import {
+  CONTEXTIFY_DEFAULT_SETTINGS,
+  CONTEXTIFY_EMPTY_PLACEHOLDER_TEXT,
+  type ContextifyPromptSettings,
+} from '../src/types.ts'
 
-function stubAgent(session: Session): { agent: Agent; setStatus: (status: AgentStatus) => void } {
+function stubAgent(session: Session): {
+  agent: Agent
+  setStatus: (status: AgentStatus) => void
+  maintenanceCalls: () => number
+} {
   const inbox = new Inbox(session, { inserted() {}, discarded() {}, claimed() {} })
   let status: AgentStatus = 'idle'
+  let maintenanceCalls = 0
   const agent: Agent = {
     id: session.id,
     options: {},
@@ -20,10 +35,17 @@ function stubAgent(session: Session): { agent: Agent; setStatus: (status: AgentS
     ctx: new Context(),
     get status() { return status },
     send() {}, followup() {}, steer() {}, inject(input) { inbox.append('next-step', input) }, cancel() {},
-    runMaintenance: task => task(new AbortController().signal),
+    runMaintenance: (task) => {
+      maintenanceCalls += 1
+      return task(new AbortController().signal)
+    },
     whenIdle: () => Promise.resolve(),
   }
-  return { agent, setStatus: (value) => { status = value } }
+  return {
+    agent,
+    setStatus: (value) => { status = value },
+    maintenanceCalls: () => maintenanceCalls,
+  }
 }
 
 function appendClosedTurn(session: Session, turn: number, user: string, assistant?: string): {
@@ -53,6 +75,7 @@ async function harness() {
   const ctx = new Context()
   await ctx.plugin(SessionStore)
   await ctx.plugin(AgentRegistry)
+  await ctx.plugin(LlmRuntime)
   await ctx.plugin(ContextCompilerRegistry)
   await ctx.plugin(SubagentRuntime)
   ctx.provide('sessionPersistence', {
@@ -74,6 +97,94 @@ async function harness() {
 }
 
 describe('ContextifyService native Session family', () => {
+  it('reviews a completed Turn asynchronously and relocates the Q&A idempotently', async () => {
+    const { ctx, start } = await harness()
+    const session = ctx.sessions.create(SessionId('branch-source'))
+    const active = start(session)
+    appendClosedTurn(session, 1, 'main topic', 'main answer')
+    let captured: GenerateOptions | undefined
+    ctx.llm.registerAdapter(['mock'], new class extends LlmAdapter {
+      override async * stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+        captured = options
+        const text = '{"action":"suggest_branch","confidence":0.91,"reason":"Parallel topic"}'
+        yield { type: 'block-start', index: 0, blockType: 'text' }
+        yield { type: 'text-delta', index: 0, text }
+        yield { type: 'block-end', index: 0, block: { type: 'text', text } }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+      }
+    }())
+    const service = ctx.contextify as unknown as {
+      promptSettings: () => ContextifyPromptSettings
+    }
+    service.promptSettings = () => ({ ...CONTEXTIFY_DEFAULT_SETTINGS, automaticBranchReview: true })
+    const target = appendClosedTurn(session, 2, 'temporary side topic', 'side answer')
+
+    await vi.waitFor(() => { expect(captured).toBeDefined() })
+    await vi.waitFor(() => {
+      expect(session.events.some(event => event.type === 'contextify/branch-review'
+        && event.data.turnEndSeq === target.boundary)).toBe(true)
+    })
+    expect(captured?.maxTokens).toBe(320)
+    expect(captured?.tools).toBeUndefined()
+    expect(active.maintenanceCalls()).toBe(0)
+    const suggestion = ctx.contextify.get(active.agent).branchSuggestion
+    expect(suggestion).toMatchObject({ reason: 'Parallel topic', confidence: 0.91 })
+
+    const first = await ctx.contextify.acceptBranchSuggestion(active.agent, suggestion!.id)
+    const second = await ctx.contextify.acceptBranchSuggestion(active.agent, suggestion!.id)
+    expect(second).toEqual(first)
+    const child = ctx.sessions.get(first.childSessionId)!
+    expect(child.header.parentSession).toBe(session.id)
+    expect(child.events.filter(event => event.type === 'user/message')
+      .filter(event => event.data.source.kind === 'user').at(-1)?.data.content)
+      .toEqual([{ type: 'text', text: 'temporary side topic' }])
+    expect(child.events.filter(event => event.type === 'assistant/message').at(-1)?.data.message.content)
+      .toEqual([{ type: 'text', text: 'side answer' }])
+    expect(ctx.contextify.get(active.agent).plan.replacements).toHaveLength(2)
+  })
+
+  it('drops an asynchronous Branch suggestion when the conversation advances before it returns', async () => {
+    const { ctx, start } = await harness()
+    const session = ctx.sessions.create(SessionId('branch-review-stale'))
+    const active = start(session)
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    let captured = false
+    let finished!: () => void
+    const settled = new Promise<void>((resolve) => { finished = resolve })
+    ctx.llm.registerAdapter(['mock'], new class extends LlmAdapter {
+      override async * stream(): AsyncIterable<StreamChunk> {
+        captured = true
+        await gate
+        const text = '{"action":"suggest_branch","confidence":0.91,"reason":"Parallel topic"}'
+        yield { type: 'block-start', index: 0, blockType: 'text' }
+        yield { type: 'text-delta', index: 0, text }
+        yield { type: 'block-end', index: 0, block: { type: 'text', text } }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+        finished()
+      }
+    }())
+    const service = ctx.contextify as unknown as {
+      promptSettings: () => ContextifyPromptSettings
+    }
+    service.promptSettings = () => ({ ...CONTEXTIFY_DEFAULT_SETTINGS, automaticBranchReview: true })
+    const target = appendClosedTurn(session, 1, 'temporary side topic', 'side answer')
+    await vi.waitFor(() => { expect(captured).toBe(true) })
+
+    session.append('turn/start', { turn: 2 })
+    session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'continue in the original thread' }],
+      source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+    release()
+    await settled
+    await new Promise(resolve => setTimeout(resolve, 20))
+
+    expect(session.events.some(event => event.type === 'contextify/branch-review'
+      && event.data.turnEndSeq === target.boundary)).toBe(false)
+    expect(ctx.contextify.get(active.agent).branchSuggestion).toBeUndefined()
+  })
+
   it('generates review-only recommendations through an isolated Harness subagent', async () => {
     const { ctx, start } = await harness()
     const session = ctx.sessions.create(SessionId('recommendation'))
@@ -103,7 +214,7 @@ describe('ContextifyService native Session family', () => {
               selection: [{
                 nodeId: `${session.id}:${String(turn.userSeq)}`, action: 'exclude', reason: 'Superseded', confidence: 'high',
               }],
-              cleanup: [],
+              archive: [],
             },
           }),
           dispose: async () => { disposed = true },
@@ -142,7 +253,7 @@ describe('ContextifyService native Session family', () => {
     let resolveResult!: (value: {
       output: never[]
       stopReason: 'completed'
-      structured: { selection: never[]; cleanup: never[] }
+      structured: { selection: never[]; archive: never[] }
     }) => void
     const result = new Promise<Parameters<typeof resolveResult>[0]>((resolve) => { resolveResult = resolve })
     ctx.subagents.registerProvider({
@@ -162,7 +273,7 @@ describe('ContextifyService native Session family', () => {
       activeSessionId: activeSession.id,
     })
     appendClosedTurn(sibling, 2, 'new sibling fact')
-    resolveResult({ output: [], stopReason: 'completed', structured: { selection: [], cleanup: [] } })
+    resolveResult({ output: [], stopReason: 'completed', structured: { selection: [], archive: [] } })
 
     await expect(pending).rejects.toMatchObject({ code: 'CONTEXTIFY_STALE_GRAPH' })
   })
@@ -213,7 +324,7 @@ describe('ContextifyService native Session family', () => {
     expect(session.events.findLast(event => event.type === 'contextify/plan')?.data.version).toBe(3)
   })
 
-  it('replaces and restores message semantics without changing the graph node or its edges', async () => {
+  it('archives and restores one message without changing the graph node or its edges', async () => {
     const { ctx, start } = await harness()
     const session = ctx.sessions.create(SessionId('placeholder'))
     const active = start(session)
@@ -222,7 +333,7 @@ describe('ContextifyService native Session family', () => {
     const graphBefore = await ctx.contextify.familyPage(active.agent, undefined, 100)
     const nodeBefore = graphBefore.records.find(node => node.owner.seq === turn.userSeq)!
 
-    const replaced = await ctx.contextify.replaceNode(
+    const replaced = await ctx.contextify.archiveNode(
       active.agent,
       { revision: initial.plan.revision },
       nodeBefore.owner,
@@ -332,7 +443,7 @@ describe('ContextifyService native Session family', () => {
     start(sibling)
     const siblingTurn = appendClosedTurn(sibling, 2, 'original sibling semantics')
     const initial = ctx.contextify.get(active.agent)
-    const replaced = await ctx.contextify.replaceNode(
+    const replaced = await ctx.contextify.archiveNode(
       active.agent, { revision: initial.plan.revision },
       { sessionId: sibling.id, seq: siblingTurn.userSeq }, 'obsolete',
     )

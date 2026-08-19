@@ -179,6 +179,7 @@ describe('web e2e: live-turn interactions (cancel / error / retry)', () => {
     const requestMarker = page.locator('tr[data-request-only="true"]').last()
       .getByRole('button', { name: /Request #/ })
     await requestMarker.click()
+    await page.getByRole('tab', { name: 'Details' }).click()
     await page.getByText('API key is invalid', { exact: true }).waitFor({ timeout: 10_000 })
     expect(await page.locator('body').textContent()).not.toContain('sk-preview-secret')
     expect(tripwire.pageErrors).toEqual([])

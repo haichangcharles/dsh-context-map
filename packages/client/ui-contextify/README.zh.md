@@ -10,9 +10,13 @@
 
 第一批完成测量的 graph 只会 frame 一次。随后每个 React Flow card 会把真实 bounding box 反馈给 Dagre，因此即使 output 很长，下一层也会从上一张 card 的实际底部之后开始。此后的 polling、字体导致的重新测量与普通 graph update 都会保留用户当前的 pan 和 zoom；只有 search/Map focus request 会有意移动 viewport。`Re-layout` 会清除全部手动拖拽位置、恢复确定性的 tree coordinate 并 frame 完整 graph，在画布难以阅读时提供明确的恢复操作。
 
-沿用独立版画布，节点操作集中在右键菜单：Locate in Chat、Branch from Here，以及仅在存在 manual override 时显示的 Restore automatic。Branch 会在消息对应的 completed Turn boundary 调用 Harness 原生 `sessions.fork`，并打开新的 child Session。Locate 会打开所属原生 Session、切换到 Chat、在需要时加载较早 history，并滚动和高亮准确的持久消息。Batch mode 会在一个 plan revision 中 include、exclude 或恢复多个画布选中节点。Clear manual changes 会移除全部 Include、Exclude 与 placeholder，但不会重置 graph layout；Undo 和 Redo 操作持久 plan history。
+沿用独立版画布，节点操作集中在不透明的右键菜单：Locate in Chat、Branch from Here、Archive node、仅在存在 manual override 时显示的 Restore automatic，以及 Archive 后的 Show original/Restore node。Branch 会在消息对应的 completed Turn boundary 调用 Harness 原生 `sessions.fork`，并打开新的 child Session。Locate 会打开所属原生 Session、切换到 Chat、在需要时加载较早 history，并滚动和高亮准确的持久消息。Batch mode 会在一个 plan revision 中 include、exclude 或恢复多个画布选中节点。Clear manual changes 会移除全部 Include、Exclude 与 Archive overlay，但不会重置 graph layout；Undo 和 Redo 操作持久 plan history。
 
-`Recommend` 会在仍可见的 graph 底部打开 review sheet。隔离的 Harness Agent 可以标注建议 Include/Exclude 与 cleanup candidate，但 card checkbox 在用户接受前始终表示当前有效 context。选择建议可以单项应用，也可以把用户勾选的多项原子应用。Cleanup 不提供批量执行：每个 candidate 都必须单独 review，展示 evidence 与 graph impact，并且只能确认为空 placeholder；Agent 与 UI 都不能编写替换文本。替换后的 card 保持相同 node ID 与 graph structure，以空白正文显示 `Original retained`，并在右键菜单提供 `Show original` 和 `Restore original`；Show original 会打开完整文本，而不是 card 的有界 preview。空 placeholder 正文不参与 Map 搜索。关闭或 dismiss 建议不会改变持久状态。Plan 变化、active Session 变化，或任意 parent、sibling、descendant 的追加都会把 proposal 标为 stale，Host 还会在接受修改前立即重复校验。
+`Recommend` 会在仍可见的 graph 底部打开 review sheet。隔离的 Harness Agent 返回一份完整 Current → Proposed context 版本；sheet 汇总新增和移除节点，card checkbox 在用户应用整份替换前始终表示旧版本。无害 no-op 会被过滤，不再让 proposal 失败；一次 Undo 会整体恢复此前版本。Archive 不提供批量执行：每个 candidate 都必须单独 review，展示 evidence 与 graph impact，并且只能确认为服务端所有的空 placeholder。替换后的 card 保持相同 node ID 与 graph structure，以空白正文显示 `Original retained`，并在右键菜单提供 `Show original` 和 `Restore node`。空 placeholder 正文不参与 Map 搜索。关闭或 dismiss 建议不会改变持久状态。Plan 变化、active Session 变化，或任意 parent、sibling、descendant 的追加都会把 proposal 标为 stale，Host 还会在 mutation 前立即重复校验。
+
+当 completed Q&A 高置信度地偏离主题，或更适合与当前路径并列时，最终 output 旁会出现紧凑的非模态卡片。`Keep here` 放弃本次建议；`Move to new branch` 执行可重试的原生搬迁并打开新 Session。源 card 会保留为结构性的 Archive placeholder，因此不会切断原 graph 支点。
+
+Profile Settings 提供 Contextify Prompt Dashboard，分别配置 Context、Archive 与 Branch。随包提供的 prompt 默认灰色只读；Additional instructions 是正常编辑入口。替换默认基线必须显式确认解锁，恢复基线不会丢弃追加规则。
 
 Map 也会订阅 Harness 原生的 Workspace archive set。仅属于已归档 Session 的节点和边会立即消失；对应画布 selection 会清除，但用户拖动位置按完整原生 family 保留，因此恢复 Session 后节点会回到此前坐标。由未归档后代继承的消息仍会保留，因为它们仍是该 Session context 的一部分；但它们的 Locate、Branch 与 context-selection 目标会重新绑定到可见后代，而不是已归档 owner。归档 active Session 时则沿用 Harness 的普通行为，清除当前 conversation。
 
@@ -31,6 +35,6 @@ UI 不添加提示词文本。Auto 跟随 active Session 历史，Skip 排除一
 ## 已知限制与暂缓事项
 
 - Chat 或 Map 存在订阅者时，family update 使用有界的 1.5 秒 polling。
-- 自动推荐时机与 branch/main-line routing 仍暂缓，详见 [Context Map Agent 推荐](FUTURE_WORK.md)。
+- 自动 Branch review 是显式开启、one-shot、非阻塞的辅助调用，不会进入 subagent 列表；开启后每个 completed Turn 增加一次模型调用。
 - 暂不提供跨 Map import。
 - Contextify placeholder 保持为原节点 overlay；其他 compaction relationship 暂不能展开。
