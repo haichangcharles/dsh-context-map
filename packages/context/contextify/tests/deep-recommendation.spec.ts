@@ -96,7 +96,7 @@ describe('Deep Context recommendation snapshot', () => {
       id: `call-${name}`,
       name,
       arguments: args,
-    } as ToolExecution)
+    } as unknown as ToolExecution)
 
     expect(guard(execution('read', { file_path: filePath }))).toBeUndefined()
     expect(guard(execution('read', { file_path: 'context-tree.jsonl' }))).toBeUndefined()

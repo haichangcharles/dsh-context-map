@@ -251,6 +251,124 @@ describe('ContextifyService native Session family', () => {
     expect(session.seq).toBe(before)
   })
 
+  it('routes an explicit Deep recommendation through one isolated runner and preserves its mode', async () => {
+    const { ctx, start } = await harness()
+    const session = ctx.sessions.create(SessionId('recommend-deep'))
+    const active = start(session, { provider: 'mock', model: 'mock' })
+    const turn = appendClosedTurn(session, 1, 'compare every architecture branch', 'current answer')
+    const runner = vi.fn(async (_request: {
+      parent: Agent
+      snapshot: { graphRevision: string; planRevision: number; activeSessionId: SessionId }
+      signal: AbortSignal
+    }) => ({
+      exclude: [{ nodeId: `${session.id}:${String(turn.userSeq)}`, reason: 'stale premise' }],
+      include: [],
+      archive: [],
+    }))
+    ;(ctx.contextify as unknown as { deepRecommendation: typeof runner }).deepRecommendation = runner
+    // A Fast response is registered only to prove the explicit Deep path never consumes it.
+    ctx.llm.registerAdapter(['mock'], new class extends LlmAdapter {
+      override async * stream(): AsyncIterable<StreamChunk> {
+        const text = '{"exclude":[],"include":[],"archive":[]}'
+        yield { type: 'block-start', index: 0, blockType: 'text' }
+        yield { type: 'block-end', index: 0, block: { type: 'text', text } }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+      }
+    }())
+    const view = ctx.contextify.get(active.agent)
+    const page = await ctx.contextify.familyPage(active.agent, undefined, 100)
+
+    const proposal = await ctx.contextify.recommend(active.agent, {
+      planRevision: view.plan.revision,
+      graphRevision: page.revision,
+      activeSessionId: session.id,
+    }, undefined, 'deep')
+
+    expect(runner).toHaveBeenCalledTimes(1)
+    expect(runner.mock.calls[0]?.[0].parent).toBe(active.agent)
+    expect(runner.mock.calls[0]?.[0].snapshot).toMatchObject({
+      graphRevision: page.revision,
+      planRevision: view.plan.revision,
+      activeSessionId: session.id,
+    })
+    expect(proposal.mode).toBe('deep')
+    expect(proposal.removedNodeIds).toEqual([`${session.id}:${String(turn.userSeq)}`])
+  })
+
+  it('cancels an owned Deep recommendation without cancelling the conversation Agent', async () => {
+    const { ctx, start } = await harness()
+    const session = ctx.sessions.create(SessionId('recommend-deep-cancel'))
+    const active = start(session, { provider: 'mock', model: 'mock' })
+    appendClosedTurn(session, 1, 'inspect all branches', 'current answer')
+    let started!: () => void
+    const didStart = new Promise<void>((resolve) => { started = resolve })
+    const runner = vi.fn(({ signal }: { signal: AbortSignal }) => new Promise<never>((_resolve, reject) => {
+      started()
+      signal.addEventListener('abort', () => {
+        const error = new Error('cancelled by test')
+        error.name = 'AbortError'
+        reject(error)
+      }, { once: true })
+    }))
+    ;(ctx.contextify as unknown as { deepRecommendation: typeof runner }).deepRecommendation = runner
+    const view = ctx.contextify.get(active.agent)
+    const page = await ctx.contextify.familyPage(active.agent, undefined, 100)
+    const pending = ctx.contextify.recommend(active.agent, {
+      planRevision: view.plan.revision,
+      graphRevision: page.revision,
+      activeSessionId: session.id,
+    }, undefined, 'deep')
+
+    await didStart
+    ;(ctx.contextify as unknown as { cancelRecommendation: (agent: Agent) => void })
+      .cancelRecommendation(active.agent)
+
+    await expect(pending).rejects.toMatchObject({ code: 'CONTEXTIFY_RECOMMENDATION_CANCELLED' })
+    expect(active.agent.status).toBe('idle')
+    expect(ctx.agents.get(active.agent.id)).toBe(active.agent)
+  })
+
+  it('permits only one recommendation across sibling Sessions in the same native family', async () => {
+    const { ctx, start } = await harness()
+    const root = ctx.sessions.create(SessionId('recommend-family-root'))
+    start(root)
+    const prefix = appendClosedTurn(root, 1, 'shared premise', 'shared answer')
+    const leftSession = ctx.sessions.fork(root, prefix.boundary, SessionId('recommend-family-left'))
+    const rightSession = ctx.sessions.fork(root, prefix.boundary, SessionId('recommend-family-right'))
+    const left = start(leftSession, { provider: 'mock', model: 'mock' })
+    const right = start(rightSession, { provider: 'mock', model: 'mock' })
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    let started!: () => void
+    const didStart = new Promise<void>((resolve) => { started = resolve })
+    const runner = vi.fn(async () => {
+      started()
+      await gate
+      return { exclude: [], include: [], archive: [] }
+    })
+    ;(ctx.contextify as unknown as { deepRecommendation: typeof runner }).deepRecommendation = runner
+    const leftView = ctx.contextify.get(left.agent)
+    const rightView = ctx.contextify.get(right.agent)
+    const leftPage = await ctx.contextify.familyPage(left.agent, undefined, 100)
+    const rightPage = await ctx.contextify.familyPage(right.agent, undefined, 100)
+    const first = ctx.contextify.recommend(left.agent, {
+      planRevision: leftView.plan.revision,
+      graphRevision: leftPage.revision,
+      activeSessionId: leftSession.id,
+    }, undefined, 'deep')
+    await didStart
+
+    await expect(ctx.contextify.recommend(right.agent, {
+      planRevision: rightView.plan.revision,
+      graphRevision: rightPage.revision,
+      activeSessionId: rightSession.id,
+    }, undefined, 'deep')).rejects.toMatchObject({ code: 'CONTEXTIFY_RECOMMENDATION_BUSY' })
+
+    release()
+    await expect(first).resolves.toMatchObject({ mode: 'deep' })
+    expect(runner).toHaveBeenCalledTimes(1)
+  })
+
   it('rejects a recommendation when any Session in the reviewed family changes during the run', async () => {
     const { ctx, start } = await harness()
     const root = ctx.sessions.create(SessionId('recommend-stale-root'))

@@ -14,6 +14,11 @@ import {
   validateRecommendation,
 } from './recommendation.ts'
 import { buildFastRecommendationInput } from './fast-recommendation.ts'
+import {
+  buildDeepRecommendationSnapshot,
+  cleanupStaleDeepSnapshots,
+  runDeepRecommendation,
+} from './deep-recommendation.ts'
 import { branchRelocationKey, completedTurnCandidate, parseBranchDecisionText } from './branch-review.ts'
 import {
   CONTEXTIFY_SETTINGS_NAMESPACE,
@@ -42,6 +47,7 @@ import type {
   ContextPlanSnapshot,
   ContextReplacementNode,
   ContextRecommendationBase,
+  ContextRecommendationMode,
   ContextRecommendationProposal,
   ContextifyPromptSettings,
   ContextifyView,
@@ -81,6 +87,11 @@ interface LoadedFamily {
   readonly revision: string
   readonly inspections: ReadonlyMap<SessionId, ContextFamilyInspection>
   readonly knownSessionIds: ReadonlySet<SessionId>
+}
+
+interface RecommendationOperation {
+  readonly mode: ContextRecommendationMode
+  readonly controller: AbortController
 }
 
 function exactMessage(inspection: ContextFamilyInspection, seq: number): Message | null {
@@ -146,12 +157,17 @@ function recommendationText(message: Message): string {
 export class ContextifyService extends TypertRemoteService {
   static inject = ['agents', 'sessions', 'sessionPersistence', 'contextCompiler', 'llm']
 
-  private readonly recommending = new Set<SessionId>()
+  private readonly recommendations = new Map<SessionId, RecommendationOperation>()
+  private readonly recommendationRoots = new Map<SessionId, SessionId>()
   private readonly branchReviewing = new Set<string>()
   private promptSettings: () => ContextifyPromptSettings = () => CONTEXTIFY_DEFAULT_SETTINGS
+  private deepRecommendation = runDeepRecommendation
 
   constructor(ctx: Context) {
     super(ctx, 'contextify')
+    void cleanupStaleDeepSnapshots().catch((cause: unknown) => {
+      ctx.logger.warn(`Contextify Deep snapshot cleanup failed: ${String(cause)}`)
+    })
     installSettingsSection(
       ctx,
       CONTEXTIFY_SETTINGS_NAMESPACE,
@@ -250,10 +266,11 @@ export class ContextifyService extends TypertRemoteService {
   }
 
   /**
-   * Analyze one exact graph snapshot through one bounded, tool-free model call.
+   * Analyze one exact graph snapshot in manually selected Fast or Deep mode.
    * @param agent - Live idle Agent whose route and native Session family are reviewed.
    * @param base - Expected plan revision, graph watermark, and active Session identity.
    * @param objective - Optional review objective; the latest user input is the fallback.
+   * @param mode - Fast bounded classifier (default) or isolated full-tree Harness child.
    * @returns An ephemeral, validated proposal that has not mutated the Context Plan.
    */
   @Remote('recommend')
@@ -261,9 +278,11 @@ export class ContextifyService extends TypertRemoteService {
     agent: Agent,
     base: ContextRecommendationBase,
     objective?: string,
+    mode?: ContextRecommendationMode,
   ): Promise<ContextRecommendationProposal> {
     this.assertLive(agent)
     this.assertRecommendationIdle(agent)
+    const recommendationMode = mode ?? 'fast'
     const plan = currentContextPlan(agent.session)
     if (plan.revision !== base.planRevision) {
       throw new ContextifyError('the Context Plan changed before recommendation started', 'CONTEXTIFY_STALE_REVISION')
@@ -271,15 +290,18 @@ export class ContextifyService extends TypertRemoteService {
     if (base.activeSessionId !== agent.id) {
       throw new ContextifyError('the Context Map changed before recommendation started', 'CONTEXTIFY_STALE_GRAPH')
     }
-    if (this.recommending.has(agent.id)) {
-      throw new ContextifyError('a Context Map recommendation is already running', 'CONTEXTIFY_RECOMMENDATION_BUSY')
+    const family = await this.loadFamily(agent.session)
+    if (family.revision !== base.graphRevision) {
+      throw new ContextifyError('the Context Map changed while it was being read', 'CONTEXTIFY_STALE_GRAPH')
     }
-    this.recommending.add(agent.id)
+    const rootSessionId = family.graph.rootSessionId
+    if (this.recommendations.has(rootSessionId)) {
+      throw new ContextifyError('a Context Map recommendation is already running for this Session family', 'CONTEXTIFY_RECOMMENDATION_BUSY')
+    }
+    const operation: RecommendationOperation = { mode: recommendationMode, controller: new AbortController() }
+    this.recommendations.set(rootSessionId, operation)
+    for (const session of family.graph.sessions) this.recommendationRoots.set(session.id, rootSessionId)
     try {
-      const family = await this.loadFamily(agent.session)
-      if (family.revision !== base.graphRevision) {
-        throw new ContextifyError('the Context Map changed while it was being read', 'CONTEXTIFY_STALE_GRAPH')
-      }
       const replacementByNode = new Map(plan.replacements.map(item => [item.nodeId, item]))
       const contents = Object.fromEntries(family.graph.nodes.map((node) => {
         const replacement = replacementByNode.get(node.id)
@@ -303,74 +325,92 @@ export class ContextifyService extends TypertRemoteService {
       const goal = boundedObjective(objective?.trim() || (fallbackObjective?.type === 'user/message'
         ? recommendationText(fallbackObjective.data)
         : 'Improve the next response context.'))
-      let input
-      try {
-        input = buildFastRecommendationInput({
-          graph: family.graph,
-          contents,
-          objective: goal,
-          effectiveIncludedNodeIds: [...effective],
-          explicitIncludedNodeIds: plan.included.map(item => item.nodeId),
-          explicitExcludedNodeIds: plan.excluded.map(item => item.nodeId),
-        })
-      } catch (cause) {
-        throw new ContextifyError(
-          cause instanceof Error ? cause.message : String(cause),
-          'CONTEXTIFY_RECOMMENDATION_TOO_LARGE',
-        )
-      }
-      const promptSettings = this.promptSettings()
-      const contextPrompt = effectivePrompt(CONTEXTIFY_DEFAULT_PROMPTS.context, promptSettings.context)
-      const archivePrompt = effectivePrompt(CONTEXTIFY_DEFAULT_PROMPTS.archive, promptSettings.archive)
-      const system = [
-        contextPrompt,
-        archivePrompt,
-        'Return JSON immediately without analysis or Markdown.',
-        'Use exactly this shape: {"exclude":[{"nodeId":"...","reason":"..."}],"include":[{"nodeId":"...","reason":"..."}],"archive":[{"nodeId":"...","reason":"..."}]}.',
-        'Use empty arrays when no action is needed. Never invent node IDs.',
-      ].join('\n\n')
-      const latestOutput = [...agent.session.events].reverse().find(event => event.type === 'assistant/message')
-      if (latestOutput?.type !== 'assistant/message') {
-        throw new ContextifyError('a model route is unavailable for Context recommendation', 'CONTEXTIFY_RECOMMENDATION_UNAVAILABLE')
-      }
-      const requestConfig = agent.session.requestHeader()?.config
-      const provider = requestConfig?.provider ?? agent.options.provider ?? latestOutput.data.message.source.provider
-      const model = requestConfig?.model ?? agent.options.model ?? latestOutput.data.message.source.model
-      const modelInfo = await this.ctx.llm.resolveModelInfo(provider, model)
-      const reasoningEffort = modelInfo.reasoning?.efforts.find(effort => String(effort.id) === 'off')?.id
-        ?? requestConfig?.reasoningEffort
-      const assembler = new BlockAssembler()
-      for await (const chunk of this.ctx.llm.stream({
-        provider,
-        model,
-        ...(reasoningEffort === undefined
-          ? {}
-          : { reasoningEffort }),
-        messages: [createUserMessage({
-          content: [{
-            type: 'text',
-            text: `Objective:\n${goal}\n\nConversation graph JSON:\n${JSON.stringify(input)}`,
-          }],
-          source: { kind: 'plugin', plugin: name },
-        })],
-        system,
-        temperature: 0,
-        maxTokens: 640,
-      })) assembler.push(chunk)
-      const blocks = assembler.blocks()
-      if (blocks.some(block => block.type === 'tool-call')) {
-        throw new ContextifyError('the recommendation model attempted a tool call', 'CONTEXTIFY_INVALID_RECOMMENDATION')
-      }
+
       let decision
-      try {
-        decision = parseRecommendationDecisionText(blocks
-          .flatMap(block => block.type === 'text' || block.type === 'reasoning' ? [block.text] : [])
-          .join('\n'))
-      } catch (cause) {
-        throw new ContextifyError(
-          cause instanceof Error ? cause.message : String(cause),
-          'CONTEXTIFY_RECOMMENDATION_UNAVAILABLE',
-        )
+      if (recommendationMode === 'deep') {
+        decision = await this.deepRecommendation({
+          parent: agent,
+          snapshot: buildDeepRecommendationSnapshot({
+            graph: family.graph,
+            graphRevision: family.revision,
+            plan,
+            objective: goal,
+            contents,
+            effectiveIncludedNodeIds: [...effective],
+          }),
+          signal: operation.controller.signal,
+        })
+      } else {
+        let input
+        try {
+          input = buildFastRecommendationInput({
+            graph: family.graph,
+            contents,
+            objective: goal,
+            effectiveIncludedNodeIds: [...effective],
+            explicitIncludedNodeIds: plan.included.map(item => item.nodeId),
+            explicitExcludedNodeIds: plan.excluded.map(item => item.nodeId),
+          })
+        } catch (cause) {
+          throw new ContextifyError(
+            cause instanceof Error ? cause.message : String(cause),
+            'CONTEXTIFY_RECOMMENDATION_TOO_LARGE',
+          )
+        }
+        const promptSettings = this.promptSettings()
+        const contextPrompt = effectivePrompt(CONTEXTIFY_DEFAULT_PROMPTS.context, promptSettings.context)
+        const archivePrompt = effectivePrompt(CONTEXTIFY_DEFAULT_PROMPTS.archive, promptSettings.archive)
+        const system = [
+          contextPrompt,
+          archivePrompt,
+          'Return JSON immediately without analysis or Markdown.',
+          'Use exactly this shape: {"exclude":[{"nodeId":"...","reason":"..."}],"include":[{"nodeId":"...","reason":"..."}],"archive":[{"nodeId":"...","reason":"..."}]}.',
+          'Use empty arrays when no action is needed. Never invent node IDs.',
+        ].join('\n\n')
+        const latestOutput = [...agent.session.events].reverse().find(event => event.type === 'assistant/message')
+        if (latestOutput?.type !== 'assistant/message') {
+          throw new ContextifyError('a model route is unavailable for Context recommendation', 'CONTEXTIFY_RECOMMENDATION_UNAVAILABLE')
+        }
+        const requestConfig = agent.session.requestHeader()?.config
+        const provider = requestConfig?.provider ?? agent.options.provider ?? latestOutput.data.message.source.provider
+        const model = requestConfig?.model ?? agent.options.model ?? latestOutput.data.message.source.model
+        const modelInfo = await this.ctx.llm.resolveModelInfo(provider, model)
+        const reasoningEffort = modelInfo.reasoning?.efforts.find(effort => String(effort.id) === 'off')?.id
+          ?? requestConfig?.reasoningEffort
+        const assembler = new BlockAssembler()
+        for await (const chunk of this.ctx.llm.stream({
+          provider,
+          model,
+          ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+          messages: [createUserMessage({
+            content: [{
+              type: 'text',
+              text: `Objective:\n${goal}\n\nConversation graph JSON:\n${JSON.stringify(input)}`,
+            }],
+            source: { kind: 'plugin', plugin: name },
+          })],
+          system,
+          temperature: 0,
+          maxTokens: 640,
+          signal: operation.controller.signal,
+        })) assembler.push(chunk)
+        const blocks = assembler.blocks()
+        if (blocks.some(block => block.type === 'tool-call')) {
+          throw new ContextifyError('the recommendation model attempted a tool call', 'CONTEXTIFY_INVALID_RECOMMENDATION')
+        }
+        try {
+          decision = parseRecommendationDecisionText(blocks
+            .flatMap(block => block.type === 'text' || block.type === 'reasoning' ? [block.text] : [])
+            .join('\n'))
+        } catch (cause) {
+          throw new ContextifyError(
+            cause instanceof Error ? cause.message : String(cause),
+            'CONTEXTIFY_RECOMMENDATION_UNAVAILABLE',
+          )
+        }
+      }
+      if (operation.controller.signal.aborted) {
+        throw new ContextifyError('the Context recommendation was cancelled', 'CONTEXTIFY_RECOMMENDATION_CANCELLED')
       }
       this.assertLive(agent)
       this.assertRecommendationIdle(agent)
@@ -383,7 +423,7 @@ export class ContextifyService extends TypertRemoteService {
       }
       try {
         return validateRecommendation(decision, {
-          mode: 'fast',
+          mode: recommendationMode,
           base,
           graph: family.graph,
           effectiveIncludedNodeIds: [...effective],
@@ -396,9 +436,29 @@ export class ContextifyService extends TypertRemoteService {
           'CONTEXTIFY_INVALID_RECOMMENDATION',
         )
       }
+    } catch (cause) {
+      if (operation.controller.signal.aborted) {
+        throw new ContextifyError('the Context recommendation was cancelled', 'CONTEXTIFY_RECOMMENDATION_CANCELLED')
+      }
+      if (cause instanceof ContextifyError) throw cause
+      throw new ContextifyError(
+        cause instanceof Error ? cause.message : String(cause),
+        'CONTEXTIFY_RECOMMENDATION_UNAVAILABLE',
+      )
     } finally {
-      this.recommending.delete(agent.id)
+      if (this.recommendations.get(rootSessionId) === operation) this.recommendations.delete(rootSessionId)
+      for (const session of family.graph.sessions) {
+        if (this.recommendationRoots.get(session.id) === rootSessionId) this.recommendationRoots.delete(session.id)
+      }
     }
+  }
+
+  /** Cancel only the recommendation owned by this native Session family. */
+  @Remote('cancelRecommendation')
+  cancelRecommendation(agent: Agent): void {
+    this.assertLive(agent)
+    const rootSessionId = this.recommendationRoots.get(agent.id) ?? agent.id
+    this.recommendations.get(rootSessionId)?.controller.abort('cancelled by user')
   }
 
   /** Run one bounded, tool-free post-Turn Branch decision without blocking the originating loop. */
