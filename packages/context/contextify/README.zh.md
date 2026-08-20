@@ -22,11 +22,11 @@ Plan v3 还支持针对单条 user input 或最终 assistant output 的可恢复
 
 导航使用规范化后的原生 branch 祖先关系。从 parent 继承的边界再次 fork，会与已有 branch 同级；只有在 branch 自己新增的边界上 fork，才成为它的 child。两种情况下，graph 都继续显示真实共享的消息支点。
 
-`contextify` Remote namespace 提供 `get`、分页 `familyPage`、仅建议的 `recommend`、`setNodeMode`、批量 `setNodeModes`、`archiveNode`、`acceptBranchSuggestion`、`restoreNode`、`reset`、`undo` 和 `redo`。
+`contextify` Remote namespace 提供 `get`、分页 `familyPage`、仅建议的 `recommend`、`cancelRecommendation`、`setNodeMode`、批量 `setNodeModes`、`archiveNode`、`acceptBranchSuggestion`、`restoreNode`、`reset`、`undo` 和 `redo`。
 
-`recommend` 使用 parent Agent 的 provider/model route，在隔离的 Harness one-shot `spawn` subagent 中运行。它读取精确但有界的同 family graph projection 与 objective，不能使用继承的工具，也不会把 prompt、reasoning 或结果写入 parent Session。Validator 会把 Agent 输出与当前有效集合比较，过滤无害的重复／no-op Include 或 Exclude，拒绝未知节点与互相冲突的动作，并返回一份完整的 Current → Proposed 替换。应用 proposal 只提交一个 compare-and-set plan revision，因此 Undo 会整体恢复旧版本。谨慎的 Archive candidate 仍然只供建议，并要求逐项确认。
+`recommend` 提供两种手动选择的模式。Fast 是默认操作：一次有界、禁用工具的 classifier 只检查最可能相关的已选与 off-path candidate。Deep 必须由用户显式选择：Contextify 把完整 tree snapshot 写入私有临时文件，启动一个受限 Harness child；它只能对该文件执行精确路径的 Read/Grep，并通过结构化工具提交结果。成功、失败、取消或超时后，临时文件与 child 都会清理。两种模式都不会把 prompt、reasoning 或结果写入 parent Session，也不会在 Apply 前修改 context。共用 Validator 会把输出与当前有效集合比较，过滤无害的重复／no-op Include 或 Exclude，拒绝未知节点与互相冲突的动作，并返回一份完整的 Current → Proposed 替换。应用 proposal 只提交一个 compare-and-set plan revision，因此 Undo 会整体恢复旧版本。谨慎的 Archive candidate 仍然只供建议，并要求逐项确认。
 
-自动 Branch review 在 Profile Prompt Dashboard 中显式开启。开启后，每个成功 completed Turn 都会在 parent Agent idle 后调度一次有界、禁用工具的辅助模型调用；它不会创建可见 subagent，也不会运行 Agent loop。只有高置信度的离题或平行 Q&A 才会产生持久建议。接受建议时，系统用确定性 placeholder 归档源 input 与最终 output，在前一个 completed boundary fork 一个原生 child，并把原始 Q&A 精确回放到 child。搬迁具有确定性 key，可安全重试；若后续对话事件已经让建议过期，则拒绝执行。
+自动 Branch review 对新 Profile 默认开启，也可以在 Prompt Dashboard 关闭。禁用工具的 classifier 会从第一条 human input 到达时与主回答并发启动，仅在成功 Turn 完成后绑定准确的最终 Q&A，因此主回答不会等待它。它的有界 packet 只包含新 input、当前与祖先 objective、最多三个本地最近 Turn、branch 深度／负载以及最多四个 sibling intent；不会包含完整 tree、reasoning 或 tool event。动态高置信度阈值会压制噪声；格式错误、调用失败、关闭、低置信度或已过期的 review 都保持静默。接受可见建议时，系统用确定性 placeholder 归档源 input 与最终 output，在前一个 completed boundary fork 一个原生 child，并把原始 Q&A 精确回放到 child。搬迁具有确定性 key，可安全重试；若后续对话事件已经让建议过期，则拒绝执行。
 
 三类 review Agent 都使用 Profile 所有的设置。Package 默认 prompt 是只读基线；用户通常只追加自定义规则，也可以显式解锁完整 override。Context selection、Archive advice 与 Branch routing 分别配置，并继续使用 parent Agent 的 Harness provider/model route。
 
@@ -49,7 +49,7 @@ Compiler 不添加任何提示词文本。Exclude 可以减少对话历史的 in
 ## 已知限制与暂缓事项
 
 - Web surface 有订阅者时每 1.5 秒轮询 family；后续可改为专用 projection event。
-- 自动 Branch review 默认关闭，因为每个 completed Turn 会增加一次辅助模型调用；普通聊天与手动 Context Map 操作永远不依赖它。
+- 启用 Branch review 后，每个 eligible Turn 最多增加一次很小的辅助模型调用；希望完全没有后台分类的用户可以按 Profile 关闭。
 - 跨 Map import 暂缓；目前只能引用连接到同一原生 root 的 Session。
 - Contextify placeholder 是原节点的 overlay；其他 compaction relationship 尚未展开成 shadow node。
 - 在 compiler、Remote、replay 与 UI seam 稳定前，package 继续保留在本 Harness fork 中。

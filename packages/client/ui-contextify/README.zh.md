@@ -12,7 +12,7 @@
 
 沿用独立版画布，节点操作集中在不透明的右键菜单：Locate in Chat、Branch from Here、Archive node、仅在存在 manual override 时显示的 Restore automatic，以及 Archive 后的 Show original/Restore node。Branch 会在消息对应的 completed Turn boundary 调用 Harness 原生 `sessions.fork`，并打开新的 child Session。Locate 会打开所属原生 Session、切换到 Chat、在需要时加载较早 history，并滚动和高亮准确的持久消息。Batch mode 会在一个 plan revision 中 include、exclude 或恢复多个画布选中节点。Clear manual changes 会移除全部 Include、Exclude 与 Archive overlay，但不会重置 graph layout；Undo 和 Redo 操作持久 plan history。
 
-`Recommend` 会在仍可见的 graph 底部打开 review sheet。隔离的 Harness Agent 返回一份完整 Current → Proposed context 版本；sheet 汇总新增和移除节点，card checkbox 在用户应用整份替换前始终表示旧版本。无害 no-op 会被过滤，不再让 proposal 失败；一次 Undo 会整体恢复此前版本。Archive 不提供批量执行：每个 candidate 都必须单独 review，展示 evidence 与 graph impact，并且只能确认为服务端所有的空 placeholder。替换后的 card 保持相同 node ID 与 graph structure，以空白正文显示 `Original retained`，并在右键菜单提供 `Show original` 和 `Restore node`。空 placeholder 正文不参与 Map 搜索。关闭或 dismiss 建议不会改变持久状态。Plan 变化、active Session 变化，或任意 parent、sibling、descendant 的追加都会把 proposal 标为 stale，Host 还会在 mutation 前立即重复校验。
+主 `Recommend` 按钮运行 Fast review；相邻的 `Recommendation mode` 菜单让用户明确选择 Fast 或 Deep tree review，不会自动升级。Fast 发送有界 candidate set；Deep 让受限 Harness child 通过 Read/Grep 检查一次性的完整 tree 文件。Deep 以内联 `Inspecting tree…` 显示进度，并可取消且不影响 Chat。两种模式共用仍覆盖在可见 graph 底部的 Current → Proposed review sheet。Sheet 汇总新增和移除节点，card checkbox 在用户应用整份替换前始终表示旧版本。无害 no-op 会被过滤，不再让 proposal 失败；一次 Undo 会整体恢复此前版本。Archive 不提供批量执行：每个 candidate 都必须单独 review，展示 evidence 与 graph impact，并且只能确认为服务端所有的空 placeholder。替换后的 card 保持相同 node ID 与 graph structure，以空白正文显示 `Original retained`，并在右键菜单提供 `Show original` 和 `Restore node`。空 placeholder 正文不参与 Map 搜索。关闭、取消或 dismiss 建议不会改变持久状态。Plan 变化、active Session 变化，或任意 parent、sibling、descendant 的追加都会把 proposal 标为 stale，Host 还会在 mutation 前立即重复校验。
 
 当 completed Q&A 高置信度地偏离主题，或更适合与当前路径并列时，最终 output 旁会出现紧凑的非模态卡片。`Keep here` 放弃本次建议；`Move to new branch` 执行可重试的原生搬迁并打开新 Session。源 card 会保留为结构性的 Archive placeholder，因此不会切断原 graph 支点。
 
@@ -35,6 +35,6 @@ UI 不添加提示词文本。Auto 跟随 active Session 历史，Skip 排除一
 ## 已知限制与暂缓事项
 
 - Chat 或 Map 存在订阅者时，family update 使用有界的 1.5 秒 polling。
-- 自动 Branch review 是显式开启、one-shot、非阻塞的辅助调用，不会进入 subagent 列表；开启后每个 completed Turn 增加一次模型调用。
+- 自动 Branch review 对新 Profile 默认开启，是 one-shot、并发且不会进入 subagent 列表的辅助调用；用户可以在 Prompt Settings 中关闭。
 - 暂不提供跨 Map import。
 - Contextify placeholder 保持为原节点 overlay；其他 compaction relationship 暂不能展开。

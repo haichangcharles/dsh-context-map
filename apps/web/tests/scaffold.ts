@@ -187,8 +187,8 @@ export interface WebScaffold {
 export interface LaunchOptions {
   /**
    * Deterministic keyless Context Map review provider. Supplying this disables
-   * the shipped spawn driver but exercises the real Contextify service, RPC,
-   * UI review, plan mutation, and compiler seams.
+   * the ordinary replay route only for Fast review requests while exercising
+   * the real Contextify service, RPC, UI review, plan mutation, and compiler seams.
    */
   contextRecommendation?: (prompt: string) => unknown
   /**
@@ -574,20 +574,20 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     }
     if (options.contextRecommendation !== undefined) {
       const recommend = options.contextRecommendation
-      const provider = ctx.subagents.getProvider('spawn')
-      if (provider === undefined) throw new Error('web e2e scaffold: spawn provider missing')
-      const originalStart = provider.start.bind(provider)
-      provider.start = async request => ({
-        id: SessionId('context-recommendation-review'),
-        localAgent: undefined,
-        result: Promise.resolve({
-          output: [],
-          stopReason: 'completed',
-          structured: recommend(request.prompt.flatMap(block => block.type === 'text' ? block.text : []).join('\n')),
-        }),
-        dispose: async () => {},
-      })
-      ctx.effect(() => () => { provider.start = originalStart }, 'web e2e scaffold: restore spawn provider')
+      ctx.on('llm/stream', (request, next): AsyncIterable<StreamChunk> => {
+        const prompt = request.messages.flatMap(message => message.source.kind === 'plugin'
+          && message.source.plugin === 'contextify'
+          ? message.content.flatMap(block => block.type === 'text' ? [block.text] : [])
+          : []).join('\n')
+        if (!prompt.includes('Conversation graph JSON:\n')) return next()
+        const text = JSON.stringify(recommend(prompt))
+        return (async function* (): AsyncIterable<StreamChunk> {
+          yield { type: 'block-start', index: 0, blockType: 'text' }
+          yield { type: 'text-delta', index: 0, text }
+          yield { type: 'block-end', index: 0, block: { type: 'text', text } }
+          yield { type: 'finish', reason: { kind: 'stop' } }
+        })()
+      }, { global: true, prepend: true })
     }
   } catch (error) {
     if (process.cwd() !== originalCwd) process.chdir(originalCwd)
