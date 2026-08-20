@@ -380,9 +380,12 @@ export class ContextifyService extends TypertRemoteService {
       }
       try {
         return validateRecommendation(decision, {
+          mode: 'fast',
           base,
           graph: family.graph,
           effectiveIncludedNodeIds: [...effective],
+          explicitIncludedNodeIds: plan.included.map(item => item.nodeId),
+          explicitExcludedNodeIds: plan.excluded.map(item => item.nodeId),
         })
       } catch (cause) {
         throw new ContextifyError(

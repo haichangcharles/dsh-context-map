@@ -3,6 +3,7 @@ import type {
   ContextArchiveCandidate,
   ContextFamilyGraph,
   ContextRecommendationBase,
+  ContextRecommendationMode,
   ContextRecommendationProposal,
   ContextSelectionRecommendation,
 } from './types.ts'
@@ -156,14 +157,19 @@ export function buildRecommendationInput(request: {
 export function validateRecommendation(
   value: unknown,
   context: {
+    readonly mode: ContextRecommendationMode
     readonly base: ContextRecommendationBase
     readonly graph: ContextFamilyGraph
     readonly effectiveIncludedNodeIds: readonly string[]
+    readonly explicitIncludedNodeIds: readonly string[]
+    readonly explicitExcludedNodeIds: readonly string[]
   },
 ): ContextRecommendationProposal {
   const root = record(value, 'recommendation')
   const nodeIds = new Set(context.graph.nodes.map(node => node.id))
   const effective = new Set(context.effectiveIncludedNodeIds)
+  const explicitIncluded = new Set(context.explicitIncludedNodeIds ?? [])
+  const explicitExcluded = new Set(context.explicitExcludedNodeIds ?? [])
   const allowed = new Set(['exclude', 'include', 'archive'])
   for (const key of Object.keys(root)) {
     if (!allowed.has(key)) throw new Error(`recommendation field "${key}" is unsupported`)
@@ -193,7 +199,10 @@ export function validateRecommendation(
   const graphOrder = context.graph.nodes.map(node => node.id)
   const selection = graphOrder.flatMap((nodeId) => {
     const item = selectionByNode.get(nodeId)
-    if (item === undefined || (item.action === 'include') === effective.has(nodeId)) return []
+    if (item === undefined
+      || (item.action === 'include') === effective.has(nodeId)
+      || (item.action === 'exclude' && explicitIncluded.has(nodeId))
+      || (item.action === 'include' && explicitExcluded.has(nodeId))) return []
     return [item]
   })
   const seenArchive = new Set<string>()
@@ -219,6 +228,7 @@ export function validateRecommendation(
   const currentNodeIds = graphOrder.filter(nodeId => effective.has(nodeId))
   const proposedNodeIds = graphOrder.filter(nodeId => proposed.has(nodeId))
   return Object.freeze({
+    mode: context.mode,
     base: Object.freeze({ ...context.base }),
     currentNodeIds: Object.freeze(currentNodeIds),
     proposedNodeIds: Object.freeze(proposedNodeIds),

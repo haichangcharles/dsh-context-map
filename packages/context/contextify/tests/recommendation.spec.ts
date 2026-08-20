@@ -29,6 +29,14 @@ const graph: ContextFamilyGraph = {
   ],
   edges: [{ id: 'edge', source: 'root:1', target: 'root:2', sessionIds: [root] }],
 }
+const validationContext = {
+  mode: 'fast' as const,
+  base,
+  graph,
+  effectiveIncludedNodeIds: ['root:1', 'root:2'],
+  explicitIncludedNodeIds: [] as string[],
+  explicitExcludedNodeIds: [] as string[],
+}
 
 describe('Contextify recommendation protocol', () => {
   it('builds a bounded prompt input with exact content and topology metadata', () => {
@@ -66,8 +74,9 @@ describe('Contextify recommendation protocol', () => {
         nodeId: 'root:1', reason: 'Conflicts with the newer answer',
         placeholderText: 'Agent-authored text must be ignored',
       }],
-    }, { base, graph, effectiveIncludedNodeIds: ['root:1', 'root:2'] })
+    }, validationContext)
 
+    expect(proposal.mode).toBe('fast')
     expect(proposal.base).toEqual(base)
     expect(proposal.currentNodeIds).toEqual(['root:1', 'root:2'])
     expect(proposal.proposedNodeIds).toEqual(['root:1'])
@@ -85,7 +94,7 @@ describe('Contextify recommendation protocol', () => {
   it('treats an omitted advisory archive list as no archive candidates', () => {
     const proposal = validateRecommendation({
       exclude: [{ nodeId: 'root:2', reason: 'Superseded' }],
-    }, { base, graph, effectiveIncludedNodeIds: ['root:1', 'root:2'] })
+    }, validationContext)
 
     expect(proposal.removedNodeIds).toEqual(['root:2'])
     expect(proposal.archive).toEqual([])
@@ -99,9 +108,57 @@ describe('Contextify recommendation protocol', () => {
     }],
     ['unknown archive node', { archive: [{ nodeId: 'missing', reason: 'x' }] }],
   ])('rejects %s', (_label, value) => {
-    expect(() => validateRecommendation(value, {
-      base, graph, effectiveIncludedNodeIds: ['root:1', 'root:2'],
-    })).toThrow()
+    expect(() => validateRecommendation(value, validationContext)).toThrow()
+  })
+
+  it('preserves explicit Include pins and Exclude blocks while accepting other changes', () => {
+    const proposal = validateRecommendation({
+      exclude: [
+        { nodeId: 'root:1', reason: 'Do not reverse this explicit Include' },
+        { nodeId: 'root:2', reason: 'Remove the natural active-path answer' },
+      ],
+      include: [],
+      archive: [],
+    }, {
+      ...validationContext,
+      explicitIncludedNodeIds: ['root:1'],
+    })
+
+    expect(proposal.selection).toMatchObject([{
+      nodeId: 'root:2', action: 'exclude', reason: 'Remove the natural active-path answer',
+    }])
+  })
+
+  it('filters attempts to reverse explicit modes after validating unknown and conflicting actions', () => {
+    const pinned = validateRecommendation({
+      exclude: [{ nodeId: 'root:1', reason: 'Model disagrees with the user pin' }],
+      include: [],
+      archive: [],
+    }, {
+      ...validationContext,
+      explicitIncludedNodeIds: ['root:1'],
+    })
+    expect(pinned.selection).toEqual([])
+
+    const blocked = validateRecommendation({
+      exclude: [],
+      include: [{ nodeId: 'root:2', reason: 'Model disagrees with the user block' }],
+      archive: [],
+    }, {
+      ...validationContext,
+      effectiveIncludedNodeIds: [],
+      explicitExcludedNodeIds: ['root:2'],
+    })
+    expect(blocked.selection).toEqual([])
+
+    expect(() => validateRecommendation({
+      exclude: [{ nodeId: 'root:1', reason: 'x' }],
+      include: [{ nodeId: 'root:1', reason: 'y' }],
+      archive: [],
+    }, {
+      ...validationContext,
+      explicitIncludedNodeIds: ['root:1'],
+    })).toThrow(/conflicting actions/)
   })
 
   it('rejects graph snapshots larger than the review boundary', () => {

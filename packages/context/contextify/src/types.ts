@@ -242,6 +242,9 @@ export interface ContextRecommendationBase {
   readonly activeSessionId: SessionId
 }
 
+/** User-selected analysis depth for one ephemeral Context recommendation. */
+export type ContextRecommendationMode = 'fast' | 'deep'
+
 /** One review-only change to effective context selection. */
 export interface ContextSelectionRecommendation {
   readonly nodeId: string
@@ -260,6 +263,7 @@ export interface ContextArchiveCandidate {
 
 /** Ephemeral, revision-scoped Agent output. Nothing here is a mutation. */
 export interface ContextRecommendationProposal {
+  readonly mode: ContextRecommendationMode
   readonly base: ContextRecommendationBase
   readonly currentNodeIds: readonly string[]
   readonly proposedNodeIds: readonly string[]
@@ -276,7 +280,7 @@ export type ContextifyErrorCode =
   | 'CONTEXTIFY_INVALID_TRANSITION' | 'CONTEXTIFY_HISTORY_EMPTY'
   | 'CONTEXTIFY_STALE_GRAPH' | 'CONTEXTIFY_RECOMMENDATION_BUSY'
   | 'CONTEXTIFY_RECOMMENDATION_UNAVAILABLE' | 'CONTEXTIFY_RECOMMENDATION_TOO_LARGE'
-  | 'CONTEXTIFY_INVALID_RECOMMENDATION'
+  | 'CONTEXTIFY_RECOMMENDATION_CANCELLED' | 'CONTEXTIFY_INVALID_RECOMMENDATION'
 
 declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {
