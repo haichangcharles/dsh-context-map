@@ -19,5 +19,5 @@ export const ContextifyPromptSettingsSchema: z<ContextifyPromptSettings> = z.obj
   context: promptSection,
   archive: promptSection,
   branch: promptSection,
-  automaticBranchReview: z.boolean().default(false),
+  automaticBranchReview: z.boolean().default(true),
 })

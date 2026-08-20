@@ -19,7 +19,7 @@ export interface ContextifyPromptSettings {
   readonly context: ContextifyPromptSection
   readonly archive: ContextifyPromptSection
   readonly branch: ContextifyPromptSection
-  /** Opt-in auxiliary model call after completed Turns. */
+  /** Lightweight auxiliary classifier enabled for fresh Profiles; users may disable it. */
   readonly automaticBranchReview: boolean
 }
 
@@ -47,7 +47,7 @@ export const CONTEXTIFY_DEFAULT_SETTINGS: ContextifyPromptSettings = Object.free
   context: Object.freeze({ additional: '', override: '' }),
   archive: Object.freeze({ additional: '', override: '' }),
   branch: Object.freeze({ additional: '', override: '' }),
-  automaticBranchReview: false,
+  automaticBranchReview: true,
 })
 
 /**

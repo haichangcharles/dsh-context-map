@@ -94,6 +94,12 @@ async function harness() {
     },
   } as never)
   await ctx.plugin(ContextifyService)
+  const contextify = ctx.contextify as unknown as {
+    promptSettings: () => ContextifyPromptSettings
+  }
+  // Branch-focused cases explicitly enable the fresh-Profile default. Keep
+  // unrelated service cases free from background classifier traffic.
+  contextify.promptSettings = () => ({ ...CONTEXTIFY_DEFAULT_SETTINGS, automaticBranchReview: false })
   const start = (session: Session, options?: AgentOptions) => {
     const stub = stubAgent(session, options)
     ctx.agents.register(stub.agent)
@@ -113,6 +119,103 @@ abstract class OffReasoningAdapter extends LlmAdapter {
 }
 
 describe('ContextifyService native Session family', () => {
+  it('does not launch Branch classification when the Profile setting is disabled', async () => {
+    const { ctx, start } = await harness()
+    const session = ctx.sessions.create(SessionId('branch-disabled'))
+    start(session, { provider: 'mock', model: 'mock' })
+    let calls = 0
+    ctx.llm.registerAdapter(['mock'], new class extends OffReasoningAdapter {
+      override async * stream(): AsyncIterable<StreamChunk> {
+        calls += 1
+        yield { type: 'finish', reason: { kind: 'stop' } }
+      }
+    }())
+
+    appendClosedTurn(session, 1, 'unrelated question', 'answer')
+    await new Promise(resolve => setTimeout(resolve, 20))
+
+    expect(calls).toBe(0)
+    expect(session.events.some(event => event.type === 'contextify/branch-review')).toBe(false)
+  })
+
+  it('records a silent Keep result when the Branch classifier returns malformed output', async () => {
+    const { ctx, start } = await harness()
+    const session = ctx.sessions.create(SessionId('branch-malformed'))
+    const active = start(session, { provider: 'mock', model: 'mock' })
+    ctx.llm.registerAdapter(['mock'], new class extends OffReasoningAdapter {
+      override async * stream(): AsyncIterable<StreamChunk> {
+        yield { type: 'block-start', index: 0, blockType: 'text' }
+        yield { type: 'text-delta', index: 0, text: 'not-json' }
+        yield { type: 'block-end', index: 0, block: { type: 'text', text: 'not-json' } }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+      }
+    }())
+    const service = ctx.contextify as unknown as {
+      promptSettings: () => ContextifyPromptSettings
+    }
+    service.promptSettings = () => ({ ...CONTEXTIFY_DEFAULT_SETTINGS, automaticBranchReview: true })
+
+    const turn = appendClosedTurn(session, 1, 'unrelated question', 'answer')
+
+    await vi.waitFor(() => {
+      const review = session.events.find(event => event.type === 'contextify/branch-review')
+      expect(review?.type === 'contextify/branch-review' && review.data).toEqual({
+        suggestion: null, turnEndSeq: turn.boundary,
+      })
+    })
+    expect(ctx.contextify.get(active.agent).branchSuggestion).toBeUndefined()
+  })
+
+  it('starts Branch classification from the first human input before the main answer completes', async () => {
+    const { ctx, start } = await harness()
+    const session = ctx.sessions.create(SessionId('branch-concurrent'))
+    start(session, { provider: 'mock', model: 'mock' })
+    appendClosedTurn(session, 1, 'design the observability layer', 'use structured traces')
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    let classifierStarted = false
+    ctx.llm.registerAdapter(['mock'], new class extends OffReasoningAdapter {
+      override async * stream(): AsyncIterable<StreamChunk> {
+        classifierStarted = true
+        await gate
+        const text = '{"action":"suggest_branch","confidence":0.95,"reason":"Unrelated weather topic"}'
+        yield { type: 'block-start', index: 0, blockType: 'text' }
+        yield { type: 'text-delta', index: 0, text }
+        yield { type: 'block-end', index: 0, block: { type: 'text', text } }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+      }
+    }())
+    const service = ctx.contextify as unknown as {
+      promptSettings: () => ContextifyPromptSettings
+    }
+    service.promptSettings = () => ({ ...CONTEXTIFY_DEFAULT_SETTINGS, automaticBranchReview: true })
+
+    session.append('turn/start', { turn: 2 })
+    session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'what is the weather in Shanghai?' }],
+      source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+
+    await vi.waitFor(() => { expect(classifierStarted).toBe(true) })
+    expect(session.events.some(event => event.type === 'assistant/message' && event.data.turn === 2)).toBe(false)
+
+    session.append('assistant/message', {
+      turn: 2,
+      step: 1,
+      message: createAssistantMessage({
+        content: [{ type: 'text', text: 'It is sunny.' }],
+        source: { provider: 'mock', model: 'mock' },
+      }),
+    }, { surfaceOp: 'append' })
+    const end = session.append('turn/end', { turn: 2, reason: { kind: 'completed' } })
+    release()
+
+    await vi.waitFor(() => {
+      expect(session.events.some(event => event.type === 'contextify/branch-review'
+        && event.data.turnEndSeq === end.seq && event.data.suggestion !== null)).toBe(true)
+    })
+  })
+
   it('reviews a completed Turn asynchronously and relocates the Q&A idempotently', async () => {
     const { ctx, start } = await harness()
     const session = ctx.sessions.create(SessionId('branch-source'))

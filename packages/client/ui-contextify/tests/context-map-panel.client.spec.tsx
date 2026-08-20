@@ -526,7 +526,7 @@ describe('ContextMapPanel', () => {
       ...original,
       recommendation: { phase: 'running', mode: 'deep' },
     })
-    expect(screen.getByRole('button', { name: 'Inspecting tree…' }).disabled).toBe(true)
+    expect(screen.getByRole('button', { name: 'Inspecting tree…' })).toHaveProperty('disabled', true)
     fireEvent.click(screen.getByRole('button', { name: 'Cancel Deep review' }))
     expect(h.mapActions.cancelRecommendation).toHaveBeenCalledOnce()
   })

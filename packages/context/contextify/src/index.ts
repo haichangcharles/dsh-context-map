@@ -19,7 +19,15 @@ import {
   cleanupStaleDeepSnapshots,
   runDeepRecommendation,
 } from './deep-recommendation.ts'
-import { branchRelocationKey, completedTurnCandidate, parseBranchDecisionText } from './branch-review.ts'
+import {
+  BRANCH_REVIEW_MAX_TOKENS,
+  branchRelocationKey,
+  branchSuggestionThreshold,
+  buildBranchReviewInput,
+  completedTurnCandidate,
+  parseBranchDecisionText,
+  type ContextBranchDecision,
+} from './branch-review.ts'
 import {
   CONTEXTIFY_SETTINGS_NAMESPACE,
   ContextifyPromptSettingsSchema,
@@ -94,6 +102,19 @@ interface RecommendationOperation {
   readonly controller: AbortController
 }
 
+interface BranchReviewResult {
+  readonly decision: ContextBranchDecision
+  readonly threshold: number
+}
+
+interface BranchReviewOperation {
+  readonly turn: number
+  readonly inputSeq: number
+  readonly planRevision: number
+  readonly controller: AbortController
+  result?: Promise<BranchReviewResult | null>
+}
+
 function exactMessage(inspection: ContextFamilyInspection, seq: number): Message | null {
   const event = inspection.events[seq]
   if (event?.type === 'user/message' && event.surfaceOp === 'append') return event.data
@@ -129,8 +150,10 @@ function familyRevision(inspections: ReadonlyMap<SessionId, ContextFamilyInspect
       id: meta.id,
       parentSession: meta.parentSession ?? null,
       seedLength: meta.seedLength ?? 0,
-      eventCount: events.length,
-      lastSeq: events.at(-1)?.seq ?? -1,
+      // Branch review metadata does not alter visible topology and therefore
+      // must not invalidate a concurrently opened Context recommendation.
+      eventCount: events.filter(event => event.type !== 'contextify/branch-review').length,
+      lastSeq: events.findLast(event => event.type !== 'contextify/branch-review')?.seq ?? -1,
     }))
   return createHash('sha256').update(JSON.stringify(records)).digest('hex')
 }
@@ -159,7 +182,7 @@ export class ContextifyService extends TypertRemoteService {
 
   private readonly recommendations = new Map<SessionId, RecommendationOperation>()
   private readonly recommendationRoots = new Map<SessionId, SessionId>()
-  private readonly branchReviewing = new Set<string>()
+  private readonly branchReviews = new Map<SessionId, BranchReviewOperation>()
   private promptSettings: () => ContextifyPromptSettings = () => CONTEXTIFY_DEFAULT_SETTINGS
   private deepRecommendation = runDeepRecommendation
 
@@ -198,25 +221,33 @@ export class ContextifyService extends TypertRemoteService {
       ctx.contextCompiler.select(agent.session, name)
     })
     ctx.on('session/event', (session, event) => {
-      if (event.type !== 'turn/end' || event.data.reason.kind !== 'completed'
-        || session.header.origin === 'subagent'
-        || !this.promptSettings().automaticBranchReview) return
+      if (session.header.origin === 'subagent') return
       const agent = ctx.agents.get(session.id)
       if (agent === undefined) return
-      const key = `${session.id}:${String(event.seq)}`
-      if (this.branchReviewing.has(key)
-        || session.events.some(candidate => candidate.type === 'contextify/branch-review'
-          && candidate.data.turnEndSeq === event.seq)) return
-      this.branchReviewing.add(key)
-      queueMicrotask(() => {
-        const controller = new AbortController()
-        void agent.whenIdle()
-          .then(() => this.reviewCompletedTurn(agent, event.seq, controller.signal))
-          .catch((cause: unknown) => {
-            ctx.logger.warn(`Contextify Branch review failed: ${String(cause)}`)
-          })
-          .finally(() => { this.branchReviewing.delete(key) })
-      })
+      if (event.type === 'user/message' && event.surfaceOp === 'append'
+        && event.data.source.kind === 'user') {
+        this.startBranchReview(agent, event.seq)
+        return
+      }
+      if (event.type === 'request/header') {
+        const operation = this.branchReviews.get(session.id)
+        if (operation !== undefined) this.launchBranchReview(agent, operation)
+        return
+      }
+      if (event.type !== 'turn/end') return
+      const operation = this.branchReviews.get(session.id)
+      if (operation === undefined || operation.turn !== event.data.turn) return
+      if (event.data.reason.kind !== 'completed' || !this.promptSettings().automaticBranchReview) {
+        operation.controller.abort('Branch candidate Turn did not complete')
+        this.branchReviews.delete(session.id)
+        return
+      }
+      this.launchBranchReview(agent, operation)
+      queueMicrotask(() => { void this.finalizeBranchReview(agent, event.seq, operation) })
+    })
+    ctx.on('session/disposed', (session) => {
+      this.branchReviews.get(session.id)?.controller.abort('Session disposed')
+      this.branchReviews.delete(session.id)
     })
   }
 
@@ -461,34 +492,73 @@ export class ContextifyService extends TypertRemoteService {
     this.recommendations.get(rootSessionId)?.controller.abort('cancelled by user')
   }
 
-  /** Run one bounded, tool-free post-Turn Branch decision without blocking the originating loop. */
-  private async reviewCompletedTurn(agent: Agent, turnEndSeq: number, signal: AbortSignal): Promise<void> {
-    if (this.ctx.agents.get(agent.id) !== agent || agent.status !== 'idle'
-      || !this.promptSettings().automaticBranchReview
-      || agent.session.events.some(event => event.type === 'contextify/branch-review'
-        && event.data.turnEndSeq === turnEndSeq)) return
-    const candidate = completedTurnCandidate(agent.session.events, turnEndSeq, agent.session.id)
-    if (candidate === null) return
-    const outputEvent = agent.session.events[candidate.output.seq]
-    if (outputEvent?.type !== 'assistant/message') return
+  /** Start one direct classifier from the first human input without waiting for the main answer. */
+  private startBranchReview(agent: Agent, inputSeq: number): void {
+    if (!this.promptSettings().automaticBranchReview) return
+    const start = agent.session.events.slice(0, inputSeq).findLast(event => event.type === 'turn/start')
+    if (start?.type !== 'turn/start') return
+    const priorHuman = agent.session.events.slice(start.seq + 1, inputSeq).some(event =>
+      event.type === 'user/message' && event.surfaceOp === 'append' && event.data.source.kind === 'user')
+    if (priorHuman) return
+    this.branchReviews.get(agent.id)?.controller.abort('A newer Branch candidate replaced this review')
+    const controller = new AbortController()
+    const operation: BranchReviewOperation = {
+      turn: start.data.turn,
+      inputSeq,
+      planRevision: currentContextPlan(agent.session).revision,
+      controller,
+    }
+    this.branchReviews.set(agent.id, operation)
+    this.launchBranchReview(agent, operation)
+  }
+
+  /** Launch once a concrete Session request route is available. */
+  private launchBranchReview(agent: Agent, operation: BranchReviewOperation): void {
+    if (operation.result !== undefined || operation.controller.signal.aborted) return
+    const config = agent.session.requestHeader()?.config
+    const latestOutput = agent.session.events.findLast(event => event.type === 'assistant/message')
+    const route = latestOutput?.type === 'assistant/message' ? latestOutput.data.message.source : undefined
+    if (!(config?.provider ?? agent.options.provider ?? route?.provider)
+      || !(config?.model ?? agent.options.model ?? route?.model)) return
+    operation.result = this.classifyBranchInput(
+      agent, operation.inputSeq, operation.controller.signal,
+    ).catch((cause: unknown) => {
+      if (!operation.controller.signal.aborted) {
+        this.ctx.logger.warn(`Contextify Branch classifier failed: ${String(cause)}`)
+      }
+      return null
+    })
+  }
+
+  /** Run one bounded, tool-free Branch decision over topology and the new input only. */
+  private async classifyBranchInput(
+    agent: Agent,
+    inputSeq: number,
+    signal: AbortSignal,
+  ): Promise<BranchReviewResult | null> {
     const family = await this.loadFamily(agent.session)
-    const plan = currentContextPlan(agent.session)
+    signal.throwIfAborted()
+    const candidateNode = family.graph.nodes.find(node => node.owner.sessionId === agent.id
+      && node.owner.seq === inputSeq)
+    if (candidateNode === undefined) return null
+    const contents = Object.fromEntries(family.graph.nodes.map((node) => {
+      const inspection = family.inspections.get(node.owner.sessionId)
+      const message = inspection === undefined ? null : exactMessage(inspection, node.owner.seq)
+      return [node.id, message === null ? node.preview : recommendationText(message)]
+    }))
+    const packet = buildBranchReviewInput({ graph: family.graph, candidateNodeId: candidateNode.id, contents })
     const branchPrompt = effectivePrompt(CONTEXTIFY_DEFAULT_PROMPTS.branch, this.promptSettings().branch)
-    const recent = family.graph.nodes.filter(node => node.sessionIds.includes(agent.id)).slice(-4)
-      .map(node => ({ role: node.role, content: node.preview }))
     const userText = [
-      `Recent conversation JSON:\n${JSON.stringify(recent)}`,
-      `Completed Q&A JSON:\n${JSON.stringify({
-        input: candidate.inputPreview,
-        output: candidate.outputPreview,
-      })}`,
+      `Branch review packet JSON:\n${JSON.stringify(packet)}`,
       'Return only JSON: {"action":"keep|suggest_branch","confidence":0..1,"reason":"..."}.',
     ].join('\n\n')
     const assembler = new BlockAssembler()
     const requestConfig = agent.session.requestHeader()?.config
-    const route = outputEvent.data.message.source
-    const provider = requestConfig?.provider ?? agent.options.provider ?? route.provider
-    const model = requestConfig?.model ?? agent.options.model ?? route.model
+    const latestOutput = agent.session.events.findLast(event => event.type === 'assistant/message')
+    const outputRoute = latestOutput?.type === 'assistant/message' ? latestOutput.data.message.source : undefined
+    const provider = requestConfig?.provider ?? agent.options.provider ?? outputRoute?.provider
+    const model = requestConfig?.model ?? agent.options.model ?? outputRoute?.model
+    if (!provider || !model) return null
     const modelInfo = await this.ctx.llm.resolveModelInfo(provider, model, signal)
     const reasoningEffort = modelInfo.reasoning?.efforts.find(effort => String(effort.id) === 'off')?.id
       ?? requestConfig?.reasoningEffort
@@ -503,32 +573,55 @@ export class ContextifyService extends TypertRemoteService {
         source: { kind: 'plugin', plugin: name },
       })],
       system: branchPrompt,
-      maxTokens: 200,
+      maxTokens: BRANCH_REVIEW_MAX_TOKENS,
       signal,
     })) assembler.push(chunk)
     const blocks = assembler.blocks()
-    if (blocks.some(block => block.type === 'tool-call')) return
+    if (blocks.some(block => block.type === 'tool-call')) return null
     const decision = parseBranchDecisionText(blocks
       .flatMap(block => block.type === 'text' || block.type === 'reasoning' ? [block.text] : [])
       .join('\n'))
-    const suggestion: ContextBranchSuggestion | null = decision.action === 'suggest_branch'
-      && decision.confidence >= 0.8
+    return Object.freeze({
+      decision,
+      threshold: branchSuggestionThreshold(packet.branchDepth, packet.activeBranchCount),
+    })
+  }
+
+  /** Bind a pre-started classifier result to the exact completed Q&A, without blocking Chat. */
+  private async finalizeBranchReview(
+    agent: Agent,
+    turnEndSeq: number,
+    operation: BranchReviewOperation,
+  ): Promise<void> {
+    const result = operation.result === undefined ? null : await operation.result
+    if (this.branchReviews.get(agent.id) !== operation) return
+    this.branchReviews.delete(agent.id)
+    if (this.ctx.agents.get(agent.id) !== agent || !this.promptSettings().automaticBranchReview
+      || operation.controller.signal.aborted
+      || currentContextPlan(agent.session).revision !== operation.planRevision
+      || agent.session.events.some(event => event.type === 'contextify/branch-review'
+        && event.data.turnEndSeq === turnEndSeq)) return
+    const candidate = completedTurnCandidate(agent.session.events, turnEndSeq, agent.session.id)
+    if (candidate === null || candidate.input.seq !== operation.inputSeq) return
+    const family = await this.loadFamily(agent.session)
+    if (this.branchReviews.has(agent.id)
+      || agent.session.events.slice(turnEndSeq + 1).some(event =>
+        event.type === 'turn/start' || event.type === 'turn/end'
+        || event.type === 'user/message' || event.type === 'assistant/message'
+        || event.type === 'tool/result')) return
+    const decision = result?.decision
+    const suggestion: ContextBranchSuggestion | null = result !== null
+      && decision !== undefined && decision.action === 'suggest_branch'
+      && decision.confidence >= result.threshold
       ? Object.freeze({
         ...candidate,
         id: branchRelocationKey(agent.id, turnEndSeq),
         confidence: decision.confidence,
         reason: decision.reason,
-        planRevision: plan.revision,
+        planRevision: operation.planRevision,
         graphRevision: family.revision,
       })
       : null
-    if (this.ctx.agents.get(agent.id) !== agent
-      || agent.session.events.slice(turnEndSeq + 1).some(event =>
-        event.type === 'turn/start' || event.type === 'turn/end'
-        || event.type === 'user/message' || event.type === 'assistant/message'
-        || event.type === 'tool/result')
-      || agent.session.events.some(event => event.type === 'contextify/branch-review'
-        && event.data.turnEndSeq === turnEndSeq)) return
     agent.session.append('contextify/branch-review', { suggestion, turnEndSeq })
   }
 

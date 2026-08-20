@@ -1,9 +1,106 @@
 /** Pure completed-Turn extraction and untrusted Branch decision validation. */
 import { createHash } from 'node:crypto'
 import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session/types'
-import type { ContextBranchCandidate } from './types.ts'
+import type { ContextBranchCandidate, ContextFamilyGraph, ContextFamilyGraphNode } from './types.ts'
 
 const MAX_REASON_CHARS = 500
+/** Completed local Turns retained by the lightweight classifier packet. */
+export const BRANCH_RECENT_TURNS = 3
+/** Sibling branch intents retained by the lightweight classifier packet. */
+export const BRANCH_SIBLING_INTENTS = 4
+/** Maximum Unicode characters retained from any one message. */
+export const BRANCH_MAX_TEXT_CHARS = 800
+/** Hard output ceiling for the direct Branch classifier call. */
+export const BRANCH_REVIEW_MAX_TOKENS = 200
+
+/** Small topology-aware value sent to the tool-free Branch classifier. */
+export interface ContextBranchReviewInput {
+  readonly candidateInput: string
+  readonly currentObjective: string
+  readonly ancestorObjectives: readonly string[]
+  readonly recentTurns: readonly { readonly input: string; readonly output: string }[]
+  readonly branchDepth: number
+  readonly activeBranchCount: number
+  readonly siblingIntents: readonly string[]
+}
+
+function bounded(value: string): string {
+  return Array.from(value.trim()).slice(0, BRANCH_MAX_TEXT_CHARS).join('')
+}
+
+function latestUser(
+  nodes: readonly ContextFamilyGraphNode[],
+  ownerSessionId: SessionId,
+  beforeIndex: number,
+): ContextFamilyGraphNode | undefined {
+  return nodes.slice(0, beforeIndex).findLast(node => node.role === 'user'
+    && node.owner.sessionId === ownerSessionId)
+}
+
+/** Raise the display threshold as a family becomes deeper and more branched. */
+export function branchSuggestionThreshold(depth: number, activeBranches: number): number {
+  return Math.min(0.95, 0.80 + Math.min(depth, 3) * 0.03 + Math.min(activeBranches, 6) * 0.01)
+}
+
+/**
+ * Build a bounded classifier packet from topology and visible input/output nodes.
+ * It intentionally excludes tool calls, reasoning, and the complete graph.
+ */
+export function buildBranchReviewInput(input: {
+  readonly graph: ContextFamilyGraph
+  readonly candidateNodeId: string
+  readonly contents?: Readonly<Record<string, string>>
+}): ContextBranchReviewInput {
+  const candidate = input.graph.nodes.find(node => node.id === input.candidateNodeId)
+  if (candidate === undefined || candidate.role !== 'user') throw new Error('Branch candidate input is unavailable')
+  const candidateIndex = input.graph.nodes.indexOf(candidate)
+  const active = input.graph.sessions.find(session => session.id === input.graph.activeSessionId)
+  if (active === undefined) throw new Error('active Branch Session is unavailable')
+  const bySession = new Map(input.graph.sessions.map(session => [session.id, session]))
+  const text = (node: ContextFamilyGraphNode | undefined): string => node === undefined
+    ? ''
+    : bounded(input.contents?.[node.id] ?? node.preview)
+  const ancestors: SessionId[] = []
+  let cursor = active
+  while (cursor.parentSessionId !== undefined) {
+    ancestors.unshift(cursor.parentSessionId)
+    const parent = bySession.get(cursor.parentSessionId)
+    if (parent === undefined) break
+    cursor = parent
+  }
+  const activePath = input.graph.nodes
+    .filter(node => node.sessionIds.includes(input.graph.activeSessionId)
+      && input.graph.nodes.indexOf(node) < candidateIndex && node.id !== candidate.id)
+    .sort((left, right) => (left.activeEventSeq ?? left.time) - (right.activeEventSeq ?? right.time))
+  const localObjective = latestUser(input.graph.nodes, active.id, candidateIndex)
+    ?? activePath.findLast(node => node.role === 'user')
+  const localNodes = activePath.filter(node => node.owner.sessionId === active.id)
+  const recentTurns: Array<{ input: string; output: string }> = []
+  for (let index = 0; index < localNodes.length; index += 1) {
+    const node = localNodes[index]
+    if (node?.role !== 'user') continue
+    const output = localNodes.slice(index + 1).find(next => next.role === 'assistant')
+    if (output === undefined) continue
+    recentTurns.push({ input: text(node), output: text(output) })
+  }
+  const siblings = input.graph.sessions.filter(session => session.id !== active.id
+    && session.parentSessionId === active.parentSessionId)
+  return Object.freeze({
+    candidateInput: text(candidate),
+    currentObjective: text(localObjective),
+    ancestorObjectives: Object.freeze(ancestors.flatMap((sessionId) => {
+      const objective = latestUser(input.graph.nodes, sessionId, candidateIndex)
+      return objective === undefined ? [] : [text(objective)]
+    })),
+    recentTurns: Object.freeze(recentTurns.slice(-BRANCH_RECENT_TURNS).map(turn => Object.freeze(turn))),
+    branchDepth: active.depth,
+    activeBranchCount: siblings.length + 1,
+    siblingIntents: Object.freeze(siblings.flatMap((session) => {
+      const objective = latestUser(input.graph.nodes, session.id, input.graph.nodes.length)
+      return objective === undefined ? [] : [text(objective)]
+    }).slice(0, BRANCH_SIBLING_INTENTS)),
+  })
+}
 
 function eventText(event: SessionEvent): string {
   const message = event.type === 'user/message'

@@ -24,5 +24,7 @@ describe('Contextify prompt settings', () => {
     expect(parse({})).toEqual(CONTEXTIFY_DEFAULT_SETTINGS)
     expect(effectivePrompt(CONTEXTIFY_DEFAULT_PROMPTS.context, { additional: '', override: '' }))
       .toBe(CONTEXTIFY_DEFAULT_PROMPTS.context)
+    expect(CONTEXTIFY_DEFAULT_SETTINGS.automaticBranchReview).toBe(true)
+    expect(parse({ automaticBranchReview: false }).automaticBranchReview).toBe(false)
   })
 })

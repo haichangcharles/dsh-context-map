@@ -50,7 +50,7 @@ describe('ContextifyPromptSettingsView', () => {
 
     expect(screen.getByLabelText('Default Context prompt')).toHaveProperty('readOnly', true)
     fireEvent.click(screen.getByRole('checkbox', { name: /Automatic Branch review/ }))
-    expect(fixture.set).toHaveBeenCalledWith('automaticBranchReview', true)
+    expect(fixture.set).toHaveBeenCalledWith('automaticBranchReview', false)
     fireEvent.change(screen.getByLabelText('Additional Context instructions'), {
       target: { value: 'Prefer recent facts.' },
     })
