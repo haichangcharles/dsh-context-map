@@ -11,6 +11,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import { ContextMapPanel, type ContextMapPanelInjected } from './ContextMapPanel.tsx'
 import { ContextMessageAction, type ContextMessageActionInjected } from './ContextMessageAction.tsx'
+import { BranchSuggestionTail, type BranchSuggestionTailInjected } from './BranchSuggestionTail.tsx'
 import { ContextifyController, type ContextifyTransport } from './controller.ts'
 import { createContextMapStore } from './store.ts'
 import { ContextifyPromptSettingsSection } from './ContextifyPromptSettings.tsx'
@@ -122,6 +123,12 @@ export function apply(ctx: ClientContext): void {
         ctx.conversation.openPinnedDetails(sessionId)
         ctx.layout.openDetails()
       },
+    }
+  }
+  const branchSuggestionInjected = (sessionId: SessionId): BranchSuggestionTailInjected => {
+    const controller = controllerFor(sessionId)
+    return {
+      hooks: { contextify: controller },
       moveBranchSuggestion: async (suggestionId) => {
         const result = await controller.acceptBranchSuggestion(suggestionId)
         ctx.sessions.open(result.childSessionId)
@@ -173,6 +180,12 @@ export function apply(ctx: ClientContext): void {
     order: 20,
     inject: messageActionInjected,
   }, ContextMessageAction))
+  ctx.slots.inject('conversation.chat.turnTail', () => ctx.slots.register({
+    name: 'conversation.chat.turnTail',
+    priority: 10,
+    select: owner => owner.seq,
+    inject: branchSuggestionInjected,
+  }, BranchSuggestionTail))
 
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay',

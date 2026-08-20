@@ -1,17 +1,18 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import AgentRegistry, { agentEvents, Inbox, type Agent, type AgentStatus } from '@deepseek-ai/dsh-agent'
+import AgentRegistry, { agentEvents, Inbox, type Agent, type AgentOptions, type AgentStatus } from '@deepseek-ai/dsh-agent'
 import ContextCompilerRegistry from '@deepseek-ai/dsh-context-compiler'
 import LlmRuntime, {
   createAssistantMessage,
   createUserMessage,
+  ReasoningEffortId,
   type GenerateOptions,
   LlmAdapter,
   type StreamChunk,
 } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import type { SessionInspection } from '@deepseek-ai/dsh-session-persistence'
-import SubagentRuntime, { type SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
+import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import ContextifyService from '../src/index.ts'
 import {
   CONTEXTIFY_DEFAULT_SETTINGS,
@@ -19,7 +20,7 @@ import {
   type ContextifyPromptSettings,
 } from '../src/types.ts'
 
-function stubAgent(session: Session): {
+function stubAgent(session: Session, options: AgentOptions = {}): {
   agent: Agent
   setStatus: (status: AgentStatus) => void
   maintenanceCalls: () => number
@@ -29,7 +30,7 @@ function stubAgent(session: Session): {
   let maintenanceCalls = 0
   const agent: Agent = {
     id: session.id,
-    options: {},
+    options,
     session,
     inbox,
     ctx: new Context(),
@@ -48,7 +49,13 @@ function stubAgent(session: Session): {
   }
 }
 
-function appendClosedTurn(session: Session, turn: number, user: string, assistant?: string): {
+function appendClosedTurn(
+  session: Session,
+  turn: number,
+  user: string,
+  assistant?: string,
+  source: { provider: string; model: string } = { provider: 'mock', model: 'mock' },
+): {
   userSeq: number
   boundary: number
 } {
@@ -63,7 +70,7 @@ function appendClosedTurn(session: Session, turn: number, user: string, assistan
       step: 1,
       message: createAssistantMessage({
         content: [{ type: 'text', text: assistant }],
-        source: { provider: 'mock', model: 'mock' },
+        source,
       }),
     }, { surfaceOp: 'append' })
   }
@@ -87,8 +94,8 @@ async function harness() {
     },
   } as never)
   await ctx.plugin(ContextifyService)
-  const start = (session: Session) => {
-    const stub = stubAgent(session)
+  const start = (session: Session, options?: AgentOptions) => {
+    const stub = stubAgent(session, options)
     ctx.agents.register(stub.agent)
     agentEvents(ctx, stub.agent).emit('agent/session-start', { source: 'startup' })
     return stub
@@ -96,20 +103,33 @@ async function harness() {
   return { ctx, start }
 }
 
+abstract class OffReasoningAdapter extends LlmAdapter {
+  override resolveModel(provider: string, model: string) {
+    return Promise.resolve({
+      provider, id: model, name: model,
+      reasoning: { efforts: [{ id: ReasoningEffortId('off'), name: 'Off' }] },
+    })
+  }
+}
+
 describe('ContextifyService native Session family', () => {
   it('reviews a completed Turn asynchronously and relocates the Q&A idempotently', async () => {
     const { ctx, start } = await harness()
     const session = ctx.sessions.create(SessionId('branch-source'))
     const active = start(session)
-    appendClosedTurn(session, 1, 'main topic', 'main answer')
+    for (let turn = 1; turn <= 5; turn += 1) {
+      appendClosedTurn(session, turn, `history-${String(turn)}`, `answer-${String(turn)}`)
+    }
     let captured: GenerateOptions | undefined
-    ctx.llm.registerAdapter(['mock'], new class extends LlmAdapter {
+    ctx.llm.registerAdapter(['mock'], new class extends OffReasoningAdapter {
       override async * stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
         captured = options
         const text = '{"action":"suggest_branch","confidence":0.91,"reason":"Parallel topic"}'
-        yield { type: 'block-start', index: 0, blockType: 'text' }
-        yield { type: 'text-delta', index: 0, text }
-        yield { type: 'block-end', index: 0, block: { type: 'text', text } }
+        // Some reasoning-capable routes return the requested classifier JSON
+        // in the reasoning channel even when the selected effort is Off.
+        yield { type: 'block-start', index: 0, blockType: 'reasoning' }
+        yield { type: 'reasoning-delta', index: 0, text }
+        yield { type: 'block-end', index: 0, block: { type: 'reasoning', text } }
         yield { type: 'finish', reason: { kind: 'stop' } }
       }
     }())
@@ -117,15 +137,18 @@ describe('ContextifyService native Session family', () => {
       promptSettings: () => ContextifyPromptSettings
     }
     service.promptSettings = () => ({ ...CONTEXTIFY_DEFAULT_SETTINGS, automaticBranchReview: true })
-    const target = appendClosedTurn(session, 2, 'temporary side topic', 'side answer')
+    const target = appendClosedTurn(session, 6, 'temporary side topic', 'side answer')
 
     await vi.waitFor(() => { expect(captured).toBeDefined() })
     await vi.waitFor(() => {
       expect(session.events.some(event => event.type === 'contextify/branch-review'
         && event.data.turnEndSeq === target.boundary)).toBe(true)
     })
-    expect(captured?.maxTokens).toBe(320)
+    expect(captured?.maxTokens).toBe(200)
+    expect(captured?.reasoningEffort).toBe(ReasoningEffortId('off'))
     expect(captured?.tools).toBeUndefined()
+    expect(JSON.stringify(captured?.messages)).not.toContain('history-1')
+    expect(JSON.stringify(captured?.messages)).toContain('history-5')
     expect(active.maintenanceCalls()).toBe(0)
     const suggestion = ctx.contextify.get(active.agent).branchSuggestion
     expect(suggestion).toMatchObject({ reason: 'Parallel topic', confidence: 0.91 })
@@ -157,9 +180,9 @@ describe('ContextifyService native Session family', () => {
         captured = true
         await gate
         const text = '{"action":"suggest_branch","confidence":0.91,"reason":"Parallel topic"}'
-        yield { type: 'block-start', index: 0, blockType: 'text' }
-        yield { type: 'text-delta', index: 0, text }
-        yield { type: 'block-end', index: 0, block: { type: 'text', text } }
+        yield { type: 'block-start', index: 0, blockType: 'reasoning' }
+        yield { type: 'reasoning-delta', index: 0, text }
+        yield { type: 'block-end', index: 0, block: { type: 'reasoning', text } }
         yield { type: 'finish', reason: { kind: 'stop' } }
         finished()
       }
@@ -185,42 +208,27 @@ describe('ContextifyService native Session family', () => {
     expect(ctx.contextify.get(active.agent).branchSuggestion).toBeUndefined()
   })
 
-  it('generates review-only recommendations through an isolated Harness subagent', async () => {
+  it('generates review-only recommendations through one direct tool-free LLM call', async () => {
     const { ctx, start } = await harness()
     const session = ctx.sessions.create(SessionId('recommendation'))
-    const active = start(session)
-    const turn = appendClosedTurn(session, 1, 'old requirement', 'new answer')
-    let captured: SubagentStartRequest | undefined
-    let disposed = false
-    ctx.subagents.registerProvider({
-      name: 'spawn',
-      capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
-      inheritsParentContext: false,
-      start: async (request) => {
-        captured = request
-        // The shipped spawn provider publishes a live subagent Session until
-        // run.dispose(). Context Map lineage must ignore that implementation
-        // detail or every successful recommendation invalidates itself.
-        ctx.sessions.create(SessionId('review-child'), {
-          meta: { parentSession: session.id, origin: 'subagent', delegationDepth: 1 },
-        })
-        return {
-          id: SessionId('review-child'),
-          localAgent: undefined,
-          result: Promise.resolve({
-            output: [],
-            stopReason: 'completed',
-            structured: {
-              selection: [{
-                nodeId: `${session.id}:${String(turn.userSeq)}`, action: 'exclude', reason: 'Superseded', confidence: 'high',
-              }],
-              archive: [],
-            },
-          }),
-          dispose: async () => { disposed = true },
-        }
-      },
+    const active = start(session, { provider: 'mock', model: 'mock' })
+    const turn = appendClosedTurn(session, 1, 'old requirement', 'new answer', {
+      provider: 'walkthrough', model: 'seeded-demo',
     })
+    let captured: GenerateOptions | undefined
+    ctx.llm.registerAdapter(['mock'], new class extends OffReasoningAdapter {
+      override async * stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+        captured = options
+        const text = JSON.stringify({
+          exclude: [{ nodeId: `${session.id}:${String(turn.userSeq)}`, reason: 'Superseded' }],
+          include: [], archive: [],
+        })
+        yield { type: 'block-start', index: 0, blockType: 'reasoning' }
+        yield { type: 'reasoning-delta', index: 0, text }
+        yield { type: 'block-end', index: 0, block: { type: 'reasoning', text } }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+      }
+    }())
     const view = ctx.contextify.get(active.agent)
     const before = session.seq
 
@@ -232,12 +240,12 @@ describe('ContextifyService native Session family', () => {
     }, 'x'.repeat(200_000))
 
     expect(proposal.selection).toMatchObject([{ action: 'exclude', reason: 'Superseded' }])
-    expect(captured?.parent.id).toBe(active.agent.id)
-    expect(captured?.toolFilter).toEqual({ allow: [] })
-    expect(captured?.agentOptions).toEqual({ maxTokens: 4_000 })
-    expect(captured?.outputSchema).toMatchObject({ type: 'object' })
-    expect((captured?.prompt[0] as { text: string }).text.length).toBeLessThan(102_000)
-    expect(disposed).toBe(true)
+    expect(captured?.tools).toBeUndefined()
+    expect(captured?.maxTokens).toBeLessThanOrEqual(800)
+    expect(captured?.temperature).toBe(0)
+    expect(captured?.reasoningEffort).toBe(ReasoningEffortId('off'))
+    expect(JSON.stringify(captured?.messages).length).toBeLessThan(102_000)
+    expect(ctx.sessions.list()).toHaveLength(1)
     expect(session.seq).toBe(before)
   })
 
@@ -250,21 +258,18 @@ describe('ContextifyService native Session family', () => {
     const active = start(activeSession)
     const sibling = ctx.sessions.fork(root, prefix.boundary, SessionId('recommend-stale-sibling'))
     start(sibling)
-    let resolveResult!: (value: {
-      output: never[]
-      stopReason: 'completed'
-      structured: { selection: never[]; archive: never[] }
-    }) => void
-    const result = new Promise<Parameters<typeof resolveResult>[0]>((resolve) => { resolveResult = resolve })
-    ctx.subagents.registerProvider({
-      name: 'spawn',
-      capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
-      inheritsParentContext: false,
-      start: async () => ({
-        id: SessionId('recommend-stale-review'), localAgent: undefined, result,
-        dispose: async () => {},
-      }),
-    })
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    ctx.llm.registerAdapter(['mock'], new class extends LlmAdapter {
+      override async * stream(): AsyncIterable<StreamChunk> {
+        await gate
+        const text = '{"exclude":[],"include":[],"archive":[]}'
+        yield { type: 'block-start', index: 0, blockType: 'text' }
+        yield { type: 'text-delta', index: 0, text }
+        yield { type: 'block-end', index: 0, block: { type: 'text', text } }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+      }
+    }())
     const view = ctx.contextify.get(active.agent)
     const page = await ctx.contextify.familyPage(active.agent, undefined, 100)
     const pending = ctx.contextify.recommend(active.agent, {
@@ -273,7 +278,7 @@ describe('ContextifyService native Session family', () => {
       activeSessionId: activeSession.id,
     })
     appendClosedTurn(sibling, 2, 'new sibling fact')
-    resolveResult({ output: [], stopReason: 'completed', structured: { selection: [], archive: [] } })
+    release()
 
     await expect(pending).rejects.toMatchObject({ code: 'CONTEXTIFY_STALE_GRAPH' })
   })

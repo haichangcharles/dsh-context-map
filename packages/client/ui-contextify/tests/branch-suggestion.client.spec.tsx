@@ -2,7 +2,10 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import { BranchSuggestionCard } from '../src/client/BranchSuggestionCard.tsx'
+import { BranchSuggestionTail } from '../src/client/BranchSuggestionTail.tsx'
+import type { ContextifyControllerSnapshot } from '../src/client/controller.ts'
 
 afterEach(cleanup)
 
@@ -25,5 +28,22 @@ describe('BranchSuggestionCard', () => {
     await waitFor(() => { expect(move).toHaveBeenCalledOnce() })
     fireEvent.click(screen.getByRole('button', { name: 'Keep here' }))
     expect(keep).toHaveBeenCalledOnce()
+  })
+
+  it('renders through the matching completed turn tail and declines other turns', () => {
+    const snapshot = {
+      pending: false,
+      view: { branchSuggestion: suggestion },
+    } as ContextifyControllerSnapshot
+    const useContextify = ((selector: (value: ContextifyControllerSnapshot) => unknown) =>
+      selector(snapshot)) as SnapshotSelectorHook<ContextifyControllerSnapshot>
+    const move = vi.fn(async () => {})
+    const { rerender } = render(
+      <BranchSuggestionTail matched={suggestion.output.seq} useContextify={useContextify} moveBranchSuggestion={move} />,
+    )
+    expect(screen.getByRole('complementary', { name: 'Branch suggestion' })).toBeTruthy()
+
+    rerender(<BranchSuggestionTail matched={suggestion.output.seq + 1} useContextify={useContextify} moveBranchSuggestion={move} />)
+    expect(screen.queryByRole('complementary', { name: 'Branch suggestion' })).toBeNull()
   })
 })

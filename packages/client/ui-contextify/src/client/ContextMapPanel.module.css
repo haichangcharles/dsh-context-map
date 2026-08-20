@@ -205,6 +205,20 @@
 .selectionBar strong { margin-right: auto; font-size: 10px; }
 .selectionBar button { padding: 4px 6px; font-size: 9px; }
 .error { flex: none; margin: 6px 10px; border-radius: 6px; padding: 7px; background: rgb(220 38 38 / 10%); color: #dc2626; font-size: 11px; }
+.recommendationError {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 10px;
+  border-radius: 6px;
+  padding: 7px 9px;
+  background: rgb(220 38 38 / 10%);
+  color: #dc2626;
+  font-size: 11px;
+}
+.recommendationError span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.recommendationError button { border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; }
 .empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--dsw-alias-fg-secondary); font-size: 12px; pointer-events: none; }
 
 .visuallyHidden {

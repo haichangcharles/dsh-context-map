@@ -3,6 +3,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { ContextFamilyGraph, ContextRecommendationBase } from '../src/types.ts'
 import {
   buildRecommendationInput,
+  parseRecommendationDecisionText,
   validateRecommendation,
 } from '../src/recommendation.ts'
 
@@ -44,16 +45,26 @@ describe('Contextify recommendation protocol', () => {
     expect(JSON.stringify(input).length).toBeLessThanOrEqual(96_000)
   })
 
-  it('normalizes a delta into complete Current and Proposed versions', () => {
+  it('parses one fenced three-list decision and normalizes missing lists', () => {
+    expect(parseRecommendationDecisionText(`analysis ignored\n\`\`\`json
+      {"exclude":[{"nodeId":"root:2","reason":"Superseded"}]}
+    \`\`\``)).toEqual({
+      exclude: [{ nodeId: 'root:2', reason: 'Superseded' }],
+      include: [],
+      archive: [],
+    })
+  })
+
+  it('normalizes three action lists into complete Current and Proposed versions', () => {
     const proposal = validateRecommendation({
-      selection: [
-        { nodeId: 'root:1', action: 'include', reason: 'Already selected', confidence: 'low' },
-        { nodeId: 'root:2', action: 'exclude', reason: 'Superseded', confidence: 'high' },
-        { nodeId: 'root:2', action: 'exclude', reason: 'Superseded', confidence: 'high' },
+      include: [{ nodeId: 'root:1', reason: 'Already selected' }],
+      exclude: [
+        { nodeId: 'root:2', reason: 'Superseded' },
+        { nodeId: 'root:2', reason: 'Superseded' },
       ],
       archive: [{
-        nodeId: 'root:1', category: 'obsolete', reason: 'Conflicts with the newer answer',
-        evidenceNodeIds: ['root:2'], placeholderText: 'Agent-authored text must be ignored',
+        nodeId: 'root:1', reason: 'Conflicts with the newer answer',
+        placeholderText: 'Agent-authored text must be ignored',
       }],
     }, { base, graph, effectiveIncludedNodeIds: ['root:1', 'root:2'] })
 
@@ -66,14 +77,14 @@ describe('Contextify recommendation protocol', () => {
     expect(proposal.selection[0]?.nodeId).toBe('root:2')
     expect(proposal.archive).toEqual([{
       nodeId: 'root:1', category: 'obsolete', reason: 'Conflicts with the newer answer',
-      evidenceNodeIds: ['root:2'],
+      evidenceNodeIds: [],
     }])
     expect(Object.isFrozen(proposal)).toBe(true)
   })
 
   it('treats an omitted advisory archive list as no archive candidates', () => {
     const proposal = validateRecommendation({
-      selection: [{ nodeId: 'root:2', action: 'exclude', reason: 'Superseded', confidence: 'high' }],
+      exclude: [{ nodeId: 'root:2', reason: 'Superseded' }],
     }, { base, graph, effectiveIncludedNodeIds: ['root:1', 'root:2'] })
 
     expect(proposal.removedNodeIds).toEqual(['root:2'])
@@ -81,14 +92,12 @@ describe('Contextify recommendation protocol', () => {
   })
 
   it.each([
-    ['unknown node', { selection: [{ nodeId: 'missing', action: 'exclude', reason: 'x', confidence: 'high' }], archive: [] }],
-    ['conflicting selection', { selection: [
-      { nodeId: 'root:1', action: 'exclude', reason: 'x', confidence: 'high' },
-      { nodeId: 'root:1', action: 'include', reason: 'y', confidence: 'low' },
-    ], archive: [] }],
-    ['invalid evidence', { selection: [], archive: [{
-      nodeId: 'root:1', category: 'conflict', reason: 'x', evidenceNodeIds: ['missing'],
-    }] }],
+    ['unknown node', { exclude: [{ nodeId: 'missing', reason: 'x' }] }],
+    ['conflicting selection', {
+      exclude: [{ nodeId: 'root:1', reason: 'x' }],
+      include: [{ nodeId: 'root:1', reason: 'y' }],
+    }],
+    ['unknown archive node', { archive: [{ nodeId: 'missing', reason: 'x' }] }],
   ])('rejects %s', (_label, value) => {
     expect(() => validateRecommendation(value, {
       base, graph, effectiveIncludedNodeIds: ['root:1', 'root:2'],

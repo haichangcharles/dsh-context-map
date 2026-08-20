@@ -189,6 +189,20 @@ function mount(
 }
 
 describe('ContextMapPanel', () => {
+  it('shows one compact recommendation error without a review overlay', () => {
+    const initial = fixture()
+    mount({
+      ...initial,
+      recommendation: { phase: 'error', error: 'Invalid recommendation JSON' },
+    })
+
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
+    expect(screen.getByRole('alert').textContent).toContain('Invalid recommendation JSON')
+    expect(screen.queryByText('Recommendation failed')).toBeNull()
+    expect(screen.queryByRole('dialog', { name: 'Context recommendation review' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss recommendation error' }))
+  })
+
   it('changes effective context only through a checkbox, not a normal card click', async () => {
     const h = mount()
     const card = await screen.findByLabelText('User message: root requirement')
@@ -634,7 +648,6 @@ describe('ContextMessageAction', () => {
         useContextify={bindSnapshotSelector({ getSnapshot: () => snapshot, subscribe: () => () => {} })}
         setNodeMode={setNodeMode}
         locate={locate}
-        moveBranchSuggestion={vi.fn(async () => {})}
       />,
     )
     fireEvent.click(screen.getByRole('button', { name: 'exclude context for branch follow-up' }))

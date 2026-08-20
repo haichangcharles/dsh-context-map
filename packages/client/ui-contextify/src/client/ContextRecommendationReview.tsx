@@ -56,7 +56,7 @@ function ProposalReview({
         {proposal.selection.map(item => <article className={css.item} key={`${item.action}:${item.nodeId}`}>
           <span className={css.badge}>{item.action === 'include' ? 'Added' : 'Removed'}</span>
           <strong>{nodes.get(item.nodeId)?.preview ?? item.nodeId}</strong>
-          <p>{item.reason} · {item.confidence} confidence</p>
+          <p>{item.reason}</p>
         </article>)}
       </div>
       {proposal.selection.length > 0 && <div className={css.actions}>
@@ -72,7 +72,7 @@ function ProposalReview({
           const inbound = graph.edges.filter(edge => edge.target === item.nodeId).length
           const outbound = graph.edges.filter(edge => edge.source === item.nodeId).length
           return <article className={css.item} key={`archive:${item.nodeId}`}>
-            <span className={`${css.badge} ${css.warning}`}>{item.category}</span><strong>{node?.preview ?? item.nodeId}</strong>
+            <span className={`${css.badge} ${css.warning}`}>Archive</span><strong>{node?.preview ?? item.nodeId}</strong>
             <p>{item.reason}</p>
             {item.evidenceNodeIds.length > 0 && <p>Evidence: {item.evidenceNodeIds.map(id => nodes.get(id)?.preview ?? id).join(' · ')}</p>}
             <p>{inbound} incoming · {outbound} outgoing · {node?.sessionIds.length ?? 0} Sessions{outbound > 1 ? ' · branch pivot' : ''}</p>
@@ -99,9 +99,6 @@ function ProposalReview({
 
 /** Render only states that require user-visible review or recovery. */
 export function ContextRecommendationReview(props: ContextRecommendationReviewProps) {
-  if (props.state.phase === 'idle' || props.state.phase === 'running') return null
-  if (props.state.phase === 'error') return <div className={css.sheet} role="alert">
-    <div className={css.header}><div><h3>Recommendation failed</h3><p>{props.state.error}</p></div><button type="button" onClick={props.dismiss}>Close</button></div>
-  </div>
+  if (props.state.phase === 'idle' || props.state.phase === 'running' || props.state.phase === 'error') return null
   return <ProposalReview {...props} proposal={props.state.proposal} stale={props.state.phase === 'stale'} />
 }

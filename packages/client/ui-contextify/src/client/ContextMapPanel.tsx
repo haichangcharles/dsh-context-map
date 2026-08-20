@@ -368,9 +368,9 @@ export function ContextMapPanel({
           disabled={mutationPending || snapshot.recommendation.phase === 'running' || graph === undefined}
           onClick={() => {
             setActionError(null)
-            void mapActions.recommend().catch((cause: unknown) => {
-              setActionError(cause instanceof Error ? cause.message : String(cause))
-            })
+            // The controller publishes recommendation failures itself. Avoid
+            // duplicating the same failure in the generic mutation alert.
+            void mapActions.recommend().catch(() => {})
           }}
         >{snapshot.recommendation.phase === 'running' ? 'Reviewing…' : 'Recommend'}</button>
         <span className={css.toolbarSpacer} />
@@ -380,6 +380,13 @@ export function ContextMapPanel({
       </div>
       {snapshot.error !== undefined && <div className={css.error} role="alert">{snapshot.error}</div>}
       {actionError !== null && <div className={css.error} role="alert">{actionError}</div>}
+      {snapshot.recommendation.phase === 'error' && <div className={css.recommendationError} role="alert">
+        <span>{snapshot.recommendation.error}</span>
+        <button type="button" aria-label="Dismiss recommendation error" onClick={() => {
+          mapActions.clearRecommendation()
+          queueMicrotask(() => { recommendButtonRef.current?.focus() })
+        }}>Dismiss</button>
+      </div>}
       <div
         ref={canvasRef}
         className={css.canvas}

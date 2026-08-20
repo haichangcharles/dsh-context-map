@@ -50,6 +50,44 @@ function array(value: unknown, label: string): unknown[] {
   return value
 }
 
+/** Minimal model-owned decision. Version construction remains system-owned. */
+export interface ContextRecommendationDecision {
+  readonly exclude: readonly { readonly nodeId: string; readonly reason: string }[]
+  readonly include: readonly { readonly nodeId: string; readonly reason: string }[]
+  readonly archive: readonly { readonly nodeId: string; readonly reason: string }[]
+}
+
+/** Parse one JSON object from a tool-free classifier response. */
+export function parseRecommendationDecisionText(text: string): ContextRecommendationDecision {
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  if (start < 0 || end < start) throw new Error('recommendation response did not contain JSON')
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text.slice(start, end + 1))
+  } catch {
+    throw new Error('recommendation response contained invalid JSON')
+  }
+  const root = record(parsed, 'recommendation')
+  const allowed = new Set(['exclude', 'include', 'archive'])
+  for (const key of Object.keys(root)) {
+    if (!allowed.has(key)) throw new Error(`recommendation field "${key}" is unsupported`)
+  }
+  const items = (key: 'exclude' | 'include' | 'archive') =>
+    (root[key] === undefined ? [] : array(root[key], key)).map((raw, index) => {
+      const item = record(raw, `${key}[${String(index)}]`)
+      return Object.freeze({
+        nodeId: boundedText(item.nodeId, `${key} nodeId`),
+        reason: boundedText(item.reason, `${key} reason`),
+      })
+    })
+  return Object.freeze({
+    exclude: Object.freeze(items('exclude')),
+    include: Object.freeze(items('include')),
+    archive: Object.freeze(items('archive')),
+  })
+}
+
 /**
  * Build the bounded, instruction-safe JSON value supplied to the review Agent.
  * @param request - Exact graph, message contents, and current effective selection.
@@ -126,27 +164,32 @@ export function validateRecommendation(
   const root = record(value, 'recommendation')
   const nodeIds = new Set(context.graph.nodes.map(node => node.id))
   const effective = new Set(context.effectiveIncludedNodeIds)
-  const selectionByNode = new Map<string, ContextSelectionRecommendation>()
-  for (const [index, raw] of array(root.selection, 'selection').entries()) {
-    const item = record(raw, `selection[${String(index)}]`)
-    const nodeId = boundedText(item.nodeId, 'selection nodeId')
-    if (!nodeIds.has(nodeId)) throw new Error(`selection node "${nodeId}" is unavailable`)
-    if (item.action !== 'include' && item.action !== 'exclude') throw new Error('selection action is invalid')
-    if (item.confidence !== 'high' && item.confidence !== 'medium' && item.confidence !== 'low') {
-      throw new Error('selection confidence is invalid')
-    }
-    const parsed: ContextSelectionRecommendation = Object.freeze({
-      nodeId,
-      action: item.action,
-      reason: boundedText(item.reason, 'selection reason'),
-      confidence: item.confidence,
-    })
-    const prior = selectionByNode.get(nodeId)
-    if (prior !== undefined && prior.action !== parsed.action) {
-      throw new Error(`selection node "${nodeId}" has conflicting actions`)
-    }
-    if (prior === undefined) selectionByNode.set(nodeId, parsed)
+  const allowed = new Set(['exclude', 'include', 'archive'])
+  for (const key of Object.keys(root)) {
+    if (!allowed.has(key)) throw new Error(`recommendation field "${key}" is unsupported`)
   }
+  const selectionByNode = new Map<string, ContextSelectionRecommendation>()
+  const readSelection = (action: 'exclude' | 'include'): void => {
+    const items = root[action] === undefined ? [] : array(root[action], action)
+    for (const [index, raw] of items.entries()) {
+      const item = record(raw, `${action}[${String(index)}]`)
+      const nodeId = boundedText(item.nodeId, `${action} nodeId`)
+      if (!nodeIds.has(nodeId)) throw new Error(`${action} node "${nodeId}" is unavailable`)
+      const parsed: ContextSelectionRecommendation = Object.freeze({
+        nodeId,
+        action,
+        reason: boundedText(item.reason, `${action} reason`),
+        confidence: 'medium',
+      })
+      const prior = selectionByNode.get(nodeId)
+      if (prior !== undefined && prior.action !== parsed.action) {
+        throw new Error(`selection node "${nodeId}" has conflicting actions`)
+      }
+      if (prior === undefined) selectionByNode.set(nodeId, parsed)
+    }
+  }
+  readSelection('exclude')
+  readSelection('include')
   const graphOrder = context.graph.nodes.map(node => node.id)
   const selection = graphOrder.flatMap((nodeId) => {
     const item = selectionByNode.get(nodeId)
@@ -161,19 +204,11 @@ export function validateRecommendation(
     if (!nodeIds.has(nodeId)) throw new Error(`archive node "${nodeId}" is unavailable`)
     if (seenArchive.has(nodeId)) throw new Error(`archive node "${nodeId}" is duplicated`)
     seenArchive.add(nodeId)
-    if (item.category !== 'obsolete' && item.category !== 'conflict' && item.category !== 'redundant') {
-      throw new Error('archive category is invalid')
-    }
-    const evidenceNodeIds = array(item.evidenceNodeIds, 'archive evidence').map((candidate) => {
-      const evidence = boundedText(candidate, 'archive evidence nodeId')
-      if (!nodeIds.has(evidence)) throw new Error(`archive evidence node "${evidence}" is unavailable`)
-      return evidence
-    })
     return Object.freeze({
       nodeId,
-      category: item.category,
+      category: 'obsolete',
       reason: boundedText(item.reason, 'archive reason'),
-      evidenceNodeIds: Object.freeze(evidenceNodeIds),
+      evidenceNodeIds: Object.freeze([]),
     })
   })
   const proposed = new Set(effective)

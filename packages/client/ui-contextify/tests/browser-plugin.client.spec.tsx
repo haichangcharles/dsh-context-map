@@ -92,6 +92,7 @@ async function bench(withCleanup = false) {
       'conversation.details.pinned': { kind: 'list', scope: 'session' },
       'conversation.chat.user-actions': { kind: 'list', scope: 'session' },
       'conversation.chat.assistant-actions': { kind: 'list', scope: 'session' },
+      'conversation.chat.turnTail': { kind: 'chain', scope: 'session' },
       'shell.overlay': { kind: 'list', scope: 'root' },
     },
   } as never, (() => null) as never)
@@ -101,12 +102,14 @@ async function bench(withCleanup = false) {
   const injectPanel = pinned?.inject as unknown as ((sessionId: SessionId) => ContextMapPanelInjected)
   const userAction = ctx.slots.entries('conversation.chat.user-actions')[0]
   const assistantAction = ctx.slots.entries('conversation.chat.assistant-actions')[0]
+  const turnTail = ctx.slots.entries('conversation.chat.turnTail')[0]
   return {
     ctx, fiber, calls, closeDetails, openDetails, fork, open, revealMessage, openPinnedDetails, record,
     panel: injectPanel(source),
     pinned,
     userAction,
     assistantAction,
+    turnTail,
     opener: ctx.slots.entries('shell.overlay')[0],
   }
 }
@@ -118,6 +121,8 @@ describe('ui-contextify browser plugin', () => {
     expect(b.opener?.options).toMatchObject({ id: 'contextify-open-details' })
     expect(b.userAction?.options).toMatchObject({ id: 'contextify', order: 20 })
     expect(b.assistantAction?.options).toMatchObject({ id: 'contextify', order: 20 })
+    expect(b.turnTail).toBeDefined()
+    expect(b.turnTail?.select?.({ seq: 7 } as never)).toBe(7)
 
     const userInjected = (b.userAction?.inject as unknown as
       ((sessionId: SessionId) => ContextMessageActionInjected))(source)
@@ -150,12 +155,13 @@ describe('ui-contextify browser plugin', () => {
     expect(b.closeDetails).toHaveBeenCalledOnce()
   })
 
-  it('removes all four slot contributions with the plugin fiber', async () => {
+  it('removes all five slot contributions with the plugin fiber', async () => {
     const b = await bench()
     await b.fiber.dispose()
     expect(b.ctx.slots.entries('conversation.details.pinned')).toHaveLength(0)
     expect(b.ctx.slots.entries('conversation.chat.user-actions')).toHaveLength(0)
     expect(b.ctx.slots.entries('conversation.chat.assistant-actions')).toHaveLength(0)
+    expect(b.ctx.slots.entries('conversation.chat.turnTail')).toHaveLength(0)
     expect(b.ctx.slots.entries('shell.overlay')).toHaveLength(0)
   })
 
