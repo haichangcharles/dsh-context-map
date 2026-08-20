@@ -108,8 +108,16 @@ export function apply(ctx: ClientContext): void {
         sessionId, ref, node, reason, expectedGraphRevision,
       )),
       restoreNode: async (ref, node) => valueOf(await remote.restoreNode(sessionId, ref, node)),
-      acceptBranchSuggestion: async suggestionId => valueOf(
-        await remote.acceptBranchSuggestion(sessionId, suggestionId),
+      prepareBranchSuggestion: async suggestionId => valueOf(
+        await remote.prepareBranchSuggestion(sessionId, suggestionId),
+      ),
+      forkNativeBranch: preparation => ctx.sessions.fork({
+        sessionId: preparation.sourceSessionId,
+        atSeq: preparation.atSeq,
+        increaseTitle: true,
+      }),
+      acceptBranchSuggestion: async (suggestionId, childSessionId) => valueOf(
+        await remote.acceptBranchSuggestion(sessionId, suggestionId, childSessionId),
       ),
     }
     const controller = new ContextifyController(transport)

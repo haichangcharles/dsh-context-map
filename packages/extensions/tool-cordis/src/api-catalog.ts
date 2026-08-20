@@ -545,10 +545,21 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'Family metadata, all edges, and the requested canonical node page.',
       },
       {
-        signature: '@Remote(\'recommend\') async recommend( agent: Agent, base: ContextRecommendationBase, objective?: string, ): Promise<ContextRecommendationProposal>',
-        description: 'Analyze one exact graph snapshot through an isolated Harness one-shot Agent.',
-        parameters: [{ name: 'agent', description: 'Live idle Agent whose route and native Session family are reviewed.' }, { name: 'base', description: 'Expected plan revision, graph watermark, and active Session identity.' }, { name: 'objective', description: 'Optional review objective; the latest user input is the fallback.' }],
+        signature: '@Remote(\'recommend\') async recommend( agent: Agent, base: ContextRecommendationBase, objective?: string, mode?: ContextRecommendationMode, ): Promise<ContextRecommendationProposal>',
+        description: 'Analyze one exact graph snapshot in manually selected Fast or Deep mode.',
+        parameters: [{ name: 'agent', description: 'Live idle Agent whose route and native Session family are reviewed.' }, { name: 'base', description: 'Expected plan revision, graph watermark, and active Session identity.' }, { name: 'objective', description: 'Optional review objective; the latest user input is the fallback.' }, { name: 'mode', description: 'Fast bounded classifier (default) or isolated full-tree Harness child.' }],
         returns: 'An ephemeral, validated proposal that has not mutated the Context Plan.',
+      },
+      {
+        signature: '@Remote(\'cancelRecommendation\') cancelRecommendation(agent: Agent): void',
+        description: 'Cancel only the recommendation owned by this native Session family.',
+        parameters: [{ name: 'agent', description: 'Live Agent identifying the family whose review is cancelled.' }],
+      },
+      {
+        signature: '@Remote(\'prepareBranchSuggestion\') prepareBranchSuggestion(agent: Agent, suggestionId: string): ContextBranchRelocationPreparation',
+        description: 'Validate a suggestion and return the exact native Host fork boundary.',
+        parameters: [{ name: 'agent', description: 'Live idle Agent whose source Session owns the reviewed Turn.' }, { name: 'suggestionId', description: 'Durable suggestion identity returned by `get`.' }],
+        returns: 'The source Session and stable event boundary for native Host fork.',
       },
       {
         signature: '@Remote(\'setNodeMode\') async setNodeMode( agent: Agent, ref: ContextPlanRef, node: ContextMessageRef, mode: \'natural\' | \'include\' | \'exclude\', ): Promise<ContextifyView>',
@@ -569,9 +580,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'The committed v3 Contextify view.',
       },
       {
-        signature: '@Remote(\'acceptBranchSuggestion\') async acceptBranchSuggestion(agent: Agent, suggestionId: string): Promise<ContextBranchRelocationResult>',
+        signature: '@Remote(\'acceptBranchSuggestion\') async acceptBranchSuggestion( agent: Agent, suggestionId: string, childSessionId: SessionId, ): Promise<ContextBranchRelocationResult>',
         description: 'Move one suggested completed Q&A into a deterministic native child Branch.',
-        parameters: [{ name: 'agent', description: 'Live idle Agent whose source Session owns the reviewed Turn.' }, { name: 'suggestionId', description: 'Durable suggestion identity returned by `get`.' }],
+        parameters: [{ name: 'agent', description: 'Live idle Agent whose source Session owns the reviewed Turn.' }, { name: 'suggestionId', description: 'Durable suggestion identity returned by `get`.' }, { name: 'childSessionId', description: 'Native Agent-backed child created from the prepared boundary.' }],
         returns: 'The native child Session created by, or recovered for, this relocation.',
       },
       {
@@ -2956,6 +2967,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ContextBranchCandidate {\n    readonly sourceSessionId: SessionId;\n    readonly turn: number;\n    readonly boundaryBefore: number;\n    readonly boundaryAfter: number;\n    readonly input: ContextMessageRef;\n    readonly output: ContextMessageRef;\n    readonly inputPreview: string;\n    readonly outputPreview: string;\n}',
   },
   {
+    name: 'ContextBranchRelocationPreparation',
+    declaration: 'export interface ContextBranchRelocationPreparation {\n    readonly sourceSessionId: SessionId;\n    readonly atSeq: number;\n}',
+  },
+  {
     name: 'ContextBranchRelocationResult',
     declaration: 'export interface ContextBranchRelocationResult {\n    readonly childSessionId: SessionId;\n}',
   },
@@ -3032,8 +3047,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ContextRecommendationBase {\n    readonly planRevision: number;\n    readonly graphRevision: string;\n    readonly activeSessionId: SessionId;\n}',
   },
   {
+    name: 'ContextRecommendationMode',
+    declaration: 'export type ContextRecommendationMode = \'fast\' | \'deep\';',
+  },
+  {
     name: 'ContextRecommendationProposal',
-    declaration: 'export interface ContextRecommendationProposal {\n    readonly base: ContextRecommendationBase;\n    readonly currentNodeIds: readonly string[];\n    readonly proposedNodeIds: readonly string[];\n    readonly addedNodeIds: readonly string[];\n    readonly removedNodeIds: readonly string[];\n    readonly selection: readonly ContextSelectionRecommendation[];\n    readonly archive: readonly ContextArchiveCandidate[];\n}',
+    declaration: 'export interface ContextRecommendationProposal {\n    readonly mode: ContextRecommendationMode;\n    readonly base: ContextRecommendationBase;\n    readonly currentNodeIds: readonly string[];\n    readonly proposedNodeIds: readonly string[];\n    readonly addedNodeIds: readonly string[];\n    readonly removedNodeIds: readonly string[];\n    readonly selection: readonly ContextSelectionRecommendation[];\n    readonly archive: readonly ContextArchiveCandidate[];\n}',
   },
   {
     name: 'ContextReplacementNode',

@@ -789,13 +789,28 @@ Durable Context Plan mutations and native Session-family graph reads.
 @Remote('familyPage') async familyPage(agent: Agent, after?: number, limit?: number): Promise<ContextFamilyGraphPage>
 
 /**
- * Analyze one exact graph snapshot through an isolated Harness one-shot Agent.
+ * Analyze one exact graph snapshot in manually selected Fast or Deep mode.
  * @param agent - Live idle Agent whose route and native Session family are reviewed.
  * @param base - Expected plan revision, graph watermark, and active Session identity.
  * @param objective - Optional review objective; the latest user input is the fallback.
+ * @param mode - Fast bounded classifier (default) or isolated full-tree Harness child.
  * @returns An ephemeral, validated proposal that has not mutated the Context Plan.
  */
-@Remote('recommend') async recommend( agent: Agent, base: ContextRecommendationBase, objective?: string, ): Promise<ContextRecommendationProposal>
+@Remote('recommend') async recommend( agent: Agent, base: ContextRecommendationBase, objective?: string, mode?: ContextRecommendationMode, ): Promise<ContextRecommendationProposal>
+
+/**
+ * Cancel only the recommendation owned by this native Session family.
+ * @param agent - Live Agent identifying the family whose review is cancelled.
+ */
+@Remote('cancelRecommendation') cancelRecommendation(agent: Agent): void
+
+/**
+ * Validate a suggestion and return the exact native Host fork boundary.
+ * @param agent - Live idle Agent whose source Session owns the reviewed Turn.
+ * @param suggestionId - Durable suggestion identity returned by `get`.
+ * @returns The source Session and stable event boundary for native Host fork.
+ */
+@Remote('prepareBranchSuggestion') prepareBranchSuggestion(agent: Agent, suggestionId: string): ContextBranchRelocationPreparation
 
 /**
  * Set or clear one message's explicit context mode.
@@ -832,9 +847,10 @@ Durable Context Plan mutations and native Session-family graph reads.
  * Move one suggested completed Q&A into a deterministic native child Branch.
  * @param agent - Live idle Agent whose source Session owns the reviewed Turn.
  * @param suggestionId - Durable suggestion identity returned by `get`.
+ * @param childSessionId - Native Agent-backed child created from the prepared boundary.
  * @returns The native child Session created by, or recovered for, this relocation.
  */
-@Remote('acceptBranchSuggestion') async acceptBranchSuggestion(agent: Agent, suggestionId: string): Promise<ContextBranchRelocationResult>
+@Remote('acceptBranchSuggestion') async acceptBranchSuggestion( agent: Agent, suggestionId: string, childSessionId: SessionId, ): Promise<ContextBranchRelocationResult>
 
 /**
  * Restore a node's original semantics while preserving Include/Exclude state.
@@ -870,7 +886,7 @@ Durable Context Plan mutations and native Session-family graph reads.
 @Remote('redo') redo(agent: Agent, ref: ContextPlanRef): ContextifyView
 ```
 
-Source: [`packages/context/contextify/src/index.ts:179`](../../packages/context/contextify/src/index.ts)
+Source: [`packages/context/contextify/src/index.ts:183`](../../packages/context/contextify/src/index.ts)
 
 <a id="agent-events"></a>
 

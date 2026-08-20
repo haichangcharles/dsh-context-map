@@ -3,6 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { agentEvents, Inbox, type Agent, type AgentOptions, type AgentStatus } from '@deepseek-ai/dsh-agent'
 import ContextCompilerRegistry from '@deepseek-ai/dsh-context-compiler'
 import LlmRuntime, {
+  CallId,
   createAssistantMessage,
   createUserMessage,
   ReasoningEffortId,
@@ -11,6 +12,8 @@ import LlmRuntime, {
   type StreamChunk,
 } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId, type Session } from '@deepseek-ai/dsh-session'
+import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import ToolRuntime from '@deepseek-ai/dsh-tools'
 import type { SessionInspection } from '@deepseek-ai/dsh-session-persistence'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import ContextifyService from '../src/index.ts'
@@ -83,6 +86,8 @@ async function harness() {
   await ctx.plugin(SessionStore)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(LlmRuntime)
+  await ctx.plugin(SystemPrompt)
+  await ctx.plugin(ToolRuntime)
   await ctx.plugin(ContextCompilerRegistry)
   await ctx.plugin(SubagentRuntime)
   ctx.provide('sessionPersistence', {
@@ -256,8 +261,12 @@ describe('ContextifyService native Session family', () => {
     const suggestion = ctx.contextify.get(active.agent).branchSuggestion
     expect(suggestion).toMatchObject({ reason: 'Parallel topic', confidence: 0.91 })
 
-    const first = await ctx.contextify.acceptBranchSuggestion(active.agent, suggestion!.id)
-    const second = await ctx.contextify.acceptBranchSuggestion(active.agent, suggestion!.id)
+    const preparation = ctx.contextify.prepareBranchSuggestion(active.agent, suggestion!.id)
+    expect(preparation).toEqual({ sourceSessionId: session.id, atSeq: target.boundary - 4 })
+    const nativeChild = ctx.sessions.fork(session, preparation.atSeq, SessionId('native-branch-child'))
+    start(nativeChild)
+    const first = await ctx.contextify.acceptBranchSuggestion(active.agent, suggestion!.id, nativeChild.id)
+    const second = await ctx.contextify.acceptBranchSuggestion(active.agent, suggestion!.id, nativeChild.id)
     expect(second).toEqual(first)
     const child = ctx.sessions.get(first.childSessionId)!
     expect(child.header.parentSession).toBe(session.id)
@@ -267,6 +276,74 @@ describe('ContextifyService native Session family', () => {
     expect(child.events.filter(event => event.type === 'assistant/message').at(-1)?.data.message.content)
       .toEqual([{ type: 'text', text: 'side answer' }])
     expect(ctx.contextify.get(active.agent).plan.replacements).toHaveLength(2)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(child.events.some(event => event.type === 'contextify/branch-review')).toBe(false)
+  })
+
+  it('rejects relocation into a bare live Session without a native Agent', async () => {
+    const { ctx, start } = await harness()
+    const session = ctx.sessions.create(SessionId('branch-native-agent-source'))
+    const active = start(session)
+    const service = ctx.contextify as unknown as {
+      promptSettings: () => ContextifyPromptSettings
+    }
+    service.promptSettings = () => ({ ...CONTEXTIFY_DEFAULT_SETTINGS, automaticBranchReview: true })
+    ctx.llm.registerAdapter(['mock'], new class extends OffReasoningAdapter {
+      override async * stream(): AsyncIterable<StreamChunk> {
+        const text = '{"action":"suggest_branch","confidence":0.99,"reason":"Parallel topic"}'
+        yield { type: 'block-start', index: 0, blockType: 'text' }
+        yield { type: 'text-delta', index: 0, text }
+        yield { type: 'block-end', index: 0, block: { type: 'text', text } }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+      }
+    }())
+    appendClosedTurn(session, 1, 'main topic', 'main answer')
+    const target = appendClosedTurn(session, 2, 'side topic', 'side answer')
+    await vi.waitFor(() => { expect(ctx.contextify.get(active.agent).branchSuggestion).toBeDefined() })
+    const suggestion = ctx.contextify.get(active.agent).branchSuggestion!
+    const bare = ctx.sessions.fork(session, target.boundary - 4, SessionId('bare-branch-child'))
+
+    await expect(ctx.contextify.acceptBranchSuggestion(active.agent, suggestion.id, bare.id))
+      .rejects.toThrow(/native Agent/)
+  })
+
+  it('exposes an explicit Branch request tool even when automatic review is disabled', async () => {
+    const { ctx, start } = await harness()
+    const session = ctx.sessions.create(SessionId('branch-explicit-tool'))
+    const active = start(session)
+    appendClosedTurn(session, 1, 'main topic', 'main answer')
+    session.append('turn/start', { turn: 2 })
+    session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'Please move this Q&A to a new branch' }],
+      source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+
+    expect(ctx.tools.schemas(active.agent).map(tool => tool.name)).toContain('request_context_branch')
+    const result = await ctx.tools.execute({
+      agent: active.agent,
+      signal: new AbortController().signal,
+      callId: CallId('request-branch'),
+      name: 'request_context_branch',
+      arguments: { reason: 'The user explicitly requested a branch.' },
+    })
+    expect(result.isError).toBe(false)
+    session.append('assistant/message', {
+      turn: 2,
+      step: 1,
+      message: createAssistantMessage({
+        content: [{ type: 'text', text: 'I will offer a branch confirmation.' }],
+        source: { provider: 'mock', model: 'mock' },
+      }),
+    }, { surfaceOp: 'append' })
+    const end = session.append('turn/end', { turn: 2, reason: { kind: 'completed' } })
+
+    await vi.waitFor(() => {
+      expect(ctx.contextify.get(active.agent).branchSuggestion).toMatchObject({
+        boundaryAfter: end.seq,
+        confidence: 1,
+        reason: 'The user explicitly requested a branch.',
+      })
+    })
   })
 
   it('drops an asynchronous Branch suggestion when the conversation advances before it returns', async () => {

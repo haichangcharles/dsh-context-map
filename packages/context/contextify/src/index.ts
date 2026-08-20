@@ -7,6 +7,7 @@ import { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-context-compiler'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import { installSettingsSection } from '@deepseek-ai/dsh-settings'
+import { defineTool } from '@deepseek-ai/dsh-tools'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { projectSessionFamily } from './family.ts'
 import {
@@ -48,6 +49,7 @@ import type {
   ContextFamilyGraphPage,
   ContextFamilyInspection,
   ContextBranchRelocationResult,
+  ContextBranchRelocationPreparation,
   ContextBranchSuggestion,
   ContextMessageRef,
   ContextNodeMutation,
@@ -113,6 +115,7 @@ interface BranchReviewOperation {
   readonly planRevision: number
   readonly controller: AbortController
   result?: Promise<BranchReviewResult | null>
+  explicitReason?: string
 }
 
 function exactMessage(inspection: ContextFamilyInspection, seq: number): Message | null {
@@ -183,6 +186,7 @@ export class ContextifyService extends TypertRemoteService {
   private readonly recommendations = new Map<SessionId, RecommendationOperation>()
   private readonly recommendationRoots = new Map<SessionId, SessionId>()
   private readonly branchReviews = new Map<SessionId, BranchReviewOperation>()
+  private readonly relocatingBranches = new Set<SessionId>()
   private promptSettings: () => ContextifyPromptSettings = () => CONTEXTIFY_DEFAULT_SETTINGS
   private deepRecommendation = runDeepRecommendation
 
@@ -206,6 +210,39 @@ export class ContextifyService extends TypertRemoteService {
       version: 3,
       select: request => ({ eventSeqs: compileContextify(request).eventSeqs }),
     }))
+    ctx.inject(['tools'], (toolCtx) => {
+      toolCtx.effect(() => toolCtx.tools.register(defineTool({
+        name: 'request_context_branch',
+        description: 'Request a user-confirmed native conversation branch for the current Q&A. '
+          + 'Use this when the direct human explicitly asks to open, create, or move the current exchange '
+          + 'to a new branch. This schedules a confirmation card after the final answer; it does not create '
+          + 'the branch by itself, so do not claim that the branch already exists.',
+        parameters: {
+          reason: {
+            type: 'string',
+            required: true,
+            description: 'Short user-facing explanation of why this Q&A should become a separate branch.',
+          },
+        },
+        output: {
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              status: { type: 'string', required: true, enum: ['pending_user_confirmation'] },
+            },
+          },
+          render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+        },
+        execute: (args, exec) => {
+          if (exec.agent === undefined) {
+            throw new ContextifyError('Branch requests require an active Agent', 'CONTEXTIFY_INVALID_TRANSITION')
+          }
+          this.requestExplicitBranch(exec.agent, args.reason)
+          return Promise.resolve({ status: 'pending_user_confirmation' as const })
+        },
+      })))
+    })
     ctx.on('agent/session-start', ({ agent }) => {
       const latest = agent.session.events.findLast(event => event.type === 'contextify/plan')
       const current = latest?.data as unknown
@@ -222,6 +259,7 @@ export class ContextifyService extends TypertRemoteService {
     })
     ctx.on('session/event', (session, event) => {
       if (session.header.origin === 'subagent') return
+      if (this.relocatingBranches.has(session.id)) return
       const agent = ctx.agents.get(session.id)
       if (agent === undefined) return
       if (event.type === 'user/message' && event.surfaceOp === 'append'
@@ -237,7 +275,8 @@ export class ContextifyService extends TypertRemoteService {
       if (event.type !== 'turn/end') return
       const operation = this.branchReviews.get(session.id)
       if (operation === undefined || operation.turn !== event.data.turn) return
-      if (event.data.reason.kind !== 'completed' || !this.promptSettings().automaticBranchReview) {
+      if (event.data.reason.kind !== 'completed'
+        || (!this.promptSettings().automaticBranchReview && operation.explicitReason === undefined)) {
         operation.controller.abort('Branch candidate Turn did not complete')
         this.branchReviews.delete(session.id)
         return
@@ -484,7 +523,10 @@ export class ContextifyService extends TypertRemoteService {
     }
   }
 
-  /** Cancel only the recommendation owned by this native Session family. */
+  /**
+   * Cancel only the recommendation owned by this native Session family.
+   * @param agent - Live Agent identifying the family whose review is cancelled.
+   */
   @Remote('cancelRecommendation')
   cancelRecommendation(agent: Agent): void {
     this.assertLive(agent)
@@ -494,7 +536,6 @@ export class ContextifyService extends TypertRemoteService {
 
   /** Start one direct classifier from the first human input without waiting for the main answer. */
   private startBranchReview(agent: Agent, inputSeq: number): void {
-    if (!this.promptSettings().automaticBranchReview) return
     const start = agent.session.events.slice(0, inputSeq).findLast(event => event.type === 'turn/start')
     if (start?.type !== 'turn/start') return
     const priorHuman = agent.session.events.slice(start.seq + 1, inputSeq).some(event =>
@@ -509,12 +550,31 @@ export class ContextifyService extends TypertRemoteService {
       controller,
     }
     this.branchReviews.set(agent.id, operation)
-    this.launchBranchReview(agent, operation)
+    if (this.promptSettings().automaticBranchReview) this.launchBranchReview(agent, operation)
+  }
+
+  /** Convert one explicit model tool call into a post-Turn user confirmation. */
+  private requestExplicitBranch(agent: Agent, reason: string): void {
+    this.assertLive(agent)
+    const explanation = Array.from(reason.trim()).slice(0, 400).join('')
+    if (explanation.length === 0) {
+      throw new ContextifyError('Branch request reason must be non-empty', 'CONTEXTIFY_INVALID_TRANSITION')
+    }
+    const operation = this.branchReviews.get(agent.id)
+    if (operation === undefined) {
+      throw new ContextifyError(
+        'Branch requests are available only during the current direct human Turn',
+        'CONTEXTIFY_INVALID_TRANSITION',
+      )
+    }
+    operation.explicitReason = explanation
+    operation.controller.abort('Explicit Branch request superseded automatic review')
   }
 
   /** Launch once a concrete Session request route is available. */
   private launchBranchReview(agent: Agent, operation: BranchReviewOperation): void {
-    if (operation.result !== undefined || operation.controller.signal.aborted) return
+    if (!this.promptSettings().automaticBranchReview || operation.explicitReason !== undefined
+      || operation.result !== undefined || operation.controller.signal.aborted) return
     const config = agent.session.requestHeader()?.config
     const latestOutput = agent.session.events.findLast(event => event.type === 'assistant/message')
     const route = latestOutput?.type === 'assistant/message' ? latestOutput.data.message.source : undefined
@@ -593,11 +653,15 @@ export class ContextifyService extends TypertRemoteService {
     turnEndSeq: number,
     operation: BranchReviewOperation,
   ): Promise<void> {
-    const result = operation.result === undefined ? null : await operation.result
+    const explicitReason = operation.explicitReason
+    const result = explicitReason === undefined && operation.result !== undefined
+      ? await operation.result
+      : null
     if (this.branchReviews.get(agent.id) !== operation) return
     this.branchReviews.delete(agent.id)
-    if (this.ctx.agents.get(agent.id) !== agent || !this.promptSettings().automaticBranchReview
-      || operation.controller.signal.aborted
+    if (this.ctx.agents.get(agent.id) !== agent
+      || (explicitReason === undefined && !this.promptSettings().automaticBranchReview)
+      || (explicitReason === undefined && operation.controller.signal.aborted)
       || currentContextPlan(agent.session).revision !== operation.planRevision
       || agent.session.events.some(event => event.type === 'contextify/branch-review'
         && event.data.turnEndSeq === turnEndSeq)) return
@@ -610,19 +674,54 @@ export class ContextifyService extends TypertRemoteService {
         || event.type === 'user/message' || event.type === 'assistant/message'
         || event.type === 'tool/result')) return
     const decision = result?.decision
-    const suggestion: ContextBranchSuggestion | null = result !== null
-      && decision !== undefined && decision.action === 'suggest_branch'
-      && decision.confidence >= result.threshold
+    const acceptedDecision = explicitReason !== undefined
+      ? { confidence: 1, reason: explicitReason }
+      : result !== null && decision !== undefined && decision.action === 'suggest_branch'
+        && decision.confidence >= result.threshold
+        ? decision
+        : undefined
+    const suggestion: ContextBranchSuggestion | null = candidate.boundaryBefore >= 0
+      && acceptedDecision !== undefined
       ? Object.freeze({
         ...candidate,
         id: branchRelocationKey(agent.id, turnEndSeq),
-        confidence: decision.confidence,
-        reason: decision.reason,
+        confidence: acceptedDecision.confidence,
+        reason: acceptedDecision.reason,
         planRevision: operation.planRevision,
         graphRevision: family.revision,
       })
       : null
     agent.session.append('contextify/branch-review', { suggestion, turnEndSeq })
+  }
+
+  /**
+   * Validate a suggestion and return the exact native Host fork boundary.
+   * @param agent - Live idle Agent whose source Session owns the reviewed Turn.
+   * @param suggestionId - Durable suggestion identity returned by `get`.
+   * @returns The source Session and stable event boundary for native Host fork.
+   */
+  @Remote('prepareBranchSuggestion')
+  prepareBranchSuggestion(agent: Agent, suggestionId: string): ContextBranchRelocationPreparation {
+    this.assertLive(agent)
+    if (agent.status !== 'idle') {
+      throw new ContextifyError('Branch relocation requires an idle Agent', 'CONTEXTIFY_AGENT_BUSY')
+    }
+    const review = agent.session.events.findLast(event => event.type === 'contextify/branch-review'
+      && event.data.suggestion?.id === suggestionId)
+    if (review?.type !== 'contextify/branch-review' || review.data.suggestion === null) {
+      throw new ContextifyError('Branch suggestion is unavailable', 'CONTEXTIFY_INVALID_TRANSITION')
+    }
+    const suggestion = review.data.suggestion
+    if (suggestion.boundaryBefore < 0) {
+      throw new ContextifyError('the first conversation Turn has no preceding Branch boundary', 'CONTEXTIFY_INVALID_TRANSITION')
+    }
+    const laterConversation = agent.session.events.slice(suggestion.boundaryAfter + 1).some(event =>
+      event.type === 'turn/start' || event.type === 'turn/end'
+      || event.type === 'user/message' || event.type === 'assistant/message' || event.type === 'tool/result')
+    if (laterConversation) {
+      throw new ContextifyError('the source conversation advanced after the Branch suggestion', 'CONTEXTIFY_STALE_GRAPH')
+    }
+    return { sourceSessionId: agent.id, atSeq: suggestion.boundaryBefore }
   }
 
   /**
@@ -768,10 +867,15 @@ export class ContextifyService extends TypertRemoteService {
    * Move one suggested completed Q&A into a deterministic native child Branch.
    * @param agent - Live idle Agent whose source Session owns the reviewed Turn.
    * @param suggestionId - Durable suggestion identity returned by `get`.
+   * @param childSessionId - Native Agent-backed child created from the prepared boundary.
    * @returns The native child Session created by, or recovered for, this relocation.
    */
   @Remote('acceptBranchSuggestion')
-  async acceptBranchSuggestion(agent: Agent, suggestionId: string): Promise<ContextBranchRelocationResult> {
+  async acceptBranchSuggestion(
+    agent: Agent,
+    suggestionId: string,
+    childSessionId: SessionId,
+  ): Promise<ContextBranchRelocationResult> {
     this.assertLive(agent)
     if (agent.status !== 'idle') throw new ContextifyError('Branch relocation requires an idle Agent', 'CONTEXTIFY_AGENT_BUSY')
     const review = agent.session.events.findLast(event => event.type === 'contextify/branch-review'
@@ -781,11 +885,6 @@ export class ContextifyService extends TypertRemoteService {
     }
     const suggestion = review.data.suggestion
     const key = branchRelocationKey(agent.id, suggestion.boundaryAfter)
-    const childId = SessionId(`${agent.id}-branch-${key.slice(0, 12)}`)
-    const existing = this.ctx.sessions.get(childId)
-    if (existing?.events.some(event => event.type === 'contextify/branch-relocation' && event.data.key === key) === true) {
-      return { childSessionId: childId }
-    }
     const laterConversation = agent.session.events.slice(suggestion.boundaryAfter + 1).some(event =>
       event.type === 'turn/start' || event.type === 'turn/end'
       || event.type === 'user/message' || event.type === 'assistant/message' || event.type === 'tool/result')
@@ -804,6 +903,49 @@ export class ContextifyService extends TypertRemoteService {
       if (plan.revision !== suggestion.planRevision) {
         throw new ContextifyError('the Context Plan changed after the Branch suggestion', 'CONTEXTIFY_STALE_REVISION')
       }
+    }
+    const childAgent = this.ctx.agents.get(childSessionId)
+    if (childAgent === undefined || this.ctx.sessions.get(childSessionId) !== childAgent.session) {
+      throw new ContextifyError('Branch relocation requires a native Agent-backed child Session', 'CONTEXTIFY_INVALID_TRANSITION')
+    }
+    if (childAgent.status !== 'idle') {
+      throw new ContextifyError('the native Branch Agent must be idle', 'CONTEXTIFY_AGENT_BUSY')
+    }
+    const child = childAgent.session
+    if (child.header.parentSession !== agent.id
+      || child.header.seedLength !== suggestion.boundaryBefore + 1) {
+      throw new ContextifyError('the native Branch does not match the suggested boundary', 'CONTEXTIFY_INVALID_TRANSITION')
+    }
+    const inputEvent = agent.session.events[suggestion.input.seq]
+    const outputEvent = agent.session.events[suggestion.output.seq]
+    if (inputEvent?.type !== 'user/message' || outputEvent?.type !== 'assistant/message') {
+      throw new ContextifyError('the suggested Q&A source is unavailable', 'CONTEXTIFY_INVALID_NODE')
+    }
+    const relocated = child.events.some(event => event.type === 'contextify/branch-relocation'
+      && event.data.key === key)
+    if (!relocated) {
+      const advancedChild = child.events.slice(child.header.seedLength).some(event =>
+        event.type === 'turn/start' || event.type === 'turn/end'
+        || event.type === 'user/message' || event.type === 'assistant/message' || event.type === 'tool/result')
+      if (advancedChild) {
+        throw new ContextifyError('the native Branch advanced before relocation completed', 'CONTEXTIFY_STALE_GRAPH')
+      }
+      this.relocatingBranches.add(child.id)
+      try {
+        child.append('turn/start', { turn: suggestion.turn })
+        child.append('user/message', structuredClone(inputEvent.data), { surfaceOp: 'append' })
+        child.append('assistant/message', structuredClone(outputEvent.data), { surfaceOp: 'append' })
+        child.append('turn/end', { turn: suggestion.turn, reason: { kind: 'completed' } })
+        child.append('contextify/branch-relocation', {
+          key,
+          sourceSessionId: agent.id,
+          sourceTurnEndSeq: suggestion.boundaryAfter,
+        })
+      } finally {
+        this.relocatingBranches.delete(child.id)
+      }
+    }
+    if (missing.length > 0) {
       const replacements = missing.map(node => this.createPlaceholderReplacement(
         agent.session, family, node, 'Moved to a native Branch',
       ))
@@ -814,24 +956,6 @@ export class ContextifyService extends TypertRemoteService {
       })
       this.commit(agent.session, plan)
     }
-    if (existing !== undefined) {
-      throw new ContextifyError('the deterministic Branch exists without a relocation marker', 'CONTEXTIFY_INVALID_TRANSITION')
-    }
-    const inputEvent = agent.session.events[suggestion.input.seq]
-    const outputEvent = agent.session.events[suggestion.output.seq]
-    if (inputEvent?.type !== 'user/message' || outputEvent?.type !== 'assistant/message') {
-      throw new ContextifyError('the suggested Q&A source is unavailable', 'CONTEXTIFY_INVALID_NODE')
-    }
-    const child = this.ctx.sessions.fork(agent.session, suggestion.boundaryBefore, childId)
-    child.append('turn/start', { turn: suggestion.turn })
-    child.append('user/message', structuredClone(inputEvent.data), { surfaceOp: 'append' })
-    child.append('assistant/message', structuredClone(outputEvent.data), { surfaceOp: 'append' })
-    child.append('turn/end', { turn: suggestion.turn, reason: { kind: 'completed' } })
-    child.append('contextify/branch-relocation', {
-      key,
-      sourceSessionId: agent.id,
-      sourceTurnEndSeq: suggestion.boundaryAfter,
-    })
     return { childSessionId: child.id }
   }
 

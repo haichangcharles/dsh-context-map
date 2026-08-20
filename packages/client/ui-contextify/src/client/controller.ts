@@ -1,6 +1,8 @@
 /** Shared observable bridge between Chat actions, Context Map, and Contextify Remote. */
+import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type {
   ContextBranchRelocationResult,
+  ContextBranchRelocationPreparation,
   ContextFamilyGraph,
   ContextFamilyGraphPage,
   ContextMessageRef,
@@ -43,7 +45,12 @@ export interface ContextifyTransport {
     expectedGraphRevision?: string,
   ) => Promise<ContextifyView>
   restoreNode: (ref: ContextPlanRef, node: ContextMessageRef) => Promise<ContextifyView>
-  acceptBranchSuggestion: (suggestionId: string) => Promise<ContextBranchRelocationResult>
+  prepareBranchSuggestion: (suggestionId: string) => Promise<ContextBranchRelocationPreparation>
+  forkNativeBranch: (preparation: ContextBranchRelocationPreparation) => Promise<SessionId>
+  acceptBranchSuggestion: (
+    suggestionId: string,
+    childSessionId: SessionId,
+  ) => Promise<ContextBranchRelocationResult>
 }
 
 /** Ephemeral review state. Recommendations never mutate the Context Plan by themselves. */
@@ -298,7 +305,9 @@ export class ContextifyController {
    * @returns The native Branch relocation result.
    */
   async acceptBranchSuggestion(suggestionId: string): Promise<ContextBranchRelocationResult> {
-    const result = await this.transport.acceptBranchSuggestion(suggestionId)
+    const preparation = await this.transport.prepareBranchSuggestion(suggestionId)
+    const childSessionId = await this.transport.forkNativeBranch(preparation)
+    const result = await this.transport.acceptBranchSuggestion(suggestionId, childSessionId)
     await this.refresh()
     return result
   }

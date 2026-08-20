@@ -71,6 +71,7 @@ async function bench(withCleanup = false) {
     cancelRecommendation: answer('cancelRecommendation', undefined),
     archiveNode: answer('archiveNode', view),
     restoreNode: answer('restoreNode', view),
+    prepareBranchSuggestion: answer('prepareBranchSuggestion', { sourceSessionId: source, atSeq: 3 }),
     acceptBranchSuggestion: answer('acceptBranchSuggestion', { childSessionId: child }),
   })
   const openDetails = vi.fn()

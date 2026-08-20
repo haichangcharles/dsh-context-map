@@ -684,6 +684,54 @@ describe('ContextMessageAction', () => {
 })
 
 describe('ContextifyController', () => {
+  it('creates an Agent-backed native fork before completing a Branch relocation', async () => {
+    const currentView = fixture().view!
+    const preparation = { sourceSessionId: root, atSeq: 4 }
+    const calls: string[] = []
+    const transport: ContextifyTransport = {
+      get: async () => currentView,
+      familyPage: async () => ({
+        asOfSeq: 20,
+        revision: 'family-20',
+        rootSessionId: root,
+        activeSessionId: child,
+        sessions: fixture().graph!.sessions,
+        edges: fixture().graph!.edges,
+        records: fixture().graph!.nodes,
+        totalNodeCount: 3,
+      }),
+      setNodeMode: vi.fn(async () => currentView),
+      setNodeModes: vi.fn(async () => currentView),
+      reset: vi.fn(async () => currentView),
+      undo: vi.fn(async () => currentView),
+      redo: vi.fn(async () => currentView),
+      recommend: vi.fn(async () => ({
+        mode: 'fast' as const,
+        base: { planRevision: 3, graphRevision: 'family-20', activeSessionId: child },
+        currentNodeIds: [], proposedNodeIds: [], addedNodeIds: [], removedNodeIds: [], selection: [], archive: [],
+      })),
+      cancelRecommendation: vi.fn(async () => {}),
+      archiveNode: vi.fn(async () => currentView),
+      restoreNode: vi.fn(async () => currentView),
+      prepareBranchSuggestion: vi.fn(async () => { calls.push('prepare'); return preparation }),
+      forkNativeBranch: vi.fn(async (value) => {
+        calls.push('fork')
+        expect(value).toEqual(preparation)
+        return child
+      }),
+      acceptBranchSuggestion: vi.fn(async (suggestionId: string, childSessionId: SessionId) => {
+        calls.push('complete')
+        expect([suggestionId, childSessionId]).toEqual(['suggestion-1', child])
+        return { childSessionId }
+      }),
+    }
+    const controller = new ContextifyController(transport)
+    await controller.refresh()
+
+    await expect(controller.acceptBranchSuggestion('suggestion-1')).resolves.toEqual({ childSessionId: child })
+    expect(calls).toEqual(['prepare', 'fork', 'complete'])
+  })
+
   it('keeps an equivalent proposal across polling and marks it stale when its graph base changes', async () => {
     let currentView = fixture().view!
     let resolveProposal!: (value: Awaited<ReturnType<ContextifyTransport['recommend']>>) => void
@@ -711,6 +759,8 @@ describe('ContextifyController', () => {
       cancelRecommendation: vi.fn(async () => {}),
       archiveNode: vi.fn(async () => currentView),
       restoreNode: vi.fn(async () => currentView),
+      prepareBranchSuggestion: vi.fn(async () => ({ sourceSessionId: root, atSeq: 4 })),
+      forkNativeBranch: vi.fn(async () => child),
       acceptBranchSuggestion: vi.fn(async () => ({ childSessionId: child })),
     }
     const controller = new ContextifyController(transport)
@@ -766,6 +816,8 @@ describe('ContextifyController', () => {
       cancelRecommendation: vi.fn(async () => {}),
       archiveNode: vi.fn(async () => fixture().view!),
       restoreNode: vi.fn(async () => fixture().view!),
+      prepareBranchSuggestion: vi.fn(async () => ({ sourceSessionId: root, atSeq: 4 })),
+      forkNativeBranch: vi.fn(async () => child),
       acceptBranchSuggestion: vi.fn(async () => ({ childSessionId: child })),
     }
     const controller = new ContextifyController(transport)
@@ -809,6 +861,8 @@ describe('ContextifyController', () => {
       cancelRecommendation: vi.fn(async () => {}),
       archiveNode: vi.fn(async () => currentView),
       restoreNode: vi.fn(async () => currentView),
+      prepareBranchSuggestion: vi.fn(async () => ({ sourceSessionId: root, atSeq: 4 })),
+      forkNativeBranch: vi.fn(async () => child),
       acceptBranchSuggestion: vi.fn(async () => ({ childSessionId: child })),
     }
     const controller = new ContextifyController(transport)

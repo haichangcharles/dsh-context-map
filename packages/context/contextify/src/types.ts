@@ -215,6 +215,12 @@ export interface ContextBranchSuggestion extends ContextBranchCandidate {
 /** Idempotent native relocation result. */
 export interface ContextBranchRelocationResult { readonly childSessionId: SessionId }
 
+/** Native Host fork input validated before a suggested Q&A relocation. */
+export interface ContextBranchRelocationPreparation {
+  readonly sourceSessionId: SessionId
+  readonly atSeq: number
+}
+
 /** One bounded page of a native Session family's canonical message nodes. */
 export interface ContextFamilyGraphPage {
   readonly asOfSeq: number
