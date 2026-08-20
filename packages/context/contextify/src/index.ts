@@ -10,10 +10,10 @@ import { installSettingsSection } from '@deepseek-ai/dsh-settings'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { projectSessionFamily } from './family.ts'
 import {
-  buildRecommendationInput,
   parseRecommendationDecisionText,
   validateRecommendation,
 } from './recommendation.ts'
+import { buildFastRecommendationInput } from './fast-recommendation.ts'
 import { branchRelocationKey, completedTurnCandidate, parseBranchDecisionText } from './branch-review.ts'
 import {
   CONTEXTIFY_SETTINGS_NAMESPACE,
@@ -298,12 +298,20 @@ export class ContextifyService extends TypertRemoteService {
         .map(node => node.id))
       for (const excluded of plan.excluded) effective.delete(excluded.nodeId)
       for (const included of plan.included) effective.add(included.nodeId)
+      const fallbackObjective = [...agent.session.events].reverse().find(event =>
+        event.type === 'user/message' && event.data.source.kind === 'user')
+      const goal = boundedObjective(objective?.trim() || (fallbackObjective?.type === 'user/message'
+        ? recommendationText(fallbackObjective.data)
+        : 'Improve the next response context.'))
       let input
       try {
-        input = buildRecommendationInput({
+        input = buildFastRecommendationInput({
           graph: family.graph,
           contents,
+          objective: goal,
           effectiveIncludedNodeIds: [...effective],
+          explicitIncludedNodeIds: plan.included.map(item => item.nodeId),
+          explicitExcludedNodeIds: plan.excluded.map(item => item.nodeId),
         })
       } catch (cause) {
         throw new ContextifyError(
@@ -311,11 +319,6 @@ export class ContextifyService extends TypertRemoteService {
           'CONTEXTIFY_RECOMMENDATION_TOO_LARGE',
         )
       }
-      const fallbackObjective = [...agent.session.events].reverse().find(event =>
-        event.type === 'user/message' && event.data.source.kind === 'user')
-      const goal = boundedObjective(objective?.trim() || (fallbackObjective?.type === 'user/message'
-        ? recommendationText(fallbackObjective.data)
-        : 'Improve the next response context.'))
       const promptSettings = this.promptSettings()
       const contextPrompt = effectivePrompt(CONTEXTIFY_DEFAULT_PROMPTS.context, promptSettings.context)
       const archivePrompt = effectivePrompt(CONTEXTIFY_DEFAULT_PROMPTS.archive, promptSettings.archive)

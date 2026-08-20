@@ -245,6 +245,8 @@ describe('ContextifyService native Session family', () => {
     expect(captured?.temperature).toBe(0)
     expect(captured?.reasoningEffort).toBe(ReasoningEffortId('off'))
     expect(JSON.stringify(captured?.messages).length).toBeLessThan(102_000)
+    expect(proposal.mode).toBe('fast')
+    expect(JSON.stringify(captured?.messages)).toContain('recent-active')
     expect(ctx.sessions.list()).toHaveLength(1)
     expect(session.seq).toBe(before)
   })
