@@ -168,8 +168,8 @@ export function validateRecommendation(
   const root = record(value, 'recommendation')
   const nodeIds = new Set(context.graph.nodes.map(node => node.id))
   const effective = new Set(context.effectiveIncludedNodeIds)
-  const explicitIncluded = new Set(context.explicitIncludedNodeIds ?? [])
-  const explicitExcluded = new Set(context.explicitExcludedNodeIds ?? [])
+  const explicitIncluded = new Set(context.explicitIncludedNodeIds)
+  const explicitExcluded = new Set(context.explicitExcludedNodeIds)
   const allowed = new Set(['exclude', 'include', 'archive'])
   for (const key of Object.keys(root)) {
     if (!allowed.has(key)) throw new Error(`recommendation field "${key}" is unsupported`)
