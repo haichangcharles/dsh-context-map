@@ -158,6 +158,7 @@ function mount(
     undo: vi.fn(async () => {}),
     redo: vi.fn(async () => {}),
     recommend: vi.fn(async () => {}),
+    cancelRecommendation: vi.fn(async () => {}),
     applyRecommendations: vi.fn(async () => {}),
     clearRecommendation: vi.fn(),
     confirmArchive: vi.fn(async () => {}),
@@ -193,7 +194,7 @@ describe('ContextMapPanel', () => {
     const initial = fixture()
     mount({
       ...initial,
-      recommendation: { phase: 'error', error: 'Invalid recommendation JSON' },
+      recommendation: { phase: 'error', mode: 'fast', error: 'Invalid recommendation JSON' },
     })
 
     expect(screen.getAllByRole('alert')).toHaveLength(1)
@@ -507,9 +508,33 @@ describe('ContextMapPanel', () => {
     expect(h.mapActions.reset).toHaveBeenCalledOnce()
   })
 
+  it('keeps Fast as the primary action and exposes Deep only through a manual mode menu', async () => {
+    const h = mount()
+    fireEvent.click(await screen.findByRole('button', { name: 'Recommend' }))
+    expect(h.mapActions.recommend).toHaveBeenCalledWith('fast')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Recommendation mode' }))
+    const menu = screen.getByRole('menu', { name: 'Recommendation mode' })
+    expect(menu.getAttribute('data-opaque-surface')).toBe('true')
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Deep tree review' }))
+    expect(h.mapActions.recommend).toHaveBeenLastCalledWith('deep')
+  })
+
+  it('shows non-blocking Deep progress and an explicit Cancel action', () => {
+    const original = fixture()
+    const h = mount({
+      ...original,
+      recommendation: { phase: 'running', mode: 'deep' },
+    })
+    expect(screen.getByRole('button', { name: 'Inspecting tree…' }).disabled).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel Deep review' }))
+    expect(h.mapActions.cancelRecommendation).toHaveBeenCalledOnce()
+  })
+
   it('reviews recommendations without changing checkboxes before explicit acceptance', async () => {
     const original = fixture()
     const proposal = {
+      mode: 'deep' as const,
       base: { planRevision: 3, graphRevision: 'family-20', activeSessionId: child },
       currentNodeIds: ['root:1', 'root:2', 'child:8'],
       proposedNodeIds: ['root:2', 'child:8'],
@@ -532,6 +557,7 @@ describe('ContextMapPanel', () => {
     expect((checkbox as HTMLInputElement).checked).toBe(true)
     expect(screen.getByText('Suggested exclude')).toBeTruthy()
     expect(screen.getByRole('dialog', { name: 'Context recommendation review' })).toBeTruthy()
+    expect(screen.getByText('Deep tree review')).toBeTruthy()
     expect(screen.getByText('Current context')).toBeTruthy()
     expect(screen.getByText('Proposed context')).toBeTruthy()
     expect(screen.getByText('0 added')).toBeTruthy()
@@ -682,6 +708,7 @@ describe('ContextifyController', () => {
       undo: vi.fn(async () => currentView),
       redo: vi.fn(async () => currentView),
       recommend: vi.fn(() => proposalPromise),
+      cancelRecommendation: vi.fn(async () => {}),
       archiveNode: vi.fn(async () => currentView),
       restoreNode: vi.fn(async () => currentView),
       acceptBranchSuggestion: vi.fn(async () => ({ childSessionId: child })),
@@ -691,6 +718,7 @@ describe('ContextifyController', () => {
     const recommending = controller.recommend()
     expect(controller.getSnapshot().recommendation.phase).toBe('running')
     const proposal = {
+      mode: 'fast' as const,
       base: { planRevision: 3, graphRevision: 'family-20', activeSessionId: child },
       currentNodeIds: ['root:1', 'root:2', 'child:8'], proposedNodeIds: ['root:1', 'root:2', 'child:8'],
       addedNodeIds: [], removedNodeIds: [], selection: [], archive: [],
@@ -730,10 +758,12 @@ describe('ContextifyController', () => {
       undo: vi.fn(async () => fixture().view!),
       redo: vi.fn(async () => fixture().view!),
       recommend: vi.fn(async () => ({
+        mode: 'fast' as const,
         base: { planRevision: 3, graphRevision: 'family-20', activeSessionId: child },
         currentNodeIds: ['root:1', 'root:2', 'child:8'], proposedNodeIds: ['root:1', 'root:2', 'child:8'],
         addedNodeIds: [], removedNodeIds: [], selection: [], archive: [],
       })),
+      cancelRecommendation: vi.fn(async () => {}),
       archiveNode: vi.fn(async () => fixture().view!),
       restoreNode: vi.fn(async () => fixture().view!),
       acceptBranchSuggestion: vi.fn(async () => ({ childSessionId: child })),
@@ -750,6 +780,60 @@ describe('ContextifyController', () => {
       { sessionId: child, seq: 8 },
       'exclude',
     )
+  })
+
+  it('cancels a Deep review without allowing its late result to replace idle state', async () => {
+    let resolveProposal!: (value: Awaited<ReturnType<ContextifyTransport['recommend']>>) => void
+    const proposalPromise = new Promise<Awaited<ReturnType<ContextifyTransport['recommend']>>>((resolve) => {
+      resolveProposal = resolve
+    })
+    const currentView = fixture().view!
+    const transport: ContextifyTransport = {
+      get: async () => currentView,
+      familyPage: async () => ({
+        asOfSeq: 20,
+        revision: 'family-20',
+        rootSessionId: root,
+        activeSessionId: child,
+        sessions: fixture().graph!.sessions,
+        edges: fixture().graph!.edges,
+        records: fixture().graph!.nodes,
+        totalNodeCount: 3,
+      }),
+      setNodeMode: vi.fn(async () => currentView),
+      setNodeModes: vi.fn(async () => currentView),
+      reset: vi.fn(async () => currentView),
+      undo: vi.fn(async () => currentView),
+      redo: vi.fn(async () => currentView),
+      recommend: vi.fn(() => proposalPromise),
+      cancelRecommendation: vi.fn(async () => {}),
+      archiveNode: vi.fn(async () => currentView),
+      restoreNode: vi.fn(async () => currentView),
+      acceptBranchSuggestion: vi.fn(async () => ({ childSessionId: child })),
+    }
+    const controller = new ContextifyController(transport)
+    await controller.refresh()
+
+    const recommendation = controller.recommend('deep')
+    expect(controller.getSnapshot().recommendation).toEqual({ phase: 'running', mode: 'deep' })
+    expect(transport.recommend).toHaveBeenCalledWith(
+      { planRevision: 3, graphRevision: 'family-20', activeSessionId: child },
+      undefined,
+      'deep',
+    )
+
+    await controller.cancelRecommendation()
+    expect(transport.cancelRecommendation).toHaveBeenCalledOnce()
+    expect(controller.getSnapshot().recommendation).toEqual({ phase: 'idle' })
+
+    resolveProposal({
+      mode: 'deep',
+      base: { planRevision: 3, graphRevision: 'family-20', activeSessionId: child },
+      currentNodeIds: ['root:1'], proposedNodeIds: ['root:1'],
+      addedNodeIds: [], removedNodeIds: [], selection: [], archive: [],
+    })
+    await recommendation
+    expect(controller.getSnapshot().recommendation).toEqual({ phase: 'idle' })
   })
 
   it('can clear a transient graph focus target', () => {

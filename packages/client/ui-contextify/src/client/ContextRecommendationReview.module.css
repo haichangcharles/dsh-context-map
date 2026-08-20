@@ -17,6 +17,7 @@
 .header { display: flex; align-items: flex-start; gap: 10px; }
 .header div { flex: 1; }
 .header h3 { margin: 0; font-size: 13px; }
+.mode { display: inline-block; margin-top: 4px; border-radius: 99px; padding: 2px 6px; background: rgb(79 125 243 / 12%); color: #4f7df3; font-size: 9px; }
 .header p { margin: 3px 0 0; color: var(--dsw-alias-fg-secondary); font-size: 10px; }
 .header button,
 .actions button,

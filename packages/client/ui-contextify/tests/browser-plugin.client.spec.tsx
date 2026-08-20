@@ -30,6 +30,7 @@ async function bench(withCleanup = false) {
     preview: 'hello', time: 7, branchAtSeq: 9, sessionIds: [source], activeEventSeq: 7,
   }
   const proposal = {
+    mode: 'fast' as const,
     base: { planRevision: 4, graphRevision: 'family-7', activeSessionId: source },
     currentNodeIds: [record.id],
     proposedNodeIds: [],
@@ -67,6 +68,7 @@ async function bench(withCleanup = false) {
     undo: answer('undo', view),
     redo: answer('redo', view),
     recommend: answer('recommend', proposal),
+    cancelRecommendation: answer('cancelRecommendation', undefined),
     archiveNode: answer('archiveNode', view),
     restoreNode: answer('restoreNode', view),
     acceptBranchSuggestion: answer('acceptBranchSuggestion', { childSessionId: child }),

@@ -7,6 +7,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import type {
   ContextArchiveCandidate, ContextFamilyGraphNode, ContextMessageRef, ContextNodeMutation,
+  ContextRecommendationMode,
 } from '@deepseek-ai/dsh-contextify/types'
 import type { WorkspaceListState } from '@deepseek-ai/dsh-client-runtime/client'
 import type { HostObservable, PropsStore, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
@@ -30,7 +31,8 @@ export interface ContextMapActions {
   reset: () => Promise<void>
   undo: () => Promise<void>
   redo: () => Promise<void>
-  recommend: (objective?: string) => Promise<void>
+  recommend: (mode?: ContextRecommendationMode, objective?: string) => Promise<void>
+  cancelRecommendation: () => Promise<void>
   applyRecommendations: () => Promise<void>
   clearRecommendation: () => void
   confirmArchive: (candidate: ContextArchiveCandidate) => Promise<void>
@@ -94,6 +96,7 @@ export function ContextMapPanel({
   const [originalPreview, setOriginalPreview] = useState<ContextFamilyGraphNode | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [pendingNodeId, setPendingNodeId] = useState<string | null>(null)
+  const [recommendationMenuOpen, setRecommendationMenuOpen] = useState(false)
   const [optimisticModes, setOptimisticModes] = useState<Record<string, ContextNodeMode>>({})
   const [transientPositions, setTransientPositions] = useState<Record<string, CanvasPoint>>({})
   const [measuredSizes, setMeasuredSizes] = useState<ContextMapNodeSizes>({})
@@ -179,13 +182,15 @@ export function ContextMapPanel({
   }, [records])
   useEffect(() => { setResultIndex(0) }, [normalizedQuery])
   useEffect(() => {
-    if (menu === null) return
+    if (menu === null && !recommendationMenuOpen) return
     const closeOnEscape = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setMenu(null)
+      if (event.key !== 'Escape') return
+      setMenu(null)
+      setRecommendationMenuOpen(false)
     }
     window.addEventListener('keydown', closeOnEscape)
     return () => { window.removeEventListener('keydown', closeOnEscape) }
-  }, [menu])
+  }, [menu, recommendationMenuOpen])
   useEffect(() => {
     if (!graphMeasured || instance === null || records.length === 0 || initialFitCompleted.current) return
     if (focusTargetId !== undefined) {
@@ -362,17 +367,56 @@ export function ContextMapPanel({
           disabled={instance === null || records.length === 0}
           onClick={relayout}
         >Re-layout</button>
-        <button
-          ref={recommendButtonRef}
+        <div className={css.recommendationActions}>
+          <button
+            ref={recommendButtonRef}
+            type="button"
+            disabled={mutationPending || snapshot.recommendation.phase === 'running' || graph === undefined}
+            onClick={() => {
+              setActionError(null)
+              setRecommendationMenuOpen(false)
+              // The controller publishes recommendation failures itself. Avoid
+              // duplicating the same failure in the generic mutation alert.
+              void mapActions.recommend('fast').catch(() => {})
+            }}
+          >{snapshot.recommendation.phase === 'running'
+              ? snapshot.recommendation.mode === 'deep' ? 'Inspecting tree…' : 'Reviewing…'
+              : 'Recommend'}</button>
+          <button
+            type="button"
+            aria-label="Recommendation mode"
+            aria-expanded={recommendationMenuOpen}
+            disabled={mutationPending || snapshot.recommendation.phase === 'running' || graph === undefined}
+            onClick={() => { setRecommendationMenuOpen(open => !open) }}
+          >▾</button>
+          {recommendationMenuOpen && <div
+            className={css.recommendationMenu}
+            role="menu"
+            aria-label="Recommendation mode"
+            data-opaque-surface="true"
+          >
+            <button type="button" role="menuitem" aria-label="Fast review" onClick={() => {
+              setActionError(null)
+              setRecommendationMenuOpen(false)
+              void mapActions.recommend('fast').catch(() => {})
+            }}>
+              <strong>Fast review</strong>
+              <span>Review a bounded set of likely candidates.</span>
+            </button>
+            <button type="button" role="menuitem" aria-label="Deep tree review" onClick={() => {
+              setActionError(null)
+              setRecommendationMenuOpen(false)
+              void mapActions.recommend('deep').catch(() => {})
+            }}>
+              <strong>Deep tree review</strong>
+              <span>Inspect the complete Context Tree with read and grep.</span>
+            </button>
+          </div>}
+        </div>
+        {snapshot.recommendation.phase === 'running' && snapshot.recommendation.mode === 'deep' && <button
           type="button"
-          disabled={mutationPending || snapshot.recommendation.phase === 'running' || graph === undefined}
-          onClick={() => {
-            setActionError(null)
-            // The controller publishes recommendation failures itself. Avoid
-            // duplicating the same failure in the generic mutation alert.
-            void mapActions.recommend().catch(() => {})
-          }}
-        >{snapshot.recommendation.phase === 'running' ? 'Reviewing…' : 'Recommend'}</button>
+          onClick={() => { void mapActions.cancelRecommendation().catch(() => {}) }}
+        >Cancel Deep review</button>}
         <span className={css.toolbarSpacer} />
         <button type="button" disabled={mutationPending} onClick={() => { runMutation('__reset__', mapActions.reset) }}>Clear manual changes</button>
         <button type="button" disabled={mutationPending || snapshot.view?.canUndo !== true} onClick={() => { runMutation('__undo__', mapActions.undo) }}>Undo</button>

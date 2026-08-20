@@ -47,6 +47,38 @@
 .toolbar button:disabled { cursor: default; opacity: 0.42; }
 .toolbarSpacer { flex: 1; }
 
+.recommendationActions { position: relative; display: flex; align-items: stretch; }
+.recommendationActions > button:first-child { border-radius: 6px 0 0 6px; }
+.recommendationActions > button:nth-child(2) { margin-left: -1px; border-radius: 0 6px 6px 0; padding-inline: 5px; }
+.recommendationMenu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  width: 230px;
+  padding: 5px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 9px;
+  background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-1));
+  opacity: 1;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 24%);
+}
+.recommendationMenu button {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 9px;
+  background: transparent;
+  text-align: left;
+}
+.recommendationMenu button:hover { background: rgb(127 140 165 / 14%); }
+.recommendationMenu strong { font-size: 11px; }
+.recommendationMenu span { color: var(--dsw-alias-fg-secondary); font-size: 9px; line-height: 13px; white-space: normal; }
+
 .searchBox {
   display: flex;
   flex: 1;

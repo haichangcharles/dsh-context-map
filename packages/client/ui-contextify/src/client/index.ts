@@ -100,7 +100,10 @@ export function apply(ctx: ClientContext): void {
       reset: async ref => valueOf(await remote.reset(sessionId, ref)),
       undo: async ref => valueOf(await remote.undo(sessionId, ref)),
       redo: async ref => valueOf(await remote.redo(sessionId, ref)),
-      recommend: async (base, objective) => valueOf(await remote.recommend(sessionId, base, objective)),
+      recommend: async (base, objective, mode) => valueOf(
+        await remote.recommend(sessionId, base, objective, mode),
+      ),
+      cancelRecommendation: async () => { valueOf(await remote.cancelRecommendation(sessionId)) },
       archiveNode: async (ref, node, reason, expectedGraphRevision) => valueOf(await remote.archiveNode(
         sessionId, ref, node, reason, expectedGraphRevision,
       )),
@@ -151,7 +154,8 @@ export function apply(ctx: ClientContext): void {
           reset: () => controller.reset(),
           undo: () => controller.undo(),
           redo: () => controller.redo(),
-          recommend: objective => controller.recommend(objective),
+          recommend: (mode, objective) => controller.recommend(mode, objective),
+          cancelRecommendation: () => controller.cancelRecommendation(),
           applyRecommendations: () => controller.applyRecommendations(),
           clearRecommendation: () => { controller.clearRecommendation() },
           confirmArchive: candidate => controller.confirmArchive(candidate),

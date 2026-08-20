@@ -36,6 +36,7 @@ function ProposalReview({
     <div className={css.header}>
       <div>
         <h3>Review Context recommendations</h3>
+        <span className={css.mode}>{proposal.mode === 'deep' ? 'Deep tree review' : 'Fast review'}</span>
         <p>Nothing changes until you apply the proposed context or confirm one archive.</p>
       </div>
       <button type="button" aria-label="Close recommendation review" onClick={dismiss}>×</button>

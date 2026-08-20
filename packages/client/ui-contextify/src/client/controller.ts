@@ -8,6 +8,7 @@ import type {
   ContextPlanRef,
   ContextRecommendationBase,
   ContextArchiveCandidate,
+  ContextRecommendationMode,
   ContextRecommendationProposal,
   ContextifyView,
 } from '@deepseek-ai/dsh-contextify/types'
@@ -32,7 +33,9 @@ export interface ContextifyTransport {
   recommend: (
     base: ContextRecommendationBase,
     objective?: string,
+    mode?: ContextRecommendationMode,
   ) => Promise<ContextRecommendationProposal>
+  cancelRecommendation: () => Promise<void>
   archiveNode: (
     ref: ContextPlanRef,
     node: ContextMessageRef,
@@ -46,10 +49,10 @@ export interface ContextifyTransport {
 /** Ephemeral review state. Recommendations never mutate the Context Plan by themselves. */
 export type ContextRecommendationState =
   | { readonly phase: 'idle' }
-  | { readonly phase: 'running' }
+  | { readonly phase: 'running'; readonly mode: ContextRecommendationMode }
   | { readonly phase: 'ready'; readonly proposal: ContextRecommendationProposal }
   | { readonly phase: 'stale'; readonly proposal: ContextRecommendationProposal }
-  | { readonly phase: 'error'; readonly error: string }
+  | { readonly phase: 'error'; readonly mode: ContextRecommendationMode; readonly error: string }
 
 /** One immutable publication consumed by both right-panel and Chat controls. */
 export interface ContextifyControllerSnapshot {
@@ -73,6 +76,7 @@ export class ContextifyController {
   private readonly listeners = new Set<() => void>()
   private refreshPromise: Promise<void> | undefined
   private timer: ReturnType<typeof setInterval> | undefined
+  private recommendationRequest = 0
 
   constructor(private readonly transport: ContextifyTransport) {}
 
@@ -147,9 +151,10 @@ export class ContextifyController {
 
   /**
    * Run an isolated, review-only Context recommendation against the current revision.
+   * @param mode - Manually selected bounded Fast or full-tree Deep review.
    * @param objective - Optional review objective forwarded to the isolated Agent.
    */
-  async recommend(objective?: string): Promise<void> {
+  async recommend(mode: ContextRecommendationMode = 'fast', objective?: string): Promise<void> {
     if (this.snapshot.recommendation.phase === 'running') {
       throw new Error('Context recommendation is already running')
     }
@@ -164,23 +169,52 @@ export class ContextifyController {
       graphRevision,
       activeSessionId: graph.activeSessionId,
     })
-    this.publish({ ...this.snapshot, recommendation: Object.freeze({ phase: 'running' }) })
+    const request = ++this.recommendationRequest
+    this.publish({ ...this.snapshot, recommendation: Object.freeze({ phase: 'running', mode }) })
     try {
-      const proposal = await this.transport.recommend(base, objective)
+      const proposal = await this.transport.recommend(base, objective, mode)
+      if (request !== this.recommendationRequest) return
       const stale = this.isProposalStale(proposal)
       this.publish({
         ...this.snapshot,
         recommendation: Object.freeze({ phase: stale ? 'stale' : 'ready', proposal }),
       })
     } catch (cause) {
+      if (request !== this.recommendationRequest) return
       const error = cause instanceof Error ? cause.message : String(cause)
-      this.publish({ ...this.snapshot, recommendation: Object.freeze({ phase: 'error', error }) })
+      this.publish({ ...this.snapshot, recommendation: Object.freeze({ phase: 'error', mode, error }) })
+      throw cause
+    }
+  }
+
+  /** Cancel one running Deep review without affecting the conversation Agent. */
+  async cancelRecommendation(): Promise<void> {
+    const recommendation = this.snapshot.recommendation
+    if (recommendation.phase !== 'running' || recommendation.mode !== 'deep') {
+      throw new Error('Only a running Deep recommendation can be cancelled')
+    }
+    const request = ++this.recommendationRequest
+    try {
+      await this.transport.cancelRecommendation()
+      if (request === this.recommendationRequest) {
+        this.publish({ ...this.snapshot, recommendation: Object.freeze({ phase: 'idle' }) })
+      }
+    } catch (cause) {
+      if (request === this.recommendationRequest) {
+        this.publish({
+          ...this.snapshot,
+          recommendation: Object.freeze({
+            phase: 'error', mode: 'deep', error: cause instanceof Error ? cause.message : String(cause),
+          }),
+        })
+      }
       throw cause
     }
   }
 
   /** Dismiss the current transient recommendation without changing durable context. */
   clearRecommendation(): void {
+    this.recommendationRequest += 1
     this.publish({ ...this.snapshot, recommendation: Object.freeze({ phase: 'idle' }) })
   }
 
