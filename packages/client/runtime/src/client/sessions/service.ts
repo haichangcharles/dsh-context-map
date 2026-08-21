@@ -493,9 +493,9 @@ export class SessionRuntime implements ISessions {
    * Fork a session from a completed-turn prefix of the source (same
    * synchronous-addressability guarantee as {@link SessionRuntime.create}:
    * on resolution the child is in the list store and open() can target it).
-   * @param opts - source session id, the optional event seq anchoring the
-   *   cut (the boundary is the first turn/end at or after it; an in-log
-   *   anchor in an open turn is unavailable rather than clipped backward),
+   * @param opts - source session id, either the optional event seq anchoring
+   *   an inclusive completed-Turn cut or a turn-start seq for an exclusive
+   *   before-Turn cut,
    *   and whether to increment an inherited durable title before resolving.
    *   A fractional anchor floors to a real event seq: the frozen nodes of an
    *   interrupted turn carry flow-ordering seqs between two events, and the
@@ -507,6 +507,7 @@ export class SessionRuntime implements ISessions {
   async fork(opts: {
     sessionId: SessionId
     atSeq?: number
+    beforeSeq?: number
     increaseTitle?: boolean
   }): Promise<SessionId> {
     const sourceTitle = opts.increaseTitle
@@ -514,10 +515,11 @@ export class SessionRuntime implements ISessions {
       : undefined
     const result = await this.manager.fork({
       sessionId: opts.sessionId,
-      // Flooring lands inside the anchor's own turn (every turn opens with a
+      // Flooring atSeq lands inside the anchor's own turn (every turn opens with a
       // turn/start), so the host's first-turn/end-at-or-after cut still ends
       // on that turn — never clipped back to the previous one.
       ...(opts.atSeq === undefined ? {} : { atSeq: Math.floor(opts.atSeq) }),
+      ...(opts.beforeSeq === undefined ? {} : { beforeSeq: Math.floor(opts.beforeSeq) }),
     })
     if (!result.ok) throw new SessionForkError(result.error, opts.sessionId)
     this.projectList()

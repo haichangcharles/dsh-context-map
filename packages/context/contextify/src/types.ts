@@ -218,7 +218,7 @@ export interface ContextBranchRelocationResult { readonly childSessionId: Sessio
 /** Native Host fork input validated before a suggested Q&A relocation. */
 export interface ContextBranchRelocationPreparation {
   readonly sourceSessionId: SessionId
-  readonly atSeq: number
+  readonly beforeSeq: number
 }
 
 /** One bounded page of a native Session family's canonical message nodes. */

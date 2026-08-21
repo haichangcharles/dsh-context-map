@@ -559,7 +559,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: '@Remote(\'prepareBranchSuggestion\') prepareBranchSuggestion(agent: Agent, suggestionId: string): ContextBranchRelocationPreparation',
         description: 'Validate a suggestion and return the exact native Host fork boundary.',
         parameters: [{ name: 'agent', description: 'Live idle Agent whose source Session owns the reviewed Turn.' }, { name: 'suggestionId', description: 'Durable suggestion identity returned by `get`.' }],
-        returns: 'The source Session and stable event boundary for native Host fork.',
+        returns: 'The source Session and stable Turn start for native Host before-Turn fork.',
       },
       {
         signature: '@Remote(\'setNodeMode\') async setNodeMode( agent: Agent, ref: ContextPlanRef, node: ContextMessageRef, mode: \'natural\' | \'include\' | \'exclude\', ): Promise<ContextifyView>',
@@ -2968,7 +2968,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContextBranchRelocationPreparation',
-    declaration: 'export interface ContextBranchRelocationPreparation {\n    readonly sourceSessionId: SessionId;\n    readonly atSeq: number;\n}',
+    declaration: 'export interface ContextBranchRelocationPreparation {\n    readonly sourceSessionId: SessionId;\n    readonly beforeSeq: number;\n}',
   },
   {
     name: 'ContextBranchRelocationResult',

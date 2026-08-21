@@ -816,7 +816,7 @@ Durable Context Plan mutations and native Session-family graph reads.
  * Validate a suggestion and return the exact native Host fork boundary.
  * @param agent - Live idle Agent whose source Session owns the reviewed Turn.
  * @param suggestionId - Durable suggestion identity returned by `get`.
- * @returns The source Session and stable event boundary for native Host fork.
+ * @returns The source Session and stable Turn start for native Host before-Turn fork.
  */
 @Remote('prepareBranchSuggestion') prepareBranchSuggestion(agent: Agent, suggestionId: string): ContextBranchRelocationPreparation
 

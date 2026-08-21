@@ -262,8 +262,14 @@ describe('ContextifyService native Session family', () => {
     expect(suggestion).toMatchObject({ reason: 'Parallel topic', confidence: 0.91 })
 
     const preparation = ctx.contextify.prepareBranchSuggestion(active.agent, suggestion!.id)
-    expect(preparation).toEqual({ sourceSessionId: session.id, atSeq: target.boundary - 4 })
-    const nativeChild = ctx.sessions.fork(session, preparation.atSeq, SessionId('native-branch-child'))
+    expect(preparation).toEqual({ sourceSessionId: session.id, beforeSeq: target.boundary - 3 })
+    // Contextify asks the Host for the prefix immediately before the reviewed
+    // Turn. The core primitive takes an inclusive boundary, hence -1 here.
+    const nativeChild = ctx.sessions.fork(
+      session,
+      preparation.beforeSeq - 1,
+      SessionId('native-branch-child'),
+    )
     start(nativeChild)
     const first = await ctx.contextify.acceptBranchSuggestion(active.agent, suggestion!.id, nativeChild.id)
     const second = await ctx.contextify.acceptBranchSuggestion(active.agent, suggestion!.id, nativeChild.id)

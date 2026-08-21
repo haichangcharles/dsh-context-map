@@ -698,7 +698,7 @@ export class ContextifyService extends TypertRemoteService {
    * Validate a suggestion and return the exact native Host fork boundary.
    * @param agent - Live idle Agent whose source Session owns the reviewed Turn.
    * @param suggestionId - Durable suggestion identity returned by `get`.
-   * @returns The source Session and stable event boundary for native Host fork.
+   * @returns The source Session and stable Turn start for native Host before-Turn fork.
    */
   @Remote('prepareBranchSuggestion')
   prepareBranchSuggestion(agent: Agent, suggestionId: string): ContextBranchRelocationPreparation {
@@ -721,7 +721,7 @@ export class ContextifyService extends TypertRemoteService {
     if (laterConversation) {
       throw new ContextifyError('the source conversation advanced after the Branch suggestion', 'CONTEXTIFY_STALE_GRAPH')
     }
-    return { sourceSessionId: agent.id, atSeq: suggestion.boundaryBefore }
+    return { sourceSessionId: agent.id, beforeSeq: suggestion.boundaryBefore + 1 }
   }
 
   /**

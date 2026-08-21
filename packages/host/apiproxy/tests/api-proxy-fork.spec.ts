@@ -102,6 +102,30 @@ describe('sessions.fork', () => {
     await ctx.fiber.dispose()
   })
 
+  it('cuts immediately before a requested turn for move-to-Branch flows', async () => {
+    const ctx = await composed()
+    const source = liveAgent(ctx, 'session-source-before-turn', 2)
+    const secondTurnStart = source.events.find(event =>
+      event.type === 'turn/start' && event.data.turn === 2)!.seq
+
+    const response = await api(ctx).sessions.fork(request({
+      sessionId: source.id,
+      beforeSeq: secondTurnStart,
+    }))
+
+    expect(response.result.ok).toBe(true)
+    if (!response.result.ok) return
+    const child = ctx.sessions.get(response.result.value.sessionId)
+    expect(child?.events.map(event => event.type)).toEqual([
+      'turn/start', 'user/message', 'turn/end', 'session/end-seed',
+    ])
+    expect(child?.header).toMatchObject({
+      parentSession: source.id,
+      seedLength: secondTurnStart,
+    })
+    await ctx.fiber.dispose()
+  })
+
   it('attaches a subagent fork to its nearest workspace-owning ancestor', async () => {
     const accounted: SessionId[] = []
     const attachSession = vi.fn<(sessionId: SessionId) => Promise<void>>()

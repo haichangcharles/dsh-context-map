@@ -686,7 +686,7 @@ describe('ContextMessageAction', () => {
 describe('ContextifyController', () => {
   it('creates an Agent-backed native fork before completing a Branch relocation', async () => {
     const currentView = fixture().view!
-    const preparation = { sourceSessionId: root, atSeq: 4 }
+    const preparation = { sourceSessionId: root, beforeSeq: 5 }
     const calls: string[] = []
     const transport: ContextifyTransport = {
       get: async () => currentView,
@@ -759,7 +759,7 @@ describe('ContextifyController', () => {
       cancelRecommendation: vi.fn(async () => {}),
       archiveNode: vi.fn(async () => currentView),
       restoreNode: vi.fn(async () => currentView),
-      prepareBranchSuggestion: vi.fn(async () => ({ sourceSessionId: root, atSeq: 4 })),
+      prepareBranchSuggestion: vi.fn(async () => ({ sourceSessionId: root, beforeSeq: 5 })),
       forkNativeBranch: vi.fn(async () => child),
       acceptBranchSuggestion: vi.fn(async () => ({ childSessionId: child })),
     }
@@ -816,7 +816,7 @@ describe('ContextifyController', () => {
       cancelRecommendation: vi.fn(async () => {}),
       archiveNode: vi.fn(async () => fixture().view!),
       restoreNode: vi.fn(async () => fixture().view!),
-      prepareBranchSuggestion: vi.fn(async () => ({ sourceSessionId: root, atSeq: 4 })),
+      prepareBranchSuggestion: vi.fn(async () => ({ sourceSessionId: root, beforeSeq: 5 })),
       forkNativeBranch: vi.fn(async () => child),
       acceptBranchSuggestion: vi.fn(async () => ({ childSessionId: child })),
     }
@@ -861,7 +861,7 @@ describe('ContextifyController', () => {
       cancelRecommendation: vi.fn(async () => {}),
       archiveNode: vi.fn(async () => currentView),
       restoreNode: vi.fn(async () => currentView),
-      prepareBranchSuggestion: vi.fn(async () => ({ sourceSessionId: root, atSeq: 4 })),
+      prepareBranchSuggestion: vi.fn(async () => ({ sourceSessionId: root, beforeSeq: 5 })),
       forkNativeBranch: vi.fn(async () => child),
       acceptBranchSuggestion: vi.fn(async () => ({ childSessionId: child })),
     }

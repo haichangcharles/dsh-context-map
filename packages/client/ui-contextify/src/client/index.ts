@@ -113,7 +113,7 @@ export function apply(ctx: ClientContext): void {
       ),
       forkNativeBranch: preparation => ctx.sessions.fork({
         sessionId: preparation.sourceSessionId,
-        atSeq: preparation.atSeq,
+        beforeSeq: preparation.beforeSeq,
         increaseTitle: true,
       }),
       acceptBranchSuggestion: async (suggestionId, childSessionId) => valueOf(
