@@ -1,5 +1,7 @@
 # Context Map Walkthrough Seeding Implementation Plan
 
+English | [中文](2026-08-20-context-map-walkthrough-seeding.zh.md)
+
 **Goal:** Seed a disposable native Harness session tree that demonstrates the shipped Context Map behavior without adding demo-only product UI or mocked agent output.
 
 **Architecture:** A one-shot TypeScript seeder uses `SessionStore` plus the JSONL persistence plugin against the active `$DSH_HOME`. It creates one root session, two forks from the same root boundary, and one child fork from a branch-owned boundary. Every conversation turn is represented by native `turn/start`, `user/message`, `step/start`, `assistant/message`, `step/end`, and `turn/end` events, so the existing Host, Session list, chat, trajectory, and Context Map all consume exactly the same data.

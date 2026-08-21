@@ -1,5 +1,7 @@
 # Lightweight Context Recommendations and Inline Branch Review
 
+English | [中文](2026-08-20-lightweight-context-recommendations-design.zh.md)
+
 ## Outcome
 
 Context Map recommendations become a short, tool-free model classification followed by deterministic Harness processing. The model returns only three action lists—`exclude`, `include`, and `archive`—while Contextify validates node identities, removes harmless no-ops, rejects ambiguous conflicts, and constructs one atomic Current → Proposed context replacement. Branch recommendations remain asynchronous and lightweight, but their decision UI moves into the completed turn's normal document flow so it never covers the answer or composer.

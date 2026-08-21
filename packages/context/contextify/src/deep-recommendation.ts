@@ -55,6 +55,7 @@ export interface DeepRecommendationSnapshot {
   readonly nodes: readonly DeepRecommendationNode[]
 }
 
+/** Private filesystem location owned by one Deep recommendation operation. */
 export interface DeepSnapshotLocation {
   readonly directory: string
   readonly filePath: string
@@ -67,6 +68,8 @@ const DEEP_SNAPSHOT_ACCESS_DENIED =
  * Monotonically deny read/search attempts outside one immutable Deep-review file.
  * Relative paths are resolved from the private snapshot directory because that is
  * also the restricted child Agent's cwd.
+ * @param filePath - Exact private snapshot file that the child may inspect.
+ * @returns A tool guard that denies reads and searches outside that file.
  */
 export function deepSnapshotGuard(filePath: string): ToolGuard {
   const exact = resolve(filePath)
@@ -158,6 +161,8 @@ function deepCancelled(message: string): Error {
 /**
  * Run one native Harness child against one private full-tree file, then destroy
  * both resources before returning its structured three-list decision.
+ * @param request - Parent Agent, frozen snapshot, cancellation signal, and optional timeout.
+ * @returns The validated integrated include, exclude, and archive recommendation.
  */
 export async function runDeepRecommendation(
   request: RunDeepRecommendationRequest,
@@ -272,7 +277,11 @@ function assertNotCancelled(signal: AbortSignal): void {
   if (signal.aborted) throw cancelled()
 }
 
-/** Build the untruncated full-tree value written for one Deep review. */
+/**
+ * Build the untruncated full-tree value written for one Deep review.
+ * @param request - Exact graph, plan, objective, contents, and effective selection.
+ * @returns A frozen complete Context Tree snapshot.
+ */
 export function buildDeepRecommendationSnapshot(
   request: BuildDeepRecommendationSnapshotRequest,
 ): DeepRecommendationSnapshot {
@@ -313,7 +322,11 @@ export function buildDeepRecommendationSnapshot(
   })
 }
 
-/** Serialize metadata followed by one JSON node per line for bounded reads and grep. */
+/**
+ * Serialize metadata followed by one JSON node per line for bounded reads and grep.
+ * @param snapshot - Frozen full-tree snapshot to serialize.
+ * @returns A newline-terminated JSON Lines representation.
+ */
 export function serializeDeepRecommendationSnapshot(snapshot: DeepRecommendationSnapshot): string {
   const header = {
     kind: 'context-tree',
@@ -331,6 +344,10 @@ export function serializeDeepRecommendationSnapshot(snapshot: DeepRecommendation
 /**
  * Own one private snapshot directory for exactly one asynchronous operation.
  * The directory is removed after every success, failure, or cancellation path.
+ * @param snapshot - Frozen full-tree snapshot to expose temporarily.
+ * @param signal - Caller cancellation signal.
+ * @param operation - Work performed while the private snapshot exists.
+ * @returns The operation result after guaranteed snapshot cleanup.
  */
 export async function withDeepSnapshot<T>(
   snapshot: DeepRecommendationSnapshot,
@@ -358,7 +375,11 @@ interface CleanupStaleDeepSnapshotsOptions {
   readonly retentionMs?: number
 }
 
-/** Remove only expired Contextify-owned directories after an unclean process exit. */
+/**
+ * Remove only expired Contextify-owned directories after an unclean process exit.
+ * @param options - Optional temporary root, clock, and retention override.
+ * @returns A promise that resolves after eligible directories are removed.
+ */
 export async function cleanupStaleDeepSnapshots(
   options: CleanupStaleDeepSnapshotsOptions = {},
 ): Promise<void> {

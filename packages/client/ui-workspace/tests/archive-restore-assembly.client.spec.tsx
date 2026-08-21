@@ -24,6 +24,9 @@ function SidebarFrame({ renderSlot }: FrameProps) {
 describe('session archive restore through the assembled browser', () => {
   it('restores through the runtime projection without opening the Session', async () => {
     const runtime = await SlotTestRuntime.create()
+    runtime.provide('connection', {
+      hostDescription: { getSnapshot: () => undefined, subscribe: () => () => {} },
+    })
     const locale = new LocaleRuntime(runtime.ctx)
     runtime.provide('locale', locale)
     runtime.slots.installLocale(locale)

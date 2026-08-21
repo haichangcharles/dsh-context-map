@@ -1,5 +1,7 @@
 # DeepSeek rc.8 Upstream Sync Implementation Plan
 
+English | [中文](2026-08-21-deepseek-rc8-sync.zh.md)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Preserve DSH Context Map v0.1.0 and integrate DeepSeek Harness `dsh-v0.1.0-rc.8` without changing the published rollback point.
@@ -41,7 +43,7 @@ Expected: branch `codex/sync-deepseek-rc8`, commit `85d35be1bc07f21ee44e46c8e2e7
 
 **Files:**
 - Modify: files reported by `git diff --name-only --diff-filter=U`
-- Preserve: `packages/contextify/**`
+- Preserve: `packages/context/contextify/**`
 - Preserve: Context Map additions under `packages/client/**` and `packages/host/**`
 
 - [ ] **Step 1: Refresh the official branch and verify its release**
@@ -79,7 +81,7 @@ Expected: every unresolved path is listed once. Known translation-paired conflic
 
 **Files:**
 - Modify: conflicted source paths reported by Task 2
-- Verify: `packages/contextify/**`
+- Verify: `packages/context/contextify/**`
 - Verify: `packages/core/session/**`
 - Verify: `packages/host/**`
 - Verify: `packages/client/**`
@@ -172,7 +174,7 @@ Expected: no unresolved paths and no whitespace errors.
 
 **Files:**
 - Test: existing tests changed by the merge
-- Test: `packages/contextify/**/tests/**`
+- Test: `packages/context/contextify/**/tests/**`
 - Test: Context Map tests under `packages/client/**/tests/**`
 - Test: Contextify Host tests under `packages/host/**/tests/**`
 

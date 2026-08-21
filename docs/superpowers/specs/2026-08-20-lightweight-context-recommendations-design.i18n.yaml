@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/superpowers/specs/2026-08-20-lightweight-context-recommendations-design.md
+2026-08-20-lightweight-context-recommendations-design.md: 7181c5347db99c1d680c9399bad840b441108855
+2026-08-20-lightweight-context-recommendations-design.zh.md: f8b7f1b7a1c270d9463e948bed9c0804767eaedb

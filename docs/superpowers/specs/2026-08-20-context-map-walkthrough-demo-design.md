@@ -1,5 +1,7 @@
 # Context Map Walkthrough Demo Design
 
+English | [中文](2026-08-20-context-map-walkthrough-demo-design.zh.md)
+
 Status: proposed
 
 ## 目标

@@ -90,7 +90,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 }[T]
 ```
 
-Sources: [`packages/core/session/src/types.ts:351`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:358`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:387`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:419`](../packages/core/session/src/types.ts)
+Sources: [`packages/core/session/src/types.ts:355`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:362`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:391`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:423`](../packages/core/session/src/types.ts)
 
 ## Events
 
@@ -226,14 +226,18 @@ Source: [`packages/core/session/src/types.ts:281`](../packages/core/session/src/
  * Assembled assistant message for one step (derived history uses this).
  * Carries the step's `usage` when the adapter reported token accounting, so
  * the model output and its accounting travel together (there is no separate
- * usage record). `usage` is absent when the adapter reported none.
+ * usage record). `usage` is absent when the adapter reported none. A turn
+ * cancelled mid-stream finalizes its delivered text/reasoning prefix as this
+ * event with `interrupted: true`; undispatched tool calls are absent. The
+ * marker distinguishes that prefix without re-deriving interruption from turn
+ * boundaries. An aborted turn with no such event streamed no visible content.
  */
-'assistant/message': { turn: number; step: number; message: AssistantMessage; usage?: TokenUsage }
+'assistant/message': { turn: number; step: number; message: AssistantMessage; usage?: TokenUsage; interrupted?: true }
 ```
 
 Types: [TokenUsage](subsystems/llm-streaming.md)
 
-Source: [`packages/core/session/src/types.ts:288`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:292`](../packages/core/session/src/types.ts)
 
 ### `command/*`
 
@@ -256,7 +260,7 @@ Source: [`packages/core/session/src/types.ts:288`](../packages/core/session/src/
 }
 ```
 
-Source: [`packages/interaction/commands/src/types.ts:95`](../packages/interaction/commands/src/types.ts)
+Source: [`packages/interaction/commands/src/types.ts:103`](../packages/interaction/commands/src/types.ts)
 
 <a id="commandrun--log-only"></a>
 
@@ -276,7 +280,7 @@ Source: [`packages/interaction/commands/src/types.ts:95`](../packages/interactio
 'command/run': { commandId: CommandId; name: string; args?: string; source: CommandSource }
 ```
 
-Source: [`packages/interaction/commands/src/types.ts:88`](../packages/interaction/commands/src/types.ts)
+Source: [`packages/interaction/commands/src/types.ts:96`](../packages/interaction/commands/src/types.ts)
 
 ### `compaction/*`
 
@@ -428,7 +432,7 @@ Source: [`packages/context/context-compiler/src/index.ts:114`](../packages/conte
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:291`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:301`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifybranch-review--log-only"></a>
 
@@ -442,7 +446,7 @@ Source: [`packages/context/contextify/src/types.ts:291`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:286`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:296`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyplan--log-only"></a>
 
@@ -453,7 +457,7 @@ Source: [`packages/context/contextify/src/types.ts:286`](../packages/context/con
 'contextify/plan': ContextPlanSnapshot
 ```
 
-Source: [`packages/context/contextify/src/types.ts:284`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:294`](../packages/context/contextify/src/types.ts)
 
 ### `feedback/*`
 
@@ -593,7 +597,7 @@ Source: [`packages/interaction/permission-presets/src/index.ts:50`](../packages/
 'plan/mode': { active: boolean }
 ```
 
-Source: [`packages/plan/plan-mode/src/index.ts:53`](../packages/plan/plan-mode/src/index.ts)
+Source: [`packages/plan/plan-mode/src/index.ts:54`](../packages/plan/plan-mode/src/index.ts)
 
 ### `request/*`
 
@@ -609,7 +613,7 @@ Source: [`packages/plan/plan-mode/src/index.ts:53`](../packages/plan/plan-mode/s
 'request/context': RequestContext
 ```
 
-Source: [`packages/core/session/src/types.ts:324`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:328`](../packages/core/session/src/types.ts)
 
 <a id="requestheader--log-only"></a>
 
@@ -623,7 +627,7 @@ Source: [`packages/core/session/src/types.ts:324`](../packages/core/session/src/
 'request/header': { header: EpochHeader; reason: RequestHeaderReason }
 ```
 
-Source: [`packages/core/session/src/types.ts:319`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:323`](../packages/core/session/src/types.ts)
 
 ### `sandbox/*`
 
@@ -698,7 +702,7 @@ Source: [`packages/schedule/schedule/src/types.ts:219`](../packages/schedule/sch
 'session/end-seed': Record<string, never>
 ```
 
-Source: [`packages/core/session/src/types.ts:347`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:351`](../packages/core/session/src/types.ts)
 
 <a id="sessiontitle--log-only"></a>
 
@@ -772,6 +776,65 @@ Source: [`packages/core/session/src/types.ts:269`](../packages/core/session/src/
 
 Source: [`packages/subagent/subagent/src/descriptor.ts:37`](../packages/subagent/subagent/src/descriptor.ts)
 
+### `team/*`
+
+<a id="teammember--log-only"></a>
+
+#### `team/member` — log-only
+
+```ts persistence-catalog
+/** Whole teammate lifecycle value, stored only in the Team Lead Session. */
+'team/member': { version: 1; teamId: TeamId; member: TeamMemberSnapshot }
+```
+
+Types: [TeamId](subsystems/agent-team.md) · [TeamMemberSnapshot](subsystems/agent-team.md)
+
+Source: [`packages/experimental/agent-team/src/types.ts:206`](../packages/experimental/agent-team/src/types.ts)
+
+<a id="teammessagedelivered--log-only"></a>
+
+#### `team/message/delivered` — log-only
+
+```ts persistence-catalog
+/** Durable acknowledgement that the target Session recorded the message. */
+'team/message/delivered': {
+  version: 1
+  teamId: TeamId
+  messageId: TeamMessageId
+  targetId: SessionId
+}
+```
+
+Types: [TeamId](subsystems/agent-team.md) · [TeamMessageId](subsystems/agent-team.md)
+
+Source: [`packages/experimental/agent-team/src/types.ts:212`](../packages/experimental/agent-team/src/types.ts)
+
+<a id="teammessagequeued--log-only"></a>
+
+#### `team/message/queued` — log-only
+
+```ts persistence-catalog
+/** Durable mailbox enqueue, stored before delivery is attempted. */
+'team/message/queued': { version: 1; teamId: TeamId; message: TeamMessageSnapshot }
+```
+
+Types: [TeamId](subsystems/agent-team.md) · [TeamMessageSnapshot](subsystems/agent-team.md)
+
+Source: [`packages/experimental/agent-team/src/types.ts:210`](../packages/experimental/agent-team/src/types.ts)
+
+<a id="teamtask--log-only"></a>
+
+#### `team/task` — log-only
+
+```ts persistence-catalog
+/** Whole shared-task value, stored only in the Team Lead Session. */
+'team/task': { version: 1; teamId: TeamId; task: TeamTaskSnapshot }
+```
+
+Types: [TeamId](subsystems/agent-team.md) · [TeamTaskSnapshot](subsystems/agent-team.md)
+
+Source: [`packages/experimental/agent-team/src/types.ts:208`](../packages/experimental/agent-team/src/types.ts)
+
 ### `todo/*`
 
 <a id="todowrite--log-only"></a>
@@ -785,7 +848,7 @@ Source: [`packages/subagent/subagent/src/descriptor.ts:37`](../packages/subagent
 
 Types: [TodoItem](subsystems/session.md)
 
-Source: [`packages/core/session/src/types.ts:314`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:318`](../packages/core/session/src/types.ts)
 
 ### `tool/*`
 
@@ -804,7 +867,7 @@ Source: [`packages/core/session/src/types.ts:314`](../packages/core/session/src/
 
 Types: [CallId](subsystems/core.md)
 
-Source: [`packages/core/session/src/types.ts:294`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:298`](../packages/core/session/src/types.ts)
 
 <a id="toolcode-dispatch--log-only"></a>
 
@@ -879,7 +942,7 @@ Source: [`packages/core/tools/src/types.ts:40`](../packages/core/tools/src/types
 }
 ```
 
-Source: [`packages/core/session/src/types.ts:306`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:310`](../packages/core/session/src/types.ts)
 
 ### `tool-workflow/*`
 

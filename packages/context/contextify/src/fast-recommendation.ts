@@ -11,6 +11,7 @@ export const FAST_RECOMMENDATION_RECENT_TURNS = 3
 /** Per-node Unicode code-point content ceiling. */
 export const FAST_RECOMMENDATION_MAX_NODE_CHARS = 1_200
 
+/** Deterministic reason that admitted a node into the bounded Fast packet. */
 export type FastRecommendationReason =
   | 'recent-active'
   | 'branch-pivot'

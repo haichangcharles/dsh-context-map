@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
+import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import type { SessionId, WorkspaceListState } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ContextFamilyGraphNode } from '@deepseek-ai/dsh-contextify/types'
 import type { ReactFlowInstance, ReactFlowProps } from '@xyflow/react'

@@ -37,7 +37,12 @@ function latestUser(
     && node.owner.sessionId === ownerSessionId)
 }
 
-/** Raise the display threshold as a family becomes deeper and more branched. */
+/**
+ * Raise the display threshold as a family becomes deeper and more branched.
+ * @param depth - Depth of the active native Session branch.
+ * @param activeBranches - Number of active sibling branches in the family.
+ * @returns The minimum classifier confidence required to show a suggestion.
+ */
 export function branchSuggestionThreshold(depth: number, activeBranches: number): number {
   return Math.min(0.95, 0.80 + Math.min(depth, 3) * 0.03 + Math.min(activeBranches, 6) * 0.01)
 }
@@ -45,6 +50,8 @@ export function branchSuggestionThreshold(depth: number, activeBranches: number)
 /**
  * Build a bounded classifier packet from topology and visible input/output nodes.
  * It intentionally excludes tool calls, reasoning, and the complete graph.
+ * @param input - Family graph, candidate node, and optional full message contents.
+ * @returns A bounded, topology-aware packet for the Branch classifier.
  */
 export function buildBranchReviewInput(input: {
   readonly graph: ContextFamilyGraph

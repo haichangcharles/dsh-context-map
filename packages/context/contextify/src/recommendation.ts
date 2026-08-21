@@ -58,7 +58,11 @@ export interface ContextRecommendationDecision {
   readonly archive: readonly { readonly nodeId: string; readonly reason: string }[]
 }
 
-/** Parse one JSON object from a tool-free classifier response. */
+/**
+ * Parse one JSON object from a tool-free classifier response.
+ * @param text - Raw classifier text containing one recommendation JSON object.
+ * @returns A frozen three-list recommendation decision.
+ */
 export function parseRecommendationDecisionText(text: string): ContextRecommendationDecision {
   const start = text.indexOf('{')
   const end = text.lastIndexOf('}')

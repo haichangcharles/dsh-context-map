@@ -1,5 +1,7 @@
 # Lightweight Context Recommendations Implementation Plan
 
+English | [中文](2026-08-20-lightweight-context-recommendations.zh.md)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the slow recommendation subagent with a direct three-list classifier and render Branch decisions inline after the completed turn.

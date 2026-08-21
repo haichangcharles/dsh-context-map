@@ -1,5 +1,7 @@
 # Context Map Dual-Mode Recommendations Implementation Plan
 
+English | [中文](2026-08-20-context-map-dual-mode-recommendations.zh.md)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a fast bounded Context recommendation, an explicit full-tree Deep recommendation backed by a temporary file and a restricted Harness child, and a lightweight topology-aware automatic Branch classifier.
@@ -34,7 +36,7 @@
 
 Add tests proving that the proposal records its mode, harmless already-effective actions disappear, explicit Include and Exclude nodes cannot be reversed, unknown IDs and opposing actions remain invalid, and archive suggestions stay advisory.
 
-```ts
+```text
 const proposal = validateRecommendation({
   exclude: [
     { nodeId: 'active-natural', reason: 'irrelevant' },
@@ -76,7 +78,7 @@ Expected: failure because `ContextRecommendationMode`, proposal `mode`, and expl
 
 Add these exact public fields in `types.ts`:
 
-```ts
+```text
 export type ContextRecommendationMode = 'fast' | 'deep'
 
 export interface ContextRecommendationProposal {
@@ -97,7 +99,7 @@ Extend `CONTEXTIFY_RECOMMENDATION_UNAVAILABLE` handling with `CONTEXTIFY_RECOMME
 
 Change the validation context to:
 
-```ts
+```text
 interface RecommendationValidationContext {
   readonly mode: ContextRecommendationMode
   readonly base: ContextRecommendationBase
@@ -132,7 +134,7 @@ git commit -m "feat(context-map): pin recommendation modes and overrides"
 
 Create a graph with a long active path, one close sibling, one lexically relevant distant sibling, and explicit Include/Exclude nodes. Assert the packet contains the active path's latest three completed Q&A pairs, every explicit override, branch pivots on the active ancestry, and at most twelve ranked off-path candidates. Assert stable graph-order output and a hard maximum of 32 nodes.
 
-```ts
+```text
 const packet = buildFastRecommendationInput({
   graph,
   contents,
@@ -160,7 +162,7 @@ Expected: module-not-found failure for `fast-recommendation.ts`.
 
 Export constants and types rather than embedding unexplained numbers:
 
-```ts
+```text
 export const FAST_RECOMMENDATION_MAX_NODES = 32
 export const FAST_RECOMMENDATION_OFF_PATH_LIMIT = 12
 export const FAST_RECOMMENDATION_RECENT_TURNS = 3
@@ -218,7 +220,7 @@ Expected: module-not-found failure for `deep-recommendation.ts`.
 
 Use these stable internal records:
 
-```ts
+```text
 export interface DeepRecommendationSnapshot {
   readonly version: 1
   readonly rootSessionId: string
@@ -253,7 +255,7 @@ Use `mkdtemp(join(tmpdir(), 'dsh-contextify-'))`, `writeFile(path, body, { mode:
 
 Export `cleanupStaleDeepSnapshots({ now, retentionMs })`, scoped only to directory names beginning `dsh-contextify-`; reject non-positive retention. The production retention is seven days:
 
-```ts
+```text
 export const DEEP_RECOMMENDATION_TEMP_RETENTION_MS = 7 * 24 * 60 * 60 * 1_000
 ```
 
@@ -293,7 +295,7 @@ Expected: failures because the runner and guard are absent.
 
 Implement and unit-test:
 
-```ts
+```text
 export function deepSnapshotGuard(filePath: string): ToolGuard {
   const exact = resolve(filePath)
   return (execution) => {
@@ -316,7 +318,7 @@ Use `agent.ctx.agents.create()` rather than starting a generic subagent and addi
 
 Inside `setup(childCtx)` before publication:
 
-```ts
+```text
 applyChildComposition(childCtx, parent, {
   persona: deepPersona,
   toolFilter: { allow: ['read', 'grep'] },
@@ -359,7 +361,7 @@ git commit -m "feat(context-map): run deep review in a restricted child"
 
 Add cases for omitted mode defaulting to Fast, explicit Deep invoking the runner once, one recommendation per Session family, `cancelRecommendation()` aborting Deep without a proposal, stale plan and stale sibling revisions rejecting both modes, and startup TTL cleanup logging but not failing service construction.
 
-```ts
+```text
 const proposal = await ctx.contextify.recommend(agent, base, undefined, 'deep')
 expect(proposal.mode).toBe('deep')
 expect(deepRunner).toHaveBeenCalledTimes(1)
@@ -381,7 +383,7 @@ Expected: missing mode and cancellation APIs.
 
 Use one map keyed by the native family root, not merely active Session ID:
 
-```ts
+```text
 interface RecommendationOperation {
   readonly mode: ContextRecommendationMode
   readonly controller: AbortController
@@ -396,7 +398,7 @@ Load the family and resolve its root before reserving the operation. Recheck gra
 
 Keep old callers compatible by making the fourth `mode` argument optional and defaulting it to `fast`:
 
-```ts
+```text
 @Remote('recommend')
 async recommend(agent: Agent, base: ContextRecommendationBase, objective?: string,
   mode: ContextRecommendationMode = 'fast'): Promise<ContextRecommendationProposal>
@@ -448,7 +450,7 @@ Expected: transport/state/actions have no mode or cancellation support.
 
 Change the transport and state contracts:
 
-```ts
+```text
 recommend: (base: ContextRecommendationBase, objective: string | undefined,
   mode: ContextRecommendationMode) => Promise<ContextRecommendationProposal>
 cancelRecommendation: () => Promise<void>
@@ -496,7 +498,7 @@ git commit -m "feat(context-map): expose fast and deep review controls"
 
 Build a root → child → grandchild family with siblings. Assert the packet contains the current local objective before the new input, ancestor objectives, the last three completed local Turns, depth, active branch count, and at most four sibling intents. It must contain the new input but never serialize the full graph or tool/reasoning events.
 
-```ts
+```text
 const input = buildBranchReviewInput({ graph, candidateInput, contents })
 expect(input.currentObjective).toBe('local observability design')
 expect(input.ancestorObjectives).toEqual(['root product goal', 'parent architecture goal'])
@@ -521,7 +523,7 @@ Expected: packet builder and pre-response scheduling assertions fail.
 
 Export constants `BRANCH_RECENT_TURNS = 3`, `BRANCH_SIBLING_INTENTS = 4`, `BRANCH_MAX_TEXT_CHARS = 800`, and `BRANCH_REVIEW_MAX_TOKENS = 200`. Derive objectives from the most recent human user message before the candidate on each relevant native Session path. Branch depth and family load raise the display threshold:
 
-```ts
+```text
 export function branchSuggestionThreshold(depth: number, activeBranches: number): number {
   return Math.min(0.95, 0.80 + Math.min(depth, 3) * 0.03 + Math.min(activeBranches, 6) * 0.01)
 }
