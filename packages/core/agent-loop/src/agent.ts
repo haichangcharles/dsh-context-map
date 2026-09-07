@@ -336,11 +336,12 @@ export class ReactLoopAgent implements Agent {
     const { turn, step, abort: { signal } } = this.phase
     signal.throwIfAborted()
     const system = renderPrompt(assembly)
-    const compilation = this.loopCtx.contextCompiler.compile({
+    let compilation = this.loopCtx.contextCompiler.compile({
       session: this.session,
       turn,
       step,
     })
+    let compilationGeneration = this.session.surface.replaceGeneration
 
     while (true) {
       const { request, preparedCall } = await this.buildRequest(
@@ -391,6 +392,18 @@ export class ReactLoopAgent implements Agent {
         signal.throwIfAborted()
         if (action?.kind !== 'retry') {
           throw new LlmError(finish.failure.message, finish.failure.code, finish.failure)
+        }
+        // Ordinary provider retries reuse the exact compilation attempted above.
+        // Recovery middleware such as compaction may instead rewrite the surface;
+        // only that committed generation change invalidates the compilation.
+        const currentGeneration = this.session.surface.replaceGeneration
+        if (currentGeneration !== compilationGeneration) {
+          compilation = this.loopCtx.contextCompiler.compile({
+            session: this.session,
+            turn,
+            step,
+          })
+          compilationGeneration = currentGeneration
         }
         continue
       }
