@@ -4,8 +4,7 @@ English | [中文](README.zh.md)
 
 DSH Context Map is an independently maintained conversation-context workspace built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). It turns native Harness Session forks into an inspectable map where people can navigate branches and control which completed user inputs and final assistant outputs enter the next model request.
 
-> [!IMPORTANT]
-> DSH Context Map is a community project maintained by [haichangcharles](https://github.com/haichangcharles). It is not an official DeepSeek product and is not maintained or endorsed by DeepSeek AI.
+**Independent community project.** DSH Context Map is maintained by [haichangcharles](https://github.com/haichangcharles). It is not an official DeepSeek product and is not maintained or endorsed by DeepSeek AI.
 
 ## What it adds
 

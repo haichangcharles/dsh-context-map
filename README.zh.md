@@ -4,8 +4,7 @@
 
 DSH Context Map 是一个基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)、由社区独立维护的对话上下文工作区。它把 Harness 原生 Session 分支转换成可检查的 Map，让用户在长周期对话中导航不同分支，并控制哪些已完成的用户输入和模型最终输出进入下一次模型请求。
 
-> [!IMPORTANT]
-> DSH Context Map 是由 [haichangcharles](https://github.com/haichangcharles) 独立维护的社区项目，并非 DeepSeek 官方产品，也不由 DeepSeek AI 维护或背书。
+**独立社区项目。** DSH Context Map 由 [haichangcharles](https://github.com/haichangcharles) 独立维护，并非 DeepSeek 官方产品，也不由 DeepSeek AI 维护或背书。
 
 ## 增加的能力
 
@@ -64,7 +63,7 @@ pnpm run doc-sync
 
 ## 开发
 
-建议先阅读 [DeepSeek Harness 架构文档](docs/architecture.zh.md)、[Contextify 包说明](packages/context/contextify/README.zh.md)和 [Context Map UI 包说明](packages/client/ui-contextify/README.zh.md)。参与仓库开发时必须遵循 [AGENTS.md](AGENTS.md)。
+建议先阅读 [DeepSeek Harness 架构文档](docs/architecture.md)、[Contextify 包说明](packages/context/contextify/README.md)和 [Context Map UI 包说明](packages/client/ui-contextify/README.md)。参与仓库开发时必须遵循 [AGENTS.md](AGENTS.md)。
 
 常用检查：
 

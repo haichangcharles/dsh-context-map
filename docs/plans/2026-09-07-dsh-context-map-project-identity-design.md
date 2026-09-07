@@ -1,5 +1,7 @@
 # DSH Context Map project identity
 
+English | [中文](2026-09-07-dsh-context-map-project-identity-design.zh.md)
+
 ## Purpose
 
 DSH Context Map is an independently maintained community project built on DeepSeek Harness. Its public repository, documentation, and product chrome identify DSH Context Map as the product while crediting DeepSeek Harness as the underlying agent runtime. The project does not imply sponsorship, ownership, or maintenance by DeepSeek AI.
