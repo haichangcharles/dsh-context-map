@@ -2,17 +2,17 @@
 
 [English](README.md) | 中文
 
-一个 [Landlock](https://landlock.io/)「先限制自身、再执行」启动器，用于在 Linux 上限制子进程。它以按平台预构建的 npm 包以及一个轻量 JS 入口包的形式发布；入口包负责解析二进制文件并遵循其 CLI（命令行界面）约定。该启动器面向需要让不可信命令在文件系统允许清单约束下运行、同时保持自身不受限制的 agent harness（智能体框架）和其他宿主。
+一个 [Landlock](https://landlock.io/)「先限制自身、再执行」启动器，用于在 Linux 上限制子进程。上游 DeepSeek Harness 以按平台预构建的 npm 包和轻量 JS 入口包分发它；DSH Context Map 保留该包约定用于源码构建兼容性，但不会发布继承的 `@deepseek-ai/*` 包。
 
 该工具是 **`landlock-run`**：一个「先限制自身、再执行」的 [Landlock](https://landlock.io/) 启动器（基于原始内核 UAPI 编写，约 300 行 C11，并与 musl 静态链接）。它在自身上安装 Landlock 规则集，再 `exec` 被包装的命令；该规则集会跨 `execve` 继承，因此命令及其产生的每个进程都在限制下运行，调用进程仍不受限制。它采用失败闭合：如果内核无法强制执行，则不运行命令并直接退出。
 
-## 安装
+## 上游包约定
 
 ```sh
 npm install @deepseek-ai/node-addon-landlock-run
 ```
 
-已发布包由一个入口包和可选平台包组成：
+上游包族由一个入口包和可选平台包组成：
 
 ```text
 @deepseek-ai/node-addon-landlock-run
@@ -57,4 +57,4 @@ pnpm build:native    # this Linux architecture's binaries (apt-get install musl-
 pnpm test
 ```
 
-二进制文件被 git 忽略，并且按架构原生构建：本地只构建当前机器的版本，CI 各架构 runner 产出的构建则作为正式发布依据。发布流程详见 [docs/release.md](docs/release.md)。
+二进制文件被 git 忽略，并且按架构原生构建：本地构建当前机器版本，兼容性 CI 则在所选 runner 上构建。继承的包排练详见 [docs/release.md](docs/release.md)；本仓库支持的发布渠道仅为源码发布。

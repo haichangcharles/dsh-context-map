@@ -90,6 +90,8 @@ Input reaches the driver through one inbox. Some messages wake it immediately; i
 
 Details: the [sequence diagram](agent-lifecycle.md), the [tool pipeline](tool-execution-pipeline.md), and [cancellation and error recovery](subsystems/core.md#the-agent-handle).
 
+The Context Compiler runs when a step enters the request boundary. Its frozen message selection and descriptor are reused across ordinary provider retries so a transient transport failure cannot silently change context. Recovery middleware may commit a new session surface (for example, overflow compaction); when `session.surface.replaceGeneration` changes, the Agent Loop recompiles before the next retry so the repaired durable surface—not the failed request's stale compilation—reaches the model. A retry without a committed surface replacement never triggers recompilation.
+
 ## Session log
 
 The session log is the source of the context the model sees. The default Context Compiler projects the current surface exactly like `deriveMessages()`; alternate registered providers may select and reorder existing message events without rewriting the log. Raw `assistant/chunk` events preserve replay and UI fidelity. Fork, resume, transcripts, telemetry, and persistence all derive from this stream.

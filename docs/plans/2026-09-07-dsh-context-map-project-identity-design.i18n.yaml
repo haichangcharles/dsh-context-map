@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/plans/2026-09-07-dsh-context-map-project-identity-design.md
-2026-09-07-dsh-context-map-project-identity-design.md: 3c2eb48d5dc2cc4906f8382f4c924f6d3b8c9011
-2026-09-07-dsh-context-map-project-identity-design.zh.md: d84d3efbf51ba4f4fbea2bf44c82f1a0bc2d0cc3
+2026-09-07-dsh-context-map-project-identity-design.md: 81139d404dc309b3260454e356f3782e34086674
+2026-09-07-dsh-context-map-project-identity-design.zh.md: fa1b6196932cb8da2129b6e03f8bd21a0c894841

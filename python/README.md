@@ -4,6 +4,8 @@ English | [中文](README.zh.md)
 
 Python packages for driving DeepSeek Harness as a subprocess. The client SDK communicates with the bundled runtime over newline-delimited JSON-RPC on stdio.
 
+> DSH Context Map retains these packages as inherited upstream compatibility source. This community repository does not publish their Python distributions; installation references in the package pages refer to upstream DeepSeek Harness artifacts and do not include Context Map features.
+
 ## Packages
 
 | Directory | Dist / module | Role |
@@ -17,4 +19,4 @@ The SDK starts the matching bundled runtime unless the caller selects an explici
 
 ## Contributor workflows
 
-The [Python contributor workflows](development.md) cover building runtime artifacts, validating the packages, source-mode development, and distribution.
+The [Python contributor workflows](development.md) cover building runtime artifacts, validating the packages, source-mode development, and upstream distribution compatibility.

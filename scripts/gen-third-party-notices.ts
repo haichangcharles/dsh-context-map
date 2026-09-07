@@ -690,7 +690,7 @@ export function render(): string {
 
 # Third-Party Notices
 
-DeepSeek Harness is licensed under [MIT](LICENSE). It depends on the third-party software listed below. Each project remains under its own license; nothing in this file changes those terms.
+DSH Context Map is distributed under the inherited [MIT](LICENSE) terms and is built on DeepSeek Harness. It depends on the third-party software listed below. Each project remains under its own license; nothing in this file changes those terms.
 
 This file lists **direct** dependencies declared by the workspace and the explicitly disclosed official Claude Code platform payload closure. It is generated from the workspace manifests by \`scripts/gen-third-party-notices.ts\`: a pre-commit hook regenerates it whenever a staged file changes one of its inputs, and \`scripts/gen-third-party-notices.spec.ts\` asserts in the test lane that the committed bytes match. Deleting a manifest runs no hook, so that case is caught by the assertion instead. Run \`pnpm run verify-third-party-notices\` for the standalone check.
 
@@ -698,7 +698,7 @@ The complete npm transitive closure, including the Landlock launcher workspace, 
 
 ## Vendored source (\`vendor/\`)
 
-The Cordis framework and its foundation libraries are source-vendored into this repository rather than consumed from npm, and republished under the \`@deepseek-ai\` scope. All are MIT-licensed; each directory preserves its upstream \`LICENSE\` file. Exact upstream commits and local modifications are recorded in [\`vendor/README.md\`](vendor/README.md).
+The Cordis framework and its foundation libraries are source-vendored into this repository rather than consumed from npm and retain their inherited \`@deepseek-ai\` identities for source and workspace compatibility. This community repository does not publish them. All are MIT-licensed; each directory preserves its upstream \`LICENSE\` file. Exact upstream commits and local modifications are recorded in [\`vendor/README.md\`](vendor/README.md).
 
 | Package | Upstream name | Upstream | License |
 | --- | --- | --- | --- |
@@ -738,7 +738,7 @@ ${BUILD_TIME_TOOLS.map(tool => `| [\`${tool.name}\`](${tool.repo}) | ${tool.lice
 
 ## First-party native packages
 
-\`@deepseek-ai/node-addon-landlock-run\` (and its platform packages) is built and released from this repository under BSD 3-Clause. It is listed here for completeness; it is first-party, not third-party.
+\`@deepseek-ai/node-addon-landlock-run\` (and its platform packages) is maintained as source and built and verified locally in this repository under BSD 3-Clause. This community repository does not publish those inherited package identities. They are listed here for completeness as first-party source, not third-party dependencies.
 `
 }
 

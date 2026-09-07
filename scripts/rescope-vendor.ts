@@ -1,8 +1,9 @@
 /**
  * Rescope the vendored Cordis packages into the `@deepseek-ai` scope, and undo
- * that rescope with `--reverse`. Every harness package declares `cordis` as a
- * peer dependency, so publication carries this framework layer too; publishing
- * it under the upstream names would squat them on the registry
+ * that rescope with `--reverse`. In the inherited upstream package model every
+ * harness package declares `cordis` as a peer dependency, so its publication
+ * carries this framework layer and cannot use unowned registry names. DSH
+ * Context Map retains those identities for compatibility but does not publish them
  * ([rationale](../.agents/notes/implemented/process/2026-08-10-vendor-package-rescope.md),
  * [name mapping](../docs/rescope.md)).
  *
@@ -244,8 +245,8 @@ const EXACT_EDITS: readonly ExactEdit[] = [
     id: 'publication-set-scope-assertion',
     file: 'scripts/publish-npm-baseline.ts',
     find: '      if (!isVendored && !name.startsWith(\'@deepseek-ai/\')) {',
-    replace: `      // Vendored packages are rescoped too (vendor/README.md), so publication
-      // never carries an upstream name that would squat it on the registry.
+    replace: `      // Vendored packages are rescoped too (vendor/README.md), so the inherited
+      // upstream package model never carries an unowned registry identity.
       if (!name.startsWith('@deepseek-ai/')) {`,
     expect: 1,
   },
@@ -253,7 +254,7 @@ const EXACT_EDITS: readonly ExactEdit[] = [
     id: 'vendor-readme-preamble',
     file: 'vendor/README.md',
     find: 'All vendored packages keep their **original npm names** and are marked `private: true` — they are never published from this repo. `pnpm-workspace.yaml#linkWorkspacePackages` makes matching upstream semver ranges resolve these pinned workspaces, including imports from built `lib/`; disabling it substitutes npm copies behind the same names.',
-    replace: 'All vendored packages are **renamed into the `@deepseek-ai` scope** (`cordis` → `@deepseek-ai/cordis`, `@cordisjs/plugin-<x>` → `@deepseek-ai/cordis-plugin-<x>`): every harness package declares `cordis` as a peer dependency, so publishing the harness publishes this framework layer too, and a publication under the upstream names would squat them on the registry. Directory names and upstream version numbers are deliberately unchanged, so the manifest below still reads as an upstream snapshot. `pnpm-workspace.yaml#linkWorkspacePackages` makes those preserved semver ranges resolve these pinned workspaces, including imports from built `lib/`.',
+    replace: 'All vendored packages preserve the **inherited DeepSeek Harness identities in the `@deepseek-ai` scope** (`cordis` → `@deepseek-ai/cordis`, `@cordisjs/plugin-<x>` → `@deepseek-ai/cordis-plugin-<x>`). Those names are retained because every harness package declares the framework as a peer dependency and changing them would break source and workspace compatibility. The upstream distribution can publish this framework layer with the harness; this community repository instead limits its release path to local packaging and verification and never publishes into the inherited namespace. Directory names and upstream version numbers are deliberately unchanged, so the manifest below still reads as an upstream snapshot. `pnpm-workspace.yaml#linkWorkspacePackages` makes those preserved semver ranges resolve these pinned workspaces, including imports from built `lib/`.',
     expect: 1,
   },
   {
@@ -401,7 +402,7 @@ const VENDORED_LIBRARY = /^@deepseek-ai\\/(cosmokit|schemastery)(\\/|$)/
     id: 'notices-vendored-section',
     file: 'scripts/gen-third-party-notices.ts',
     find: 'The Cordis framework and its foundation libraries are source-vendored into this repository rather than consumed from npm. All are MIT-licensed',
-    replace: 'The Cordis framework and its foundation libraries are source-vendored into this repository rather than consumed from npm, and republished under the \\`@deepseek-ai\\` scope. All are MIT-licensed',
+    replace: 'The Cordis framework and its foundation libraries are source-vendored into this repository rather than consumed from npm and retain their inherited \\`@deepseek-ai\\` identities for source and workspace compatibility. This community repository does not publish them. All are MIT-licensed',
     expect: 1,
   },
   {
@@ -628,7 +629,7 @@ function main(): void {
   const all = patterns(reverse)
   const files = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' })
     .split('\0')
-    .filter(file => file !== '' && !excluded(file))
+    .filter(file => file !== '' && !excluded(file) && existsSync(resolve(root, file)))
 
   const counts = new Map<string, { files: number; lines: number }>()
   const failures: string[] = []

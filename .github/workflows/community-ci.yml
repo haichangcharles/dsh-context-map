@@ -1,0 +1,115 @@
+name: Community CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PRIMARY_NODE_VERSION: '24'
+  DSH_TELEMETRY_DISABLED: '1'
+
+jobs:
+  static:
+    name: static
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install (immutable)
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      # Typecheck has already built the host contracts consumed by this script.
+      - name: Lint
+        run: pnpm run lint:contracts-ready
+
+      - name: Verify workspace constraints
+        run: pnpm run constraints
+
+  gui:
+    name: GUI core
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install (immutable)
+        run: pnpm install --frozen-lockfile
+
+      - name: Test client and host packages
+        run: pnpm run test:gui
+
+  runtime:
+    name: runtime regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install (immutable)
+        run: pnpm install --frozen-lockfile
+
+      - name: Test runtime regressions and Contextify backends
+        run: |
+          pnpm exec vitest run \
+            scripts/ci-workflow.spec.ts \
+            packages/llm/llm-retry/tests/loader-composition.spec.ts \
+            packages/compaction/compaction-basic/tests/compaction-loop-repro.spec.ts \
+            packages/core/agent-loop/tests/request-error.spec.ts \
+            packages/context/contextify/tests \
+            packages/context/context-compiler/tests
+
+  community-gate:
+    name: community checks passed
+    if: always()
+    needs: [static, gui, runtime]
+    runs-on: ubuntu-latest
+    steps:
+      # A skipped dependency is not a passing required check.
+      - name: Fail if a required job did not succeed
+        if: needs.static.result != 'success' || needs.gui.result != 'success' || needs.runtime.result != 'success'
+        run: |
+          echo "::error::Required job results: static=${{ needs.static.result }}, gui=${{ needs.gui.result }}, runtime=${{ needs.runtime.result }}"
+          exit 1
+
+      - name: All community checks passed
+        run: echo "Static, GUI core, and runtime regression checks succeeded."

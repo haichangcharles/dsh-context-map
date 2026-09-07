@@ -28,15 +28,23 @@ Install a supported Node.js version and pnpm, then run:
 git clone https://github.com/haichangcharles/dsh-context-map.git
 cd dsh-context-map
 pnpm install
-pnpm run build
+pnpm run build:official
 pnpm dsh web
 ```
 
 The Web UI starts at `http://127.0.0.1:3080` by default. Runtime credentials use the same configuration mechanisms as DeepSeek Harness; never commit provider keys to this repository.
 
+The supported release build is a Git checkout at an exact DSH Context Map tag, for example `git clone --branch <release-tag> https://github.com/haichangcharles/dsh-context-map.git`. GitHub's automatically generated “Source code” archives are reference snapshots and omit `.git`, which the official build uses for commit provenance. If you deliberately build one of those archives, set `DSH_CLIENT_COMMIT_HASH` to the full commit SHA named by the Release before running `pnpm run build:official`.
+
 ## Architecture and upstream
 
-DeepSeek Harness remains the sole agent runtime. Contextify owns the durable message graph and Context Compiler behavior, while the Web plugin owns visualization and interaction. The application does not introduce another agent loop or call model providers directly from the browser.
+### Current runtime support
+
+DeepSeek Harness is the only Context Map host runtime implemented and supported by the current release. Contextify owns the durable message graph and Context Compiler behavior, while the Web plugin owns visualization and interaction. The application does not introduce another agent loop or call model providers directly from the browser.
+
+### Roadmap: portable context infrastructure
+
+The longer-term goal is to make Context Map portable across agent runtimes without weakening its durable, inspectable context model. Future work will add Context Map host-runtime adapters for Claude Code and the OpenAI Agents SDK, then explore applying the same capability to open-source Agent products such as OpenCode. These host-runtime integrations are roadmap items and are not available in the current release; inherited Claude Code subagent and hook interoperability inside DeepSeek Harness is a separate capability.
 
 The internal `@deepseek-ai/*` package names are retained for compatibility with the upstream workspace and module graph. They identify the runtime packages from which this project is derived; they do not make DSH Context Map an official DeepSeek distribution.
 

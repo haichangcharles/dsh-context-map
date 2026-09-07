@@ -1,8 +1,8 @@
-# Get started with the Python SDK
+# Inherited Python SDK reference
 
 English | [中文](python-sdk.zh.md)
 
-This tutorial is the programmatic alternative to the Web UI. It installs the published Python SDK, runs a checked-in agent composition, and shows how to call the same API from your own program.
+This page preserves the Python SDK contract from the inherited DeepSeek Harness source snapshot for maintainers. It is not a supported DSH Context Map installation path and is not published in the product documentation site. DSH Context Map does not publish Python packages; run the product from source as described in the [project README](../../../README.md).
 
 ## Prerequisites
 
@@ -12,21 +12,15 @@ This tutorial is the programmatic alternative to the Web UI. It installs the pub
 - A DeepSeek-compatible API endpoint and credential
 - An isolated workspace that the agent may modify
 
-## Install the SDK
+## Installation boundary
 
-Clone the repository for its runnable example, create a virtual environment, and install the SDK with its same-version bundled runtime:
+Do not combine an unpinned `deepseek-harness-sdk` from PyPI with the examples in this checkout: upstream package and API contracts can advance independently of this inherited snapshot. For a Python deployment, follow the [current upstream DeepSeek Harness SDK documentation](https://github.com/deepseek-ai/deepseek-harness/tree/master/python/sdk) and keep its documented source revision, SDK, and runtime carrier versions together. Those upstream artifacts do not contain Context Map features.
 
-```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
-python -m venv .venv
-. .venv/bin/activate
-python -m pip install deepseek-harness-sdk
-```
+Repository contributors validating this source snapshot must build the client and runtime from the same checkout using the [Python contributor workflows](../../../python/development.md).
 
-The installed runtime needs no system Node.js. Repository contributors who need to build the runtime or wheels from source should use the [Python contributor workflows](../../../python/development.md).
+## Validate the checked-in example from source
 
-## Run the checked-in example
+The remaining example describes this inherited source revision and assumes its same-checkout Python client and runtime have already been built and installed in an isolated contributor environment.
 
 Set the credential in the environment. Set `DEEPSEEK_BASE_URL` as well when the model is served by an OpenAI-compatible proxy rather than the default DeepSeek endpoint.
 

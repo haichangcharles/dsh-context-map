@@ -8,7 +8,7 @@ The setup tutorial takes a new contributor from prerequisites to a checked check
 
 ### Prerequisites
 
-- Node.js supports 22.19+ and 24+. CI covers 22.19, 24, and 26; see the [Node engine floor Agent Note](../.agents/notes/implemented/process/2026-07-06-node-engine-floor.md).
+- Node.js supports 22.19+ and 24+. Automatic Community CI uses Node 24; the inherited upstream reference retains the Node 22.19, 24, and 26 matrix. See the [Node engine floor Agent Note](../.agents/notes/implemented/process/2026-07-06-node-engine-floor.md).
 - Corepack-enabled pnpm. The repo pins `pnpm@11.7.0` in `package.json`; run `corepack enable` if `pnpm --version` does not resolve through Corepack.
 - Git 2.26 or newer; hook setup enables Git's worktree-specific configuration extension.
 - Optional: a DeepSeek API key for the Web, headless, and ACP automation demos and real-API e2e tests.
@@ -98,7 +98,7 @@ DEEPSEEK_API_KEY=sk-...
 DEEPSEEK_BASE_URL=https://... # optional
 ```
 
-`DEEPSEEK_BASE_URL` is optional and defaults to the public API. Never commit real credentials. The real-API e2e suites self-skip when `DEEPSEEK_API_KEY` is not set.
+`DEEPSEEK_BASE_URL` is optional and defaults to the public API. Never commit real credentials. Local real-API e2e suites self-skip when `DEEPSEEK_API_KEY` is not set; the manually dispatched GitHub workflow instead requires `DEEPSEEK_API_KEY_EXTERNAL` and fails its preflight when that repository secret is absent.
 
 ### Git integrations
 
@@ -114,13 +114,13 @@ lefthook is configured in `lefthook.yml` as a fast local checkpoint:
 
 The vendor manifest guard checks that changes under `vendor/*/src` are staged with the matching `vendor/README.md` manifest update. See `vendor/README.md` before editing vendored code.
 
-Apart from the scoped staged-record verification, the hooks intentionally do not run tests, snapshots, documentation checks, builds, or hygiene. Contributors run the [checks relevant to the changed behavior](../AGENTS.md#run-relevant-checks-locally) once; CI owns exhaustive coverage, built-artifact smokes, and the Node 22.19, 24, and 26 compatibility matrix.
+Apart from the scoped staged-record verification, the hooks intentionally do not run tests, snapshots, documentation checks, builds, or hygiene. Contributors run the [checks relevant to the changed behavior](../AGENTS.md#run-relevant-checks-locally) once. Automatic Community CI runs portable Node 24 static analysis, GUI tests, focused runtime regressions, Contextify backend tests, and workflow-contract tests on standard Ubuntu runners without credentials. The inherited exhaustive coverage, artifact smokes, and Node 22.19, 24, and 26 compatibility matrix remain available as an upstream engineering reference rather than automatic community checks.
 
 Contributors can opt into the comprehensive local gate set with `pnpm run check:all`. The command is independent of the Git hooks and is not an agent instruction.
 
 ### CI gates
 
-The keyless [CI workflow](../.github/workflows/ci.yml) groups independent gates into broad lanes and runs a smaller compatibility signal across supported Node versions. Artifact consumers wait for one build within their lane. The separate real-API workflow runs `pnpm run test:e2e` with its configured worker bound. See [scripts/run-gates.ts](../scripts/run-gates.ts) and the workflow files for the current gate and job inventory.
+The automatic [Community CI workflow](../.github/workflows/community-ci.yml) runs on pushes to `master`, pull requests, and manual dispatch. Its credential-free Node 24 jobs use standard Ubuntu runners for static analysis, GUI core tests, focused runtime and Contextify regressions, and the workflow-contract test; one aggregate job reports their combined result. The inherited [upstream CI definition](../.github/workflows/ci.yml) is a manual-only engineering reference for the larger runner and full-matrix topology. The [real-API workflow](../.github/workflows/e2e.yml) is also manual-only: it runs `pnpm run test:e2e` only after a strict preflight confirms `DEEPSEEK_API_KEY_EXTERNAL`, and a missing secret fails instead of producing an all-skipped green run. See [scripts/run-gates.ts](../scripts/run-gates.ts) and the workflow files for the current command and job inventory.
 
 ### Daily commands
 

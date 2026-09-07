@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Publish the packed launcher family from the tarballs `pack-release.mjs`
- * produced, in `publish-order.txt` order.
+ * Upstream maintenance reference for publishing the packed launcher family
+ * from the tarballs `pack-release.mjs` produced. DSH Context Map workflows and
+ * release instructions never invoke this entry.
  *
  * What goes out is decided per package against the registry, never from the
  * order file alone: a version the registry lacks is published, a version whose

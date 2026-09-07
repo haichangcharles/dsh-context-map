@@ -4,6 +4,8 @@
 
 用于以子进程方式驱动 DeepSeek Harness 的 Python 包。客户端 SDK 通过 stdio 使用按行分隔的 JSON-RPC 与内置运行时通信。
 
+> DSH Context Map 将这些包作为上游继承的兼容性源码保留。本社区仓库不发布相应的 Python 分发包；包页面中的安装说明指向上游 DeepSeek Harness 产物，不包含 Context Map 功能。
+
 ## 包
 
 | 目录 | 分发名／模块 | 职责 |
@@ -17,4 +19,4 @@
 
 ## 贡献者工作流
 
-[Python 贡献者工作流](development.md)介绍运行时产物构建、包验证、源码模式开发和分发。
+[Python 贡献者工作流](development.md)介绍运行时产物构建、包验证、源码模式开发和上游分发兼容性。

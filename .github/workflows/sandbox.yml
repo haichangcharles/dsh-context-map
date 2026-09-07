@@ -1,10 +1,11 @@
-# Sandbox CI: the keyless real-kernel confinement proofs. This master-only
-# reference stays outside the pull-request verdict; rationale lives in
-# .agents/notes/implemented/process/2026-07-21-serial-cross-platform-ci-reference.md.
-# A separate workflow from ci.yml because the axis is different — these jobs
+# Sandbox CI: focused, keyless real-kernel confinement proofs. This master-only
+# reference stays outside the pull-request verdict under the community source
+# release boundary documented in
+# .agents/notes/implemented/process/2026-09-07-community-source-release-boundary.md.
+# A separate workflow from Community CI because the axis is different — these jobs
 # fan out over OS×runner (kernel capabilities), not node versions. The Landlock
 # launcher is built from native/landlock-run on each Landlock leg and installed
-# from the same tarballs the main-repository release workflow publishes.
+# from the same tarball format exercised by the package compatibility workflow.
 name: Sandbox
 
 on:
@@ -31,8 +32,8 @@ jobs:
   # rung; Landlock twice, once per architecture, each confining through the
   # locally built launcher), Seatbelt on macOS (sandbox-exec ships with
   # the OS). One node
-  # version only: kernel confinement does not vary by node, and ci.yml's
-  # node matrix already covers the node axis.
+  # version only: kernel confinement does not vary by node, while Community CI
+  # owns the automatic source/runtime Node 24 verdict.
   #
   # The e2e files self-skip where their runner is absent, so a leg that lost
   # its runner (no bwrap, kernel without Landlock, macOS without
@@ -86,14 +87,6 @@ jobs:
           sudo apt-get install -yq musl-tools
           pnpm --dir native/landlock-run run build:ts
           pnpm --dir native/landlock-run run build:native
-
-      # The unit suite runs on ubuntu in `checks`; this is the one darwin leg
-      # in the workflow, so run it here too — the platform-dependent unit
-      # expectations (Seatbelt path canonicalization: /tmp IS /private/tmp)
-      # take their darwin branch only on this runner.
-      - name: Unit tests (darwin parity)
-        if: matrix.runner == 'seatbelt'
-        run: pnpm run test
 
       - name: Sandbox e2e (real kernel confinement, world-verified)
         # NO_COLOR: vitest force-enables ANSI color under GITHUB_ACTIONS even

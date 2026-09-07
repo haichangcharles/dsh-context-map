@@ -38,13 +38,13 @@
 
 覆盖率门禁（`pnpm run test:coverage`）：作为合入门禁校验，要求 `packages/*/*/src` 目录下每个文件行覆盖率达到 100%。未覆盖代码行大多是无用死代码，门禁标记这类代码是提示删除，而非单纯补充测试。行覆盖率是必要条件，但远不充分：它仅能证明代码被执行过，无法保证功能符合线上预期。
 
-> We are DeepSeek — do not ration real-API tests. A no-key test proves the plumbing; only a with-key run proves the agent works against a real model. Write many: real prompts that write files, multi-turn conversations, tool use, cancellation mid-stream. Cheapest and highest-value are **smoke tests** that boot the real example, send one real prompt, and check the world — they catch the "green unit tests, broken product" class that mocks structurally cannot. The self-skip exists only so secretless CI and keyless contributors aren't blocked; it is not a cost signal.
+> For upstream DeepSeek Harness compatibility, do not replace every real-API check with mocks. A no-key test proves the plumbing; only a with-key run proves the agent works against a real model. Cover real prompts that write files, multi-turn conversations, tool use, and cancellation mid-stream. High-value **smoke tests** boot the real example, send one real prompt, and check the world — they catch the "green unit tests, broken product" class that mocks structurally cannot. Self-skipping keeps secretless CI and keyless contributors unblocked; real-provider runs remain manual and credentialed in this community repository.
 
-我们是 DeepSeek：真实接口相关测试不得刻意缩减用例数量。无密钥测试仅能验证底层通路；只有携带有效密钥执行的用例，才能确认 agent（智能体）可正常对接真实模型。请大量编写此类测试：包含文件写入类真实提示词、多轮对话、工具调用、流式中途取消等场景。
+为验证与上游 DeepSeek Harness 的兼容性，不应把所有真实接口检查都替换为 mock。无密钥测试仅能验证底层通路；只有携带有效密钥执行的用例，才能确认 agent（智能体）可正常对接真实模型。此类测试应覆盖文件写入类真实提示词、多轮对话、工具调用、流式中途取消等场景。
 
 成本最低、收益最高的是**冒烟测试**：拉起完整真实示例，发送一条真实提示，并检查文件、进程等外部可观察结果。这类用例能捕获一类问题——单元测试全部绿灯，但产品实际运行故障，单靠 mock 完全无法发现这类缺陷。
 
-自带自动跳过逻辑，仅用于保障无密钥 CI 环境、无权限贡献者不会被流程拦截，不代表可以以此为由削减真实接口测试投入。
+自带自动跳过逻辑用于保障无密钥 CI 环境、无权限贡献者不会被流程拦截；本社区仓库中的真实提供方测试保持为需要凭据的手动运行。
 
 > **Prefer the real implementation over a mock** — Mock only genuinely expensive or non-deterministic dependencies (the LLM adapter, the network, the clock); keep everything downstream real. A hand-rolled stand-in proves the bridge moves bytes, not that the shipping tool behaves as asserted — the two drift while the test stays green.
 

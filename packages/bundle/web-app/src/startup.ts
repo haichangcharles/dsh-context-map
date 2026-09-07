@@ -46,7 +46,7 @@ interface WebOptions {
 function webCommand(): Command {
   return new Command()
     .name('dsh --profile web')
-    .description('Serve the DeepSeek Harness browser UI.')
+    .description('Serve the DSH Context Map browser UI (powered by DeepSeek Harness).')
     .helpOption('-h, --help', 'show this help')
     .option('--host <host>', 'bind host')
     .option('--no-open', 'do not open the Web UI in the default browser')

@@ -28,15 +28,23 @@ Context Map 为每个成功 Turn 保存一个最初用户输入节点和一个�
 git clone https://github.com/haichangcharles/dsh-context-map.git
 cd dsh-context-map
 pnpm install
-pnpm run build
+pnpm run build:official
 pnpm dsh web
 ```
 
 Web UI 默认启动在 `http://127.0.0.1:3080`。运行时密钥沿用 DeepSeek Harness 的配置机制；不要把任何模型服务商密钥提交到仓库。
 
+受支持的 Release 构建方式，是 Checkout 到精确 DSH Context Map Tag 的 Git 仓库，例如 `git clone --branch <release-tag> https://github.com/haichangcharles/dsh-context-map.git`。GitHub 自动生成的 “Source code” 归档只作为参考快照，并不包含官方构建用于记录 Commit 来源的 `.git`。如果确实需要从这种归档构建，请在运行 `pnpm run build:official` 前，把 `DSH_CLIENT_COMMIT_HASH` 设置为 Release 标注的完整 Commit SHA。
+
 ## 架构与上游更新
 
-DeepSeek Harness 是唯一的 Agent Runtime。Contextify 负责持久消息图和 Context Compiler 行为，Web 插件负责可视化与交互。本项目不会引入第二套 agent loop，也不会从浏览器直接调用模型服务商。
+### 当前 Runtime 支持
+
+DeepSeek Harness 是当前版本唯一已经实现并受支持的 Context Map 宿主 Runtime。Contextify 负责持久消息图和 Context Compiler 行为，Web 插件负责可视化与交互。本项目不会引入第二套 agent loop，也不会从浏览器直接调用模型服务商。
+
+### Roadmap：可移植的上下文基础设施
+
+长期目标是在不削弱持久、可检查的上下文模型的前提下，让 Context Map 能够适配多个 Agent Runtime。后续将为 Claude Code 与 OpenAI Agents SDK 增加 Context Map 宿主 Runtime Adapter，并进一步探索把同一能力应用到 OpenCode 等开源 Agent 产品中。这些宿主 Runtime 集成目前属于 Roadmap，当前版本尚未提供；DeepSeek Harness 内部已经继承的 Claude Code Subagent 与 Hook 互操作属于另一项能力。
 
 内部 `@deepseek-ai/*` 包名会继续保留，以兼容上游 Workspace 和模块图。这些名称说明底层 Runtime 包的来源，并不代表 DSH Context Map 是 DeepSeek 官方发行版。
 

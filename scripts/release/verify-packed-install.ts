@@ -5,15 +5,16 @@
  * Every tarball the installed tree needs comes from `--from`, so the only
  * registry traffic is for external dependencies. That matters beyond hermetic
  * verification: the harness packages declare the vendored framework as a peer,
- * those packages live in another release sequence, and this job must not depend
- * on the registry already carrying versions that match — one pull request may
- * bump both families before either publishes — so a dsh verification passes the
- * vendored family's pack output too, while publishing only its own
- * ([rationale](../../.agents/notes/implemented/process/2026-08-10-npm-release-sequences.md)).
+ * those packages live in another inherited sequence, and this job must not
+ * depend on the registry already carrying matching versions — one change may
+ * touch both families — so a dsh verification receives the vendored family's
+ * pack output too
+ * ([rationale](../../.agents/notes/archived/process/2026-08-10-npm-release-sequences.md)).
  *
  * What this proves is that `files` selected a complete payload and that the
- * published dependency ranges resolve. A workspace link or a stale `lib/` in the
+ * declared dependency ranges resolve. A workspace link or a stale `lib/` in the
  * checkout cannot stand in for a missing file here.
+ * DSH Context Map's supported workflows do not publish the verified tarballs.
  */
 
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'

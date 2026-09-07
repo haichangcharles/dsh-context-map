@@ -12,7 +12,7 @@ Issues already have a native Type and a separate source taxonomy. Reusing pull r
 
 ## Decision
 
-Every open or merged pull request carries exactly one canonical `kind/*` label and at least one materially affected `area/*` label. Closed pull requests that were never merged retain migrated historical assignments but do not receive invented missing classification. Operational labels may coexist without satisfying either dimension.
+Maintainers classify each open or merged pull request with exactly one canonical `kind/*` label and at least one materially affected `area/*` label. This is a contribution and review convention rather than an automated required check. Closed pull requests that were never merged retain migrated historical assignments but do not receive invented missing classification. Operational labels may coexist without satisfying either dimension.
 
 ### Kinds
 
@@ -29,7 +29,7 @@ The kind set is closed and mutually exclusive:
 
 The kind records the dominant intent. Accompanying tests, documentation, cleanup, or dependency movement do not override a feature or bug fix. A new kind changes these classification rules and requires an explicit taxonomy and policy change.
 
-Repository policy rejects unsupported `kind/*` values and reserves every alias removed by the unification: `kind/bug`, `kind/documentation`, `feature`, `bug-fix`, `doc`, `cleanup`, `testing`, `dependencies`, `ci`, `cli`, `llm`, and `web-search`. Reserving the exact migrated set prevents an obsolete synonym from being recreated as an apparently unrelated operational label.
+The maintained label set excludes unsupported `kind/*` values and reserves every alias removed by the unification: `kind/bug`, `kind/documentation`, `feature`, `bug-fix`, `doc`, `cleanup`, `testing`, `dependencies`, `ci`, `cli`, `llm`, and `web-search`. The independent repository does not enforce this set through an Issue Project workflow; maintainers preserve the taxonomy when creating or migrating labels. Reserving the exact migrated set prevents an obsolete synonym from being recreated as an apparently unrelated operational label.
 
 ### Areas
 

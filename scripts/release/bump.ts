@@ -1,18 +1,18 @@
 /**
- * Bump one release family's version and commit it, so the published version is
- * readable from the repository rather than derived inside CI
- * ([rationale](../../.agents/notes/implemented/process/2026-08-10-npm-release-sequences.md)).
+ * Bump one inherited release family's version and commit it, preserving the
+ * upstream version/tag contract as repository-readable compatibility metadata
+ * ([rationale](../../.agents/notes/archived/process/2026-08-10-npm-release-sequences.md)).
  *
  * The dsh family shares one version across its publishable members, private
  * package manifests, and the workspace root:
  * `major`, `minor`, `patch`, or an explicit `x.y.z` (including a prerelease such
  * as `0.0.1-rc.1`). The vendored family has one version line per package, but
- * every release advances and publishes the complete family so the next release
- * never reuses an unchanged member's existing version from a different
- * repository state.
+ * every rehearsal advances the complete family so later verification never
+ * reuses an unchanged member's version from a different repository state.
  *
  * The version lands in the manifests, the lockfile follows, and a human creates
- * the tag after the commit merges. CI never writes to the repository.
+ * the tag after the commit merges. CI never writes to the repository. Community
+ * release workflows do not invoke this helper or publish package identities.
  */
 
 import { globSync, readFileSync, writeFileSync } from 'node:fs'

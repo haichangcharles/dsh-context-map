@@ -1,7 +1,7 @@
 # CI for the landlock-run packages under native/landlock-run. A separate
 # workflow from ci.yml keeps the native OS/architecture matrix independent of
-# the harness Node matrix. Release assembly and publication use the companion
-# Landlock Run Release workflow.
+# the harness Node matrix. The companion workflow assembles the complete
+# inherited package set as a credential-free compatibility rehearsal.
 name: Landlock Run
 
 on:

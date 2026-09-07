@@ -108,7 +108,7 @@ const homeAndGuide = pairedPages([
   {
     source: 'docs/user/index.md',
     route: 'index.md',
-    label: { root: 'DeepSeek Harness', en: 'DeepSeek Harness' },
+    label: { root: 'DSH Context Map', en: 'DSH Context Map' },
     sidebar: { root: null, en: null },
     section: { root: '首页', en: 'Home' },
     order: 0,
@@ -129,14 +129,6 @@ const homeAndGuide = pairedPages([
     sidebar: { root: 'zh-guide', en: 'en-guide' },
     section: { root: '入门', en: 'Guide' },
     order: 2,
-  },
-  {
-    source: 'docs/user/guide/python-sdk.md',
-    route: 'guide/python-sdk.md',
-    label: { root: 'Python', en: 'Python' },
-    sidebar: { root: 'zh-guide', en: 'en-guide' },
-    section: { root: 'SDK', en: 'SDK' },
-    order: 1,
   },
 ])
 

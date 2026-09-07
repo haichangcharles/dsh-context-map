@@ -16,7 +16,7 @@ The Web UI uses the DSH Context Map name in the browser title, application wordm
 
 ## Compatibility boundary
 
-The project keeps DeepSeek Harness as its sole agent runtime. Contextify extends documented plugin, compiler, Session, Remote, and client-slot mechanisms; it does not introduce a second agent loop or call model providers from the Web UI.
+The current release supports DeepSeek Harness as the sole Context Map host runtime. Contextify extends documented plugin, compiler, Session, Remote, and client-slot mechanisms; it does not introduce a second agent loop or call model providers from the Web UI. Future work will add separate Context Map host-runtime adapters for Claude Code and the OpenAI Agents SDK, then apply the same interaction model to open-source agents such as OpenCode; those adapters are roadmap items, not capabilities of this release.
 
 Existing `@deepseek-ai/*` workspace package names remain unchanged unless the project later publishes independently scoped packages. Preserving those internal names minimizes merge conflicts, keeps the upstream module graph intact, and distinguishes product branding from dependency identity.
 

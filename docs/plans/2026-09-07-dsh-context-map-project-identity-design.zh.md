@@ -16,7 +16,7 @@ Web UI 在浏览器标题、应用文字标识、PWA manifest 和其他产品级
 
 ## 兼容边界
 
-项目继续将 DeepSeek Harness 作为唯一 agent 运行时。Contextify 扩展已记录的插件、compiler、Session、Remote 和客户端 slot 机制；它不会引入第二套 agent loop，也不会从 Web UI 调用模型提供方。
+当前版本仅支持 DeepSeek Harness 作为 Context Map 的宿主运行时。Contextify 扩展已记录的插件、compiler、Session、Remote 和客户端 slot 机制；它不会引入第二套 agent loop，也不会从 Web UI 调用模型提供方。后续将分别为 Claude Code 与 OpenAI Agents SDK 增加 Context Map 宿主适配器，再把同一交互模型应用到 OpenCode 等开源 agent；这些适配器属于路线图，并非当前版本能力。
 
 除非项目以后发布独立命名空间的包，否则现有 `@deepseek-ai/*` 工作区包名称保持不变。保留这些内部名称可以减少合并冲突、维持上游模块图不变，并将产品品牌与依赖标识区分开。
 

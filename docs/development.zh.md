@@ -8,7 +8,7 @@
 
 ### 前置条件
 
-- Node.js 支持 22.19+ 与 24+。CI 覆盖 22.19、24 和 26；见 [Node 引擎下限 Agent Note](../.agents/notes/implemented/process/2026-07-06-node-engine-floor.md)。
+- Node.js 支持 22.19+ 与 24+。自动 Community CI 使用 Node 24；继承的上游参考保留 Node 22.19、24 和 26 矩阵。见 [Node 引擎下限 Agent Note](../.agents/notes/implemented/process/2026-07-06-node-engine-floor.md)。
 - 启用了 Corepack 的 pnpm。仓库在 `package.json` 中固定使用 `pnpm@11.7.0`；如果 `pnpm --version` 无法通过 Corepack 解析，请先运行 `corepack enable`。
 - Git 2.26 或更高版本；钩子设置会启用 Git 的 worktree 专属配置扩展。
 - 可选：一个 DeepSeek API key，用于 Web、headless 和 ACP（Agent Client Protocol）自动化 agent（智能体）演示以及真实 API 的 e2e 测试。
@@ -98,7 +98,7 @@ DEEPSEEK_API_KEY=sk-...
 DEEPSEEK_BASE_URL=https://... # optional
 ```
 
-`DEEPSEEK_BASE_URL` 可选，默认为公开 API。请勿提交真实凭证。未设置 `DEEPSEEK_API_KEY` 时，真实 API 的 e2e 套件会自动跳过。
+`DEEPSEEK_BASE_URL` 可选，默认为公开 API。请勿提交真实凭证。未设置 `DEEPSEEK_API_KEY` 时，本地真实 API e2e 套件会自动跳过；手动触发的 GitHub 工作流则要求 `DEEPSEEK_API_KEY_EXTERNAL`，缺少该仓库 secret 时会在预检中失败。
 
 ### Git 集成
 
@@ -114,13 +114,13 @@ lefthook 在 `lefthook.yml` 中配置，作为快速的本地检查点：
 
 vendor manifest 守卫检查 `vendor/*/src` 下的改动是否连同对应的 `vendor/README.md` manifest 更新一起暂存。请在编辑 vendor 代码前先阅读 `vendor/README.md`。
 
-除限定范围的暂存记录校验外，这些钩子有意不运行测试、快照、文档检查、构建或 `hygiene`。贡献者只运行一次[与改动行为相关的检查](../AGENTS.md#run-relevant-checks-locally)；CI 负责全量覆盖率门禁、构建产物冒烟测试，以及 Node 22.19、24 和 26 兼容性矩阵。
+除限定范围的暂存记录校验外，这些钩子有意不运行测试、快照、文档检查、构建或 `hygiene`。贡献者只运行一次[与改动行为相关的检查](../AGENTS.md#run-relevant-checks-locally)。自动 Community CI 在无凭据的标准 Ubuntu runner 上运行可移植的 Node 24 静态分析、GUI 测试、聚焦运行时回归、Contextify 后端测试和工作流约定测试。继承的全量覆盖率、产物冒烟测试，以及 Node 22.19、24 和 26 兼容性矩阵作为上游工程参考保留，而不是自动社区检查。
 
 贡献者可以选择运行 `pnpm run check:all`，执行全面的本地门禁集。该命令独立于 Git 钩子，也不是对 agent 的指令。
 
 ### CI 门禁
 
-keyless [CI 工作流](../.github/workflows/ci.yml) 将独立门禁分组到若干宽粒度 lane，并在受支持的 Node 版本上运行一组较小的兼容性检查。产物消费方在各自 lane 内等待一次 build。单独的真实 API 工作流按其配置的 worker 上限运行 `pnpm run test:e2e`。当前门禁和 job 清单以 [scripts/run-gates.ts](../scripts/run-gates.ts) 和工作流文件为准。
+自动 [Community CI 工作流](../.github/workflows/community-ci.yml) 在向 `master` 推送、PR 和手动触发时运行。其无凭据 Node 24 job 使用标准 Ubuntu runner 执行静态分析、GUI 核心测试、聚焦运行时与 Contextify 回归，以及工作流约定测试；一个汇总 job 报告它们的整体结果。继承的[上游 CI 定义](../.github/workflows/ci.yml)仅作为较大 runner 与完整矩阵拓扑的手动工程参考。[真实 API 工作流](../.github/workflows/e2e.yml)同样只能手动触发：它先通过严格预检确认 `DEEPSEEK_API_KEY_EXTERNAL`，再运行 `pnpm run test:e2e`；缺少 secret 会失败，而不会产生全部跳过的绿色运行。当前命令和 job 清单以 [scripts/run-gates.ts](../scripts/run-gates.ts) 和工作流文件为准。
 
 ### 日常命令
 

@@ -26,6 +26,8 @@ Compact-basic 会在每个拟议请求之前包装 `agent/pre-step`。在续步�
 
 恢复运行前，失败 step 已经关闭。负责处理的监听器修复持久状态、返回 `{ kind: 'retry' }`，并停止 waterfall（瀑布式事件）委托。循环随后关闭失败 turn，并从持久日志开启一个重试 turn，中间不发布空闲通知。重试策略与尝试计数由插件自己拥有；compaction-basic 在链路到达终态 `agent/settled` 时清除对应 agent 的溢出计数。两个 DeepSeek 适配器都把识别出的提供方上下文限制错误规范化为 `CONTEXT_WINDOW_EXCEEDED`。[重试动作决策](../simplification/2026-07-27-request-error-retry-action.md)规定这一返回边界。
 
+Agent Loop 会在普通提供方重试之间保留该 step 的冻结 Context Compiler 结果。若恢复过程提交了剪枝或摘要，`session.surface.replaceGeneration` 会递增；循环检测到这一持久变化后，会在下一次重试前重新编译。这样既能让溢出恢复使用修复后的表层，也能保持瞬时重试稳定；若监听器返回 `retry` 却没有替换模型可见历史，则不会发生无意义的重新编译。
+
 如果取消发生在 assistant 工具调用已经持久化之后、所有调用完成分发之前，循环会为每个尚未分发的调用记录一对合成的 `tool/call` 与 aborted `tool/result`，随后进入正常中止路径。因此，表层不会仅因取消赢得竞态而留下孤立的持久工具调用。
 
 ### CompactionEngine 暴露意图，而不拥有 token 核算

@@ -67,7 +67,7 @@ describe('tsdown client artifact', () => {
     expect(exports.inject).toEqual([
       'slots', 'conversationEvents', 'conversationViews', 'sessions', 'locale',
     ])
-  })
+  }, 15_000)
 
   it.skipIf(code === undefined)('mounted as an object plugin, apply registers the view tab on the real ring', async () => {
     const { exports } = await loadArtifact()

@@ -43,16 +43,23 @@ const publicationSourceAllowlist: Readonly<Record<string, readonly string[]>> = 
 }
 const repositoryUrl = 'git+https://github.com/deepseek-harness/deepseek-harness.git'
 /**
- * Source home the published packages point consumers at. It differs from
- * {@link repositoryUrl}, which the Landlock packages keep because npm resolves
- * their trusted publishing against the repository that runs the workflow.
+ * Source home the inherited upstream package metadata points consumers at. It
+ * differs from {@link repositoryUrl}, which Landlock manifests retain as
+ * upstream trusted-publication compatibility metadata. DSH Context Map's
+ * supported workflows do not publish those packages.
  */
 const publishedRepositoryUrl = 'git+https://github.com/deepseek-ai/deepseek-harness.git'
+const communityRepositoryUrl = 'git+https://github.com/haichangcharles/dsh-context-map.git'
+const communityReleasePackages = new Set([
+  '@deepseek-ai/dsh-client-ui-contextify',
+  '@deepseek-ai/dsh-context-compiler',
+  '@deepseek-ai/dsh-contextify',
+])
 /** Private packages that participate in workspace checks but not releases. */
 const experimentalPackageDirectory = /^packages\/experimental\/[^/]+$/
 /** npm namespace reserved for private experimental packages. */
 const experimentalPackageNamePrefix = '@deepseek-ai/dsh-experimental-'
-/** Directories whose packages this repository publishes: one release member each. */
+/** Directories represented as one member each in the inherited upstream release model. */
 const releaseMemberDirectory = /^(?:packages\/(?!experimental\/)[^/]+\/[^/]+|apps\/[^/]+|vendor\/[^/]+)$/
 
 const localArtifactDirs = new Set(['node_modules'])
@@ -264,38 +271,37 @@ function checkWorkspace({ dir, manifest }: WorkspaceManifest): string[] {
 
   if (isPublicLandlockPackage) {
     if (manifest.private === true) {
-      errors.push(`${label}: published Landlock package must not set "private": true`)
+      errors.push(`${label}: inherited public Landlock package must not set "private": true`)
     }
     if (manifest.publishConfig?.access !== 'public') {
-      errors.push(`${label}: published Landlock package must set publishConfig.access to "public"`)
+      errors.push(`${label}: inherited public Landlock package must set publishConfig.access to "public"`)
     }
     const expectedDirectory = dir
     if (manifest.repository?.type !== 'git'
       || manifest.repository.url !== repositoryUrl
       || manifest.repository.directory !== expectedDirectory) {
-      errors.push(`${label}: published Landlock package repository must use ${repositoryUrl} with directory ${expectedDirectory} for trusted publishing`)
+      errors.push(`${label}: inherited Landlock package repository must use ${repositoryUrl} with directory ${expectedDirectory} for upstream publication compatibility`)
     }
   } else if (releaseMemberDirectory.test(dir)) {
-    // Release members state that they are publishable: npm refuses a private
-    // package, and the repository field is how a consumer finds the source of
-    // the package it installed.
-    //
-    // Access is per release sequence, not per scope: the vendored framework and
-    // the Landlock packages publish publicly because outside consumers install
-    // them, while the dsh family stays restricted until its own sequence goes
-    // public. A mixed scope is why no publish path passes `--access` — one flag
-    // cannot serve both, so each packed manifest decides
-    // ([rationale](../.agents/notes/implemented/process/2026-08-13-public-vendor-and-native-sequences.md)).
+    // Release-family members remain packable under the inherited upstream
+    // contract: npm refuses a private package, and repository metadata is how a
+    // consumer traces locally verified tarballs back to source. DSH Context Map
+    // exercises that compatibility contract, but its supported workflows stop
+    // after packing and verification; they never publish these manifests
+    // ([community release boundary](../.agents/notes/implemented/process/2026-09-07-community-source-release-boundary.md)).
     if (manifest.private === true) {
       errors.push(`${label}: release member must not set "private": true`)
     }
     if (manifest.publishConfig?.access !== 'public') {
       errors.push(`${label}: release member must set publishConfig.access to "public"`)
     }
+    const expectedRepositoryUrl = manifest.name !== undefined && communityReleasePackages.has(manifest.name)
+      ? communityRepositoryUrl
+      : publishedRepositoryUrl
     if (manifest.repository?.type !== 'git'
-      || manifest.repository.url !== publishedRepositoryUrl
+      || manifest.repository.url !== expectedRepositoryUrl
       || manifest.repository.directory !== dir) {
-      errors.push(`${label}: release member repository must use ${publishedRepositoryUrl} with directory ${dir}`)
+      errors.push(`${label}: release member repository must use ${expectedRepositoryUrl} with directory ${dir}`)
     }
   } else if (!experimentalPackageDirectory.test(dir) && manifest.private !== true) {
     errors.push(`${label}: package.json must set "private": true`)
@@ -408,8 +414,8 @@ function checkHierarchyShape(): string[] {
 }
 
 function checkRepositoryVersion(): string[] {
-  // The root carries the dsh release family's version, so a prerelease such as
-  // 0.0.1-rc.1 is a valid state between `release:dsh` and its publication.
+  // The root carries the inherited dsh release family's version, so a prerelease
+  // such as 0.0.1-rc.1 is valid while rehearsing the upstream publication contract.
   if (repositoryVersion && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(repositoryVersion)) return []
   return ['package.json: version must be X.Y.Z with an optional prerelease segment']
 }

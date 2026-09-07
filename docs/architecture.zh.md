@@ -94,6 +94,8 @@ turn/end
 
 详情见[时序图](agent-lifecycle.md)、[工具流水线](tool-execution-pipeline.md)和[取消与错误恢复](subsystems/core.md#the-agent-handle)。
 
+Context Compiler 在步骤进入请求边界时运行。它生成的冻结消息选择与描述符会在普通提供方重试之间复用，因此瞬时传输失败不会悄悄改变上下文。恢复中间件可以提交新的会话表层（例如溢出压缩）；当 `session.surface.replaceGeneration` 发生变化时，Agent Loop 会在下一次重试前重新编译，使模型看到修复后的持久表层，而不是失败请求留下的陈旧编译结果。没有已提交表层替换的重试不会触发重新编译。
+
 ## 会话日志
 
 会话日志是模型所见上下文的来源。默认 Context Compiler 与 `deriveMessages()` 一样投影当前表层；其他已注册 provider 可以选择并重排现有消息事件，而不重写日志。原始 `assistant/chunk` 事件保证回放和 UI 保真。fork、恢复、transcript（文本记录）、遥测和持久化都派生自该事件流。

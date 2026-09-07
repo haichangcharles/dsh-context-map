@@ -1,4 +1,4 @@
-/** Build, publish, and verify one commit-addressed npm workspace baseline. */
+/** Upstream maintenance reference for a commit-addressed npm workspace baseline. */
 
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -258,8 +258,8 @@ class WorkspacePackageSet {
       const name = expectString(manifest, 'name', manifestPath)
       const version = expectString(manifest, 'version', manifestPath)
       const isVendored = manifestPath.startsWith('vendor/')
-      // Vendored packages are rescoped too (vendor/README.md), so publication
-      // never carries an upstream name that would squat it on the registry.
+      // Vendored packages are rescoped too (vendor/README.md), so the inherited
+      // upstream package model never carries an unowned registry identity.
       if (!name.startsWith('@deepseek-ai/')) {
         throw new Error(`${manifestPath} must name an @deepseek-ai package`)
       }

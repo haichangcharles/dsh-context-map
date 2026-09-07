@@ -1,17 +1,10 @@
-name: Release (Python)
+name: Package compatibility (upstream Python)
 
-# A PR labeled python-release-dry-run or a manual run with publish=false builds
-# and validates the complete release without registry credentials. Publication
-# is accepted only from a manual run on the matching python-v* tag when the
-# private publisher-repository identity and public-PyPI switch are configured.
+# A labeled PR or manual run builds and validates the inherited Python wheels
+# without registry credentials. This community repository publishes a GitHub
+# source release and deliberately has no public-PyPI publication path.
 on:
   workflow_dispatch:
-    inputs:
-      publish:
-        description: Publish the validated wheels to public PyPI. Must run from a python-v* tag.
-        required: true
-        type: boolean
-        default: false
   pull_request:
     types: [labeled]
 
@@ -19,10 +12,8 @@ permissions:
   contents: read
 
 concurrency:
-  # Public runs stay globally serialized across tags. Dry runs remain isolated
-  # by ref so they do not block an intentional publication.
-  group: ${{ github.event_name == 'workflow_dispatch' && inputs.publish && 'python-publication' || format('{0}-{1}', github.workflow, github.ref) }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -107,36 +98,6 @@ jobs:
           print(f"version={wheel_version}")
           PY
 
-      - name: Authorize publication request
-        env:
-          PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
-          PUBLIC_PYPI_RELEASE_ENABLED: ${{ vars.PUBLIC_PYPI_RELEASE_ENABLED }}
-          PYPI_PUBLISHER_REPOSITORY: ${{ vars.PYPI_PUBLISHER_REPOSITORY }}
-          REPOSITORY: ${{ github.repository }}
-          REF_NAME: ${{ github.ref_name }}
-          REF_TYPE: ${{ github.ref_type }}
-          REPOSITORY_VERSION: ${{ steps.version.outputs.repository-version }}
-        run: |
-          set -euo pipefail
-          if [ "$PUBLISH" = true ]; then
-            [ -n "$PYPI_PUBLISHER_REPOSITORY" ] || {
-              echo "::error::Set the repository variable PYPI_PUBLISHER_REPOSITORY before publication."
-              exit 1
-            }
-            [ "$REPOSITORY" = "$PYPI_PUBLISHER_REPOSITORY" ] || {
-              echo "::error::This repository is not the configured PyPI publisher repository."
-              exit 1
-            }
-            [ "$PUBLIC_PYPI_RELEASE_ENABLED" = true ] || {
-              echo "::error::Set PUBLIC_PYPI_RELEASE_ENABLED=true before public publication."
-              exit 1
-            }
-            [ "$REF_TYPE" = tag ] && [ "$REF_NAME" = "python-v$REPOSITORY_VERSION" ] || {
-              echo "::error::Publication must run from tag python-v$REPOSITORY_VERSION."
-              exit 1
-            }
-          fi
-
       - uses: actions/download-artifact@v8
         with:
           pattern: deepseek_harness_*
@@ -182,68 +143,3 @@ jobs:
           path: dist/*
           if-no-files-found: error
           retention-days: 7
-
-  publish-runtime:
-    name: Publish runtime wheels to public PyPI
-    if: github.event_name == 'workflow_dispatch' && inputs.publish
-    needs: validate
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    environment: pypi-runtime
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          name: python-release-${{ needs.validate.outputs.version }}
-          path: dist
-
-      - name: Verify release artifact hashes
-        run: cd dist && sha256sum -c SHA256SUMS
-
-      - name: Select runtime wheels
-        run: |
-          mkdir -p dist/runtime
-          mv dist/deepseek_harness_runtime_bin-*.whl dist/runtime/
-
-      - name: Publish runtime wheels
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: dist/runtime/
-          # Public attestations reveal the private publisher repository. OIDC
-          # authentication remains enabled without uploading that provenance.
-          attestations: false
-
-  # Keep the SDK in a dependent job. If its upload fails after the immutable
-  # runtime files arrive, "re-run failed jobs" resumes here without attempting
-  # to overwrite the runtime release.
-  publish-sdk:
-    name: Publish SDK wheel to public PyPI
-    if: github.event_name == 'workflow_dispatch' && inputs.publish
-    needs: [validate, publish-runtime]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    environment: pypi
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          name: python-release-${{ needs.validate.outputs.version }}
-          path: dist
-
-      - name: Verify release artifact hashes
-        run: cd dist && sha256sum -c SHA256SUMS
-
-      - name: Select SDK wheel
-        run: |
-          mkdir -p dist/sdk
-          mv dist/deepseek_harness_sdk-*.whl dist/sdk/
-
-      - name: Publish SDK wheel
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: dist/sdk/
-          attestations: false

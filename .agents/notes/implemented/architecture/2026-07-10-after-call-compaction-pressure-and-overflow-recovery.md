@@ -26,6 +26,8 @@ Compact-basic wraps `agent/pre-step` before each proposed request. At a continua
 
 The failed step closes before recovery runs. A handling listener repairs durable state, returns `{ kind: 'retry' }`, and stops waterfall delegation. The loop then closes the failed turn and opens one retry turn from the durable log without an intervening idle notification. Retry policy and attempt counts remain plugin-owned; compaction-basic clears its per-agent overflow count when the chain reaches terminal `agent/settled`. Both DeepSeek adapters normalize recognized provider context-limit failures to `CONTEXT_WINDOW_EXCEEDED`. The [retry-action decision](../simplification/2026-07-27-request-error-retry-action.md) owns the return boundary.
 
+The Agent Loop preserves the step's frozen Context Compiler result across ordinary provider retries. Recovery that commits pruning or summarization increments `session.surface.replaceGeneration`; the loop detects that durable change and recompiles before the next retry. This makes overflow recovery use the repaired surface while keeping transient retries stable, and avoids recompilation when a listener returns `retry` without replacing model-visible history.
+
 If cancellation lands after assistant tool calls are durable but before all calls dispatch, the loop records a synthetic `tool/call` and aborted `tool/result` pair for every undispatched call before following the normal abort path. The surface therefore never retains orphaned durable tool calls merely because cancellation won the race.
 
 ### CompactionEngine exposes intent, not token accounting

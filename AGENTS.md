@@ -1,10 +1,6 @@
 # AGENTS.md
 
-DeepSeek Harness is a plugin-based agent harness on vendored Cordis: **everything is a plugin**. Read [docs/architecture.md](docs/architecture.md) before changing `packages/`; follow [docs/AGENTS.md](docs/AGENTS.md) for documentation.
-
-## Pre-release stance: foundation over blast radius
-
-**Remove this section at the first tagged release.** With no external consumers, prefer the correct foundation over compatibility shims: rename or repackage freely and update every reference together. Backends reject old on-disk formats. SQLite uses monotonic `SCHEMA_VERSION`; `dsh-session` keeps `SESSION_FORMAT_VERSION` at `0` with no compatibility promise.
+DSH Context Map is an independent project built on DeepSeek Harness, a plugin-based agent harness on vendored Cordis: **everything is a plugin**. Read [docs/architecture.md](docs/architecture.md) before changing `packages/`; follow [docs/AGENTS.md](docs/AGENTS.md) for documentation.
 
 ## Repository layout
 
@@ -63,8 +59,8 @@ Package groups: [packages/README.md](packages/README.md).
 pnpm install            # pnpm workspaces, node ^22.19 || >=24
 pnpm run clean           # remove build outputs and safe residue from deleted packages
 pnpm run test           # vitest unit tests
-pnpm run test:coverage  # CI coverage gate: per-file 100% on packages/*/*/src
-pnpm run test:e2e       # real-API tests; self-skip without DEEPSEEK_API_KEY
+pnpm run test:coverage  # full local/upstream coverage check: per-file 100% on packages/*/*/src
+pnpm run test:e2e       # local real-API tests self-skip without DEEPSEEK_API_KEY
 pnpm run test:snapshot  # keyless ACP/headless replay vs expected outputs; filter: -t <name>
 pnpm run test:snapshot:record  # re-record expected outputs (needs key)
 pnpm run typecheck
@@ -72,7 +68,7 @@ pnpm run lint
 pnpm run duplication    # cross-file TypeScript clone detection
 pnpm run build          # tsc emits lib/types, tsdown bundles runtime
 pnpm run hygiene        # knip + publint + workspace constraints + NodeNext consumer check
-pnpm run check:windows-wine  # ONLY when diagnosing a known Windows failure (needs wine); CI owns this signal
+pnpm run check:windows-wine  # ONLY when diagnosing a known Windows failure (needs wine)
 pnpm run doc-sync       # all documentation gates; leaf list in scripts/run-gates.ts
 pnpm run website:build  # VitePress build (doubles as dead-link check)
 pnpm dsh --profile headless "task"  # run one task from source (needs DEEPSEEK_API_KEY)
@@ -89,12 +85,12 @@ When required `gh`, `pnpm`, build, test, or generator commands fail because the 
 Run checks before pushes via [dsh-pre-push-checks](.agents/skills/dsh-pre-push-checks/SKILL.md); report only commands run. After `gh stack sync`, validate immediately; do not merge before checks pass.
 
 - Match evidence to the surface: focused tests for behavior, snapshots for model or user output, `doc-sync` for docs, build/hygiene and built smokes for published paths, and real-API e2e for provider behavior.
-- Never default to the full suite or repeat a passing check for commit or push. CI owns exhaustive coverage and the platform matrix; rehearse all locally only by explicit request, for CI diagnosis, or for an irreducibly repository-wide change.
-- `test:coverage`, not `test`, is the CI coverage gate ([why](docs/testing.md)).
+- Never default to the full suite or repeat a passing check for commit or push. Automatic Community CI owns the portable Node 24 static, GUI, and focused runtime checks; use the inherited exhaustive and platform-matrix checks only by explicit request, for CI diagnosis, or for an irreducibly repository-wide change.
+- `test:coverage`, not `test`, is the full local and inherited-upstream coverage check; automatic Community CI does not run it ([why](docs/testing.md)).
 
 ## Secrets / .env
 
-Real-API tests and demos read `DEEPSEEK_API_KEY`, optional `DEEPSEEK_BASE_URL`, and root `.env`. cordis.yml allows `!!js` (never `!js`) under plugin `config` and entry `disabled`; other metadata stays literal, so conditional composition also uses overlays ([primer](docs/cordis-primer.md#loader-configuration)). Never commit credentials. CI e2e skips without a key; [testing.md](docs/testing.md) owns key policy.
+Real-API tests and demos read `DEEPSEEK_API_KEY`, optional `DEEPSEEK_BASE_URL`, and root `.env`. cordis.yml allows `!!js` (never `!js`) under plugin `config` and entry `disabled`; other metadata stays literal, so conditional composition also uses overlays ([primer](docs/cordis-primer.md#loader-configuration)). Never commit credentials. Local e2e suites self-skip without a key; the manually dispatched GitHub e2e workflow fails preflight when its repository secret is absent ([policy](docs/testing.md#with-key-policy-validate-live-provider-behavior-deliberately)).
 
 ## Conventions
 

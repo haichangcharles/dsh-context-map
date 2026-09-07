@@ -16,10 +16,10 @@ const CLIENT_BUILD_ENV_PREFIX = 'DSH_CLIENT_'
 /** Non-public selector used by build orchestration to request a named client profile. */
 export const CLIENT_BUILD_PROFILE_SELECTOR = 'DSH_BUILD_CLIENT_PROFILE'
 
-/** Public client environment required by official DSH artifacts. */
+/** Public client environment required by DSH Context Map release artifacts. */
 const OFFICIAL_CLIENT_BUILD_ENVIRONMENT = {
   DSH_CLIENT_BUILD_PROFILE: 'official',
-  DSH_CLIENT_TITLE: 'DeepSeek Harness',
+  DSH_CLIENT_TITLE: 'DSH Context Map',
 } as const
 
 /** Public variable carrying the source commit embedded in client artifacts. */
@@ -58,10 +58,10 @@ export function repositoryCommitHash(root: string, environment: NodeJS.ProcessEn
 }
 
 /**
- * Resolve the exact public values required by an official build at one commit.
+ * Resolve the exact public values required by a release build at one commit.
  * @param root - repository root whose HEAD must match the built source.
  * @param environment - optional explicit commit source for non-Git build environments.
- * @returns complete official client environment.
+ * @returns complete release client environment.
  */
 export function officialClientBuildEnvironment(
   root: string,

@@ -1,10 +1,9 @@
 /**
- * Verify a release family's version baseline, and — when publishing — that the
- * run comes from the family's tag and its members are publishable.
+ * Verify an inherited release family's version baseline for compatibility packing.
  *
- * Publication happens only from GitHub Actions, so the tag and publishability
- * checks are gates on the workflow, not advisory local warnings
- * ([rationale](../../.agents/notes/implemented/process/2026-08-10-npm-release-sequences.md)).
+ * Tag and publishability checks remain available only to the explicitly named
+ * upstream maintenance utilities. DSH Context Map workflows never select that
+ * mode or supply registry credentials.
  */
 
 import { parseArgs } from 'node:util'

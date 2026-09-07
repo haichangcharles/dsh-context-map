@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This directory builds `landlock-run`, a Landlock self-restrict-then-exec launcher: a small, auditable confinement binary distributed as prebuilt per-platform npm packages, plus the thin JS entry package that resolves it and implements its CLI contract. It belongs to the repository's root pnpm workspace and lockfile. The main repository owns native CI, tarball assembly, verification, and npm publication; keep package-family changes coordinated with harness consumers in the same repository.
+This directory builds `landlock-run`, a Landlock self-restrict-then-exec launcher: a small, auditable confinement binary represented as prebuilt per-platform npm-compatible packages, plus the thin JS entry package that resolves it and implements its CLI contract. It belongs to the repository's root pnpm workspace and lockfile. The main repository owns native CI, tarball assembly, and verification. Registry-publication utilities remain explicitly named upstream maintenance references; DSH Context Map does not invoke them or publish this package family. Keep package-family changes coordinated with harness consumers in the same repository.
 
 ## Pre-release stance
 

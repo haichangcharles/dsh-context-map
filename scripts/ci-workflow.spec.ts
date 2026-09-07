@@ -211,6 +211,42 @@ describe('CI workflow', () => {
   })
 })
 
+describe('Community CI workflow', () => {
+  it('uses only GitHub-hosted runners and aggregates every required community check', () => {
+    const workflow = loadWorkflow('.github/workflows/community-ci.yml')
+    expect(workflow.on).toEqual({
+      push: { branches: ['master'] },
+      pull_request: null,
+      workflow_dispatch: null,
+    })
+
+    const staticJob = workflowJob(workflow, 'static')
+    const guiJob = workflowJob(workflow, 'gui')
+    const runtimeJob = workflowJob(workflow, 'runtime')
+    const aggregate = workflowJob(workflow, 'community-gate')
+    for (const job of [staticJob, guiJob, runtimeJob, aggregate]) {
+      expect(job['runs-on']).toBe('ubuntu-latest')
+    }
+    expect(aggregate.needs).toEqual(['static', 'gui', 'runtime'])
+
+    const source = JSON.stringify(workflow)
+    expect(source).not.toContain('self-hosted')
+    expect(source).not.toContain('dsh-ubuntu-')
+    expect(source).not.toContain('dsh-windows-')
+    expect(source).toContain('pnpm run constraints')
+    expect(source).toContain('scripts/ci-workflow.spec.ts')
+    expect(source).toContain('packages/compaction/compaction-basic/tests/compaction-loop-repro.spec.ts')
+    expect(source).toContain('packages/context/contextify/tests')
+    expect(source).toContain('packages/context/context-compiler/tests')
+  })
+
+  it('keeps the inherited runner matrix manual-only', () => {
+    const workflow = loadWorkflow('.github/workflows/ci.yml')
+    if (!isRecord(workflow.on)) throw new TypeError('upstream CI workflow must define events')
+    expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch'])
+  })
+})
+
 describe('E2B e2e workflow', () => {
   it('is manual-only and fails loud before running the focused live suite', () => {
     const workflow = loadWorkflow('.github/workflows/e2b-e2e.yml')
@@ -253,25 +289,17 @@ describe('DeepSeek e2e workflow', () => {
 })
 
 describe('Python release workflows', () => {
-  it('keeps complete wheel validation separate from protected public publication', () => {
+  it('keeps complete wheel validation credential-free and source-only', () => {
     const workflow = loadWorkflow('.github/workflows/python-release.yml')
-    const dispatch = workflowEvent(workflow, 'workflow_dispatch')
     const pullRequest = workflowEvent(workflow, 'pull_request')
     const build = workflowJob(workflow, 'build')
     const pythonCompat = workflowJob(workflow, 'python-compat')
     const validate = workflowJob(workflow, 'validate')
-    const publishRuntime = workflowJob(workflow, 'publish-runtime')
-    const publishSdk = workflowJob(workflow, 'publish-sdk')
-    if (!isRecord(dispatch.inputs)
-      || !isRecord(dispatch.inputs.publish)
-      || !Array.isArray(pythonCompat.steps)
-      || !Array.isArray(validate.steps)
-      || !Array.isArray(publishRuntime.steps)
-      || !Array.isArray(publishSdk.steps)) {
-      throw new TypeError('Python release workflow must define publish input and release steps')
+    if (!Array.isArray(pythonCompat.steps) || !Array.isArray(validate.steps)) {
+      throw new TypeError('Python compatibility workflow must define validation steps')
     }
 
-    expect(dispatch.inputs.publish).toMatchObject({ type: 'boolean', default: false })
+    expect(workflow.on).toMatchObject({ workflow_dispatch: null })
     expect(pullRequest).toEqual({ types: ['labeled'] })
     expect(build).toMatchObject({
       if: "github.event_name == 'workflow_dispatch' || github.event.label.name == 'python-release-dry-run'",
@@ -287,51 +315,16 @@ describe('Python release workflows', () => {
     expect(pythonCompatSteps).toContain('dist/deepseek_harness_runtime_bin-$VERSION-py3-none-manylinux_2_28_x86_64.whl')
     expect(pythonCompatSteps).not.toContain('--find-links')
     const validateSteps = JSON.stringify(validate.steps)
-    const authorize = validate.steps.filter(isRecord).find(step => step.name === 'Authorize publication request')
-    if (!isRecord(authorize) || typeof authorize.run !== 'string') {
-      throw new TypeError('Python release validation must authorize publication requests')
-    }
-    expect(validateSteps).toContain('PUBLIC_PYPI_RELEASE_ENABLED')
-    expect(authorize).toMatchObject({
-      env: {
-        PYPI_PUBLISHER_REPOSITORY: '${{ vars.PYPI_PUBLISHER_REPOSITORY }}',
-        REPOSITORY: '${{ github.repository }}',
-      },
-    })
-    expect(authorize.run).toContain('[ "$REPOSITORY" = "$PYPI_PUBLISHER_REPOSITORY" ]')
     expect(validateSteps).toContain('100000000')
-    expect(publishRuntime).toMatchObject({
-      if: "github.event_name == 'workflow_dispatch' && inputs.publish",
-      needs: 'validate',
-      environment: 'pypi-runtime',
-      permissions: { contents: 'read', 'id-token': 'write' },
-    })
-    expect(publishSdk).toMatchObject({
-      if: "github.event_name == 'workflow_dispatch' && inputs.publish",
-      needs: ['validate', 'publish-runtime'],
-      environment: 'pypi',
-      permissions: { contents: 'read', 'id-token': 'write' },
-    })
-    const runtimeSteps = publishRuntime.steps.filter(isRecord)
-    const sdkSteps = publishSdk.steps.filter(isRecord)
-    const runtimePublish = runtimeSteps.find(step => step.name === 'Publish runtime wheels')
-    const sdkPublish = sdkSteps.find(step => step.name === 'Publish SDK wheel')
-    const runtimeHashes = runtimeSteps.find(step => step.name === 'Verify release artifact hashes')
-    const sdkHashes = sdkSteps.find(step => step.name === 'Verify release artifact hashes')
-    expect([...runtimeSteps, ...sdkSteps].some(
-      step => typeof step.uses === 'string' && step.uses.startsWith('actions/checkout@'),
-    )).toBe(false)
-    expect([...runtimeSteps, ...sdkSteps].filter(
-      step => step.uses === 'pypa/gh-action-pypi-publish@release/v1',
-    )).toHaveLength(2)
-    expect(runtimePublish).toMatchObject({
-      with: { 'packages-dir': 'dist/runtime/', attestations: false },
-    })
-    expect(sdkPublish).toMatchObject({
-      with: { 'packages-dir': 'dist/sdk/', attestations: false },
-    })
-    expect(runtimeHashes).toMatchObject({ run: 'cd dist && sha256sum -c SHA256SUMS' })
-    expect(sdkHashes).toMatchObject({ run: 'cd dist && sha256sum -c SHA256SUMS' })
+    expect(Object.keys(workflow.jobs as Record<string, unknown>).sort()).toEqual([
+      'build',
+      'python-compat',
+      'validate',
+    ])
+    const source = readFileSync(resolve(root, '.github/workflows/python-release.yml'), 'utf8')
+    expect(source).not.toContain('pypa/gh-action-pypi-publish')
+    expect(source).not.toContain('id-token: write')
+    expect(source).not.toContain('PUBLIC_PYPI_RELEASE_ENABLED')
   })
 
   it('exposes the native wheel builder to the release caller with normalized versions', () => {
@@ -397,24 +390,43 @@ describe('Python release workflows', () => {
     expect(macosCheck).toContain('scripts/check-macos-deployment-target.py')
     expect(macosCheck).toContain('"$EXE" "$EXE-spawn-helper"')
   })
+
+  it('keeps the inherited GitLab build opt-in and removes registry publication', () => {
+    const workflow = loadWorkflow('.gitlab-ci.yml')
+    if (!isRecord(workflow.workflow) || !Array.isArray(workflow.workflow.rules)) {
+      throw new TypeError('GitLab CI must define workflow rules')
+    }
+
+    expect(workflow.workflow.rules).toContainEqual({
+      if: '$CI_PIPELINE_SOURCE == "web" && $DSH_RUN_UPSTREAM_GITLAB_REFERENCE == "1"',
+    })
+    expect(workflow.stages).toEqual(['build'])
+    expect(workflow).not.toHaveProperty('publish-python')
+
+    const source = readFileSync(resolve(root, '.gitlab-ci.yml'), 'utf8')
+    expect(source).not.toContain('TWINE_PASSWORD')
+    expect(source).not.toContain('twine upload')
+    expect(source).not.toContain('CI_JOB_TOKEN')
+  })
 })
 
-describe('Issue lifecycle workflow', () => {
-  it('uses explicit review handoff events without rerunning when a draft becomes ready', () => {
-    const lifecycle = loadWorkflow('.github/workflows/issue-lifecycle.yml')
-    const lifecyclePullRequest = workflowEvent(lifecycle, 'pull_request')
-    const lifecycleReview = workflowEvent(lifecycle, 'pull_request_review')
-    const lifecycleJob = workflowJob(lifecycle, 'lifecycle')
-    const policy = loadWorkflow('.github/workflows/issue-policy.yml')
-    const policyPullRequest = workflowEvent(policy, 'pull_request')
+describe('Source-only package compatibility workflows', () => {
+  it('retain no npm publication credential or publish job', () => {
+    for (const path of [
+      '.github/workflows/release.yml',
+      '.github/workflows/release-vendor.yml',
+      '.github/workflows/landlock-run-release.yml',
+    ]) {
+      const workflow = loadWorkflow(path)
+      expect(workflow.jobs).not.toHaveProperty('publish')
 
-    expect(lifecyclePullRequest.types).not.toContain('ready_for_review')
-    expect(lifecyclePullRequest.types).toContain('review_requested')
-    expect(lifecycleReview.types).toEqual(['submitted'])
-    expect(lifecycleJob.if).toBe(
-      "${{ github.event_name != 'pull_request_review' || (github.event.action == 'submitted' && github.event.review.state == 'changes_requested') }}",
-    )
-    expect(policyPullRequest.types).toContain('ready_for_review')
+      const source = readFileSync(resolve(root, path), 'utf8')
+      expect(source, path).not.toContain('secrets.NPM_TOKEN')
+      expect(source, path).not.toContain('NODE_AUTH_TOKEN')
+      expect(source, path).not.toContain('release:publish')
+      expect(source, path).not.toContain('npm-publish')
+      expect(source, path).not.toContain('registry-url:')
+    }
   })
 })
 

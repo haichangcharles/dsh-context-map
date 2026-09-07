@@ -1,10 +1,11 @@
 /**
- * Pack one release family's whole publish set into a single directory, in
- * publish order, and record that order for the publish step.
+ * Pack one inherited release family's whole package set into a single directory,
+ * in dependency order, and record that order for installation verification.
  *
- * The pack step is the release boundary: it runs without credentials, produces
- * every tarball from one commit, and hands the publish step exactly those bytes
- * ([rationale](../../.agents/notes/implemented/process/2026-08-10-npm-release-sequences.md)).
+ * This inherited package-compatibility rehearsal runs without credentials,
+ * produces every tarball from one commit, and hands verification exactly those bytes
+ * ([rationale](../../.agents/notes/archived/process/2026-08-10-npm-release-sequences.md)).
+ * Supported DSH Context Map workflows stop after verifying these local tarballs.
  */
 
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'

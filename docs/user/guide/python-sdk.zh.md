@@ -1,8 +1,8 @@
-# Python SDK 快速上手
+# 上游继承 Python SDK 参考
 
 [English](python-sdk.md) | 中文
 
-本教程介绍 Web UI 之外的程序化使用方式：安装已发布的 Python SDK、运行仓库内置的 agent（智能体）组合，并在自己的程序中调用同一套 API。
+本页为维护者保留继承自 DeepSeek Harness 源码快照的 Python SDK 契约。它不是 DSH Context Map 支持的安装路径，也不会发布到产品文档站。DSH Context Map 不发布 Python 包；产品本身请按照[项目 README](../../../README.md) 从源码运行。
 
 ## 前置要求
 
@@ -12,21 +12,15 @@
 - DeepSeek 兼容的 API 端点与凭据
 - agent 可以修改的隔离 workspace
 
-## 安装 SDK
+## 安装边界
 
-克隆仓库以使用其中的可运行示例，创建虚拟环境，并安装 SDK 及其同版本内置运行时：
+不要把 PyPI 上未固定版本的 `deepseek-harness-sdk` 与当前检出的示例混用：上游包和 API 契约可能已经独立于这个继承快照继续演进。Python 部署请遵循[当前上游 DeepSeek Harness SDK 文档](https://github.com/deepseek-ai/deepseek-harness/tree/master/python/sdk)，并保持其文档指定的源码 revision、SDK 与运行时载体版本一致。那些上游产物不包含 Context Map 功能。
 
-```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
-python -m venv .venv
-. .venv/bin/activate
-python -m pip install deepseek-harness-sdk
-```
+需要验证此源码快照的仓库贡献者，必须使用 [Python 贡献者工作流](../../../python/development.md)，从同一次检出构建客户端与运行时。
 
-安装后的运行时不需要系统提供 Node.js。需要从源码构建运行时或 wheel 包的仓库贡献者应使用 [Python 贡献者工作流](../../../python/development.md)。
+## 从源码验证仓库内置示例
 
-## 运行仓库内置示例
+下方示例描述的是这个继承源码 revision，并假定同一次检出的 Python 客户端和运行时已经在隔离的贡献者环境中完成构建与安装。
 
 请在环境中设置凭据。如果模型不是由默认 DeepSeek 端点提供，而是通过 OpenAI 兼容代理提供，还需要设置 `DEEPSEEK_BASE_URL`。
 

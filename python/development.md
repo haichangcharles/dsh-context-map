@@ -75,12 +75,10 @@ pip install \
   "dist-python/deepseek_harness_runtime_bin-$version-py3-none-macosx_14_0_arm64.whl"
 ```
 
-The runtime distribution is wheel-only. The release pipeline publishes three platform wheels with the pure SDK wheel: Linux x64, Linux arm64, and macOS 14 or newer on arm64. A `python-v<repository-version>` tag is accepted only when it matches the repository version; prerelease repository versions such as `0.0.1-rc.1` use their normalized PEP 440 spelling, such as `0.0.1rc1`, inside wheel filenames and metadata.
+The runtime compatibility artifact is wheel-only. The build produces three platform wheels with the pure SDK wheel: Linux x64, Linux arm64, and macOS 14 or newer on arm64. An optional `python-v<repository-version>` input is accepted only when it matches the repository version; prerelease repository versions such as `0.0.1-rc.1` use their normalized PEP 440 spelling, such as `0.0.1rc1`, inside wheel filenames and metadata.
 
-## Validate a release candidate
+## Validate a compatibility candidate
 
-Label a pull request `python-release-dry-run`, or manually run the GitHub `Release (Python)` workflow with `publish=false`, to build all four wheels, install the Linux release set on Python 3.10 and 3.14, check exact filenames and metadata, enforce PyPI's default per-file size limit, and retain one aggregate artifact with SHA-256 hashes. Both paths have no registry credentials; a pull request run cannot enter either publication job.
+Label a pull request `python-release-dry-run`, or manually run the GitHub `Package compatibility (upstream Python)` workflow, to build all four wheels, install the Linux set on Python 3.10 and 3.14, check exact filenames and metadata, enforce PyPI's default per-file size limit, and retain one aggregate artifact with SHA-256 hashes. Both paths have no registry credentials or publication job.
 
-Public publication runs from the private automation repository; package metadata points to the separate read-only public source mirror, which does not run release Actions. The private repository defines the repository variable `PYPI_PUBLISHER_REPOSITORY` as its own `owner/name` and keeps `PUBLIC_PYPI_RELEASE_ENABLED=false` except during an intentional release.
-
-Separate runtime and SDK jobs let an SDK upload failure resume without resending immutable runtime files. They accept `publish=true` only when the workflow runs from the configured publisher repository at the matching `python-v*` tag and the protected `pypi-runtime` and `pypi` environments approve the runtime and SDK jobs, respectively. PyPI Trusted Publishing still supplies short-lived OIDC credentials, but public attestations are disabled because they would disclose the private publisher identity.
+DSH Context Map publishes tagged source through GitHub Releases rather than Python packages. The wheel outputs are short-lived compatibility evidence and are not a supported installation channel; adding a project-owned PyPI distribution requires a separate release decision.
