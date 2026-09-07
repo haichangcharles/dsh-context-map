@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "DeepSeek Harness",
-  "short_name": "DSH",
+  "name": "DSH Context Map",
+  "short_name": "Context Map",
   "start_url": "/",
   "scope": "/",
   "display": "fullscreen",
