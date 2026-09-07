@@ -36,7 +36,13 @@ The Web UI starts at `http://127.0.0.1:3080` by default. Runtime credentials use
 
 ## Architecture and upstream
 
-DeepSeek Harness remains the sole agent runtime. Contextify owns the durable message graph and Context Compiler behavior, while the Web plugin owns visualization and interaction. The application does not introduce another agent loop or call model providers directly from the browser.
+### Current runtime support
+
+DeepSeek Harness is the only Context Map host runtime implemented and supported by the current release. Contextify owns the durable message graph and Context Compiler behavior, while the Web plugin owns visualization and interaction. The application does not introduce another agent loop or call model providers directly from the browser.
+
+### Roadmap: portable context infrastructure
+
+Future work will add Context Map host-runtime adapters for Claude Code and the OpenAI Agents SDK, then explore applying the same durable context mapping capability to open-source Agent products such as OpenCode. These adapters are roadmap items, not features of the current release. The Claude Code subagent and hook interoperability already inherited from DeepSeek Harness is a separate underlying Harness capability.
 
 The internal `@deepseek-ai/*` package names are retained for compatibility with the upstream workspace and module graph. They identify the runtime packages from which this project is derived; they do not make DSH Context Map an official DeepSeek distribution.
 

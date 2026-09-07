@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-context-compiler",
   "description": "Registry-backed durable context selection for DeepSeek Harness model requests",
-  "version": "0.1.0-rc.5",
+  "version": "0.1.0-rc.8",
   "publishConfig": {
     "access": "public"
   },

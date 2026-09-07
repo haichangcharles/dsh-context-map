@@ -36,7 +36,13 @@ Web UI 默认启动在 `http://127.0.0.1:3080`。运行时密钥沿用 DeepSeek 
 
 ## 架构与上游更新
 
-DeepSeek Harness 是唯一的 Agent Runtime。Contextify 负责持久消息图和 Context Compiler 行为，Web 插件负责可视化与交互。本项目不会引入第二套 agent loop，也不会从浏览器直接调用模型服务商。
+### 当前 Runtime 支持
+
+DeepSeek Harness 是当前版本唯一已经实现并受支持的 Context Map 宿主 Runtime。Contextify 负责持久消息图和 Context Compiler 行为，Web 插件负责可视化与交互。本项目不会引入第二套 agent loop，也不会从浏览器直接调用模型服务商。
+
+### Roadmap：可移植的上下文基础设施
+
+后续将为 Claude Code 与 OpenAI Agents SDK 增加 Context Map 宿主 Runtime Adapter，并进一步探索把同一套持久上下文映射能力应用到 OpenCode 等开源 Agent 产品中。这些 Adapter 属于 Roadmap，并非当前版本已经提供的功能。DeepSeek Harness 已经继承的 Claude Code Subagent 与 Hook 互操作，是底层 Harness 的另一项能力。
 
 内部 `@deepseek-ai/*` 包名会继续保留，以兼容上游 Workspace 和模块图。这些名称说明底层 Runtime 包的来源，并不代表 DSH Context Map 是 DeepSeek 官方发行版。
 
