@@ -1,73 +1,83 @@
-# DeepSeek Harness
+# DSH Context Map
 
 [English](README.md) | 中文
 
-DeepSeek Harness（`dsh`）是由 [DeepSeek AI](https://deepseek.com) 开发的开源 agent harness（智能体框架）。
+DSH Context Map 是一个基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)、由社区独立维护的对话上下文工作区。它把 Harness 原生 Session 分支转换成可检查的 Map，让用户在长周期对话中导航不同分支，并控制哪些已完成的用户输入和模型最终输出进入下一次模型请求。
 
-它采用**一切皆插件**的架构，并由 [Cordis](https://github.com/cordiverse/cordis) 驱动，其设计参见论文 [_A Programming Paradigm for Spatiotemporal Composability_](https://github.com/cordiverse/paper)。
+> [!IMPORTANT]
+> DSH Context Map 是由 [haichangcharles](https://github.com/haichangcharles) 独立维护的社区项目，并非 DeepSeek 官方产品，也不由 DeepSeek AI 维护或背书。
 
-## 开发者预览
+## 增加的能力
 
-DeepSeek Harness 目前处于 _开发者预览_ 阶段，正在快速迭代。**未来将出现破坏兼容性的变更。**
+- **Context Map** —— 在 Chat 旁边把一组相互连接的 Harness 原生 Session 显示为消息级树。
+- **显式上下文控制** —— Include 或 Exclude 单条用户输入和模型最终输出，同时不改写底层 Session log。
+- **上下文推荐** —— 使用快速的有限候选推荐，或主动开启读取临时完整树快照的深度检查；确认整体替换方案后一次 Apply，也可以一次 Undo。
+- **Branch 推荐** —— 当一个已完成的 Q&A 更适合移动到平行 Session 时，以轻量方式询问用户是否创建原生分支。
+- **单节点 Archive** —— 使用确定性的占位内容隐藏过时语义，同时保留节点、边、原始事件和恢复路径。
+- **Prompt Dashboard** —— 为 Context、Archive 和 Branch 推荐器追加 Profile 级规则，也可以在显式解锁后完整覆盖基础 Prompt。
+- **Harness 原生兼容** —— 继续使用 DeepSeek Harness 已有的 agent loop、工具、模型路由、Session 持久化、Fork、Compiler hook 和 Web UI slot。
+
+Context Map 为每个成功 Turn 保存一个最初用户输入节点和一个最终可见的模型输出节点。Reasoning、工具调用、工具结果、上下文注入、中间模型步骤和未完成输出不会进入 Map。
 
 ## 运行
 
-### 通过 `npm` 运行
-
-安装 `Node.js`，然后运行：
-
-```sh
-npx @deepseek-ai/dsh web
-```
-
-该命令默认会在 `http://127.0.0.1:3080` 启动 Web UI，本机启动时还会用默认浏览器打开页面。通过 SSH 启动时只打印宿主机 URL，因为本地转发地址由 SSH 客户端或编辑器持有。传入 `--no-open` 可仅运行服务器而不打开浏览器。详见 [Web UI 指南](docs/user/guide/index.md)。
-
 ### 从源码运行
 
-如需从仓库源码运行：
+安装受支持的 Node.js 版本和 pnpm，然后运行：
 
 ```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
+git clone https://github.com/haichangcharles/dsh-context-map.git
+cd dsh-context-map
 pnpm install
 pnpm run build
 pnpm dsh web
 ```
 
-`pnpm run build` 会准备仓库产物。`pnpm dsh web` 会直接使用这些已构建产物，不会重新构建。
+Web UI 默认启动在 `http://127.0.0.1:3080`。运行时密钥沿用 DeepSeek Harness 的配置机制；不要把任何模型服务商密钥提交到仓库。
 
-## 社区与支持
+## 架构与上游更新
 
-- 欢迎通过 [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions) 提交反馈或 bug 报告。
-- 为你的插件仓库添加 [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，便于被发现。
-- 欢迎加入 DeepSeek Harness 企微群：扫码添加企微小助手并填写入群问卷，完成后小助手会邀请你入群。
+DeepSeek Harness 是唯一的 Agent Runtime。Contextify 负责持久消息图和 Context Compiler 行为，Web 插件负责可视化与交互。本项目不会引入第二套 agent loop，也不会从浏览器直接调用模型服务商。
 
-<table>
-  <thead>
-    <tr>
-      <th align="center">企微小助手</th>
-      <th align="center">入群问卷</th>
-      <th align="center">微信公众号</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td align="center"><img src="https://cdn.deepseek.com/harness/readme/community-wecom-assistant.png" alt="DeepSeek Harness 企微小助手二维码" width="180" height="180"></td>
-      <td align="center"><a href="https://trtgsjkv6r.feishu.cn/share/base/form/shrcnIt5twSVdLGD52KJBckGCgg"><img src="https://cdn.deepseek.com/harness/readme/community-wecom-survey.png" alt="DeepSeek Harness 入群问卷二维码" width="180" height="180"></a></td>
-      <td align="center"><img src="https://cdn.deepseek.com/harness/readme/community-wechat-official-account.png" alt="DeepSeek Harness 团队微信公众号二维码" width="180" height="180"></td>
-    </tr>
-  </tbody>
-</table>
+内部 `@deepseek-ai/*` 包名会继续保留，以兼容上游 Workspace 和模块图。这些名称说明底层 Runtime 包的来源，并不代表 DSH Context Map 是 DeepSeek 官方发行版。
 
-## 参与贡献
+开发仓库应使用以下 Remote：
 
-参见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+```sh
+git remote -v
+# origin    https://github.com/haichangcharles/dsh-context-map.git
+# upstream  https://github.com/deepseek-ai/deepseek-harness.git
+```
+
+合并上游版本时，在专用同步分支中合并经过确认的 Tag 或 Commit。下面以当前 `rc.8` 基础之后的版本为例：
+
+```sh
+git fetch upstream --tags
+git switch -c codex/sync-deepseek-rc9 master
+git merge --no-ff dsh-v0.1.0-rc.9
+pnpm run typecheck
+pnpm run build
+pnpm run doc-sync
+```
+
+只在最小的 Contextify 接入位置解决冲突，不要在上游同步分支中混入产品功能。完整维护约定见[项目身份设计](docs/plans/2026-09-07-dsh-context-map-project-identity-design.md)。
 
 ## 开发
 
-请先阅读[开发指南](docs/development.md)与[架构文档](docs/architecture.md)。
+建议先阅读 [DeepSeek Harness 架构文档](docs/architecture.zh.md)、[Contextify 包说明](packages/context/contextify/README.zh.md)和 [Context Map UI 包说明](packages/client/ui-contextify/README.zh.md)。参与仓库开发时必须遵循 [AGENTS.md](AGENTS.md)。
 
-面向 agent：请遵循 [AGENTS.md](AGENTS.md)。
+常用检查：
+
+```sh
+pnpm run test:gui
+pnpm run typecheck
+pnpm run build
+pnpm run doc-sync
+```
+
+## 生态关系
+
+本仓库使用 DeepSeek Harness 贡献指南建议的 [`dsh-plugin`](https://github.com/topics/dsh-plugin) Topic。关于 DSH Context Map 的问题和 Issue 应提交到本仓库；关于底层 Runtime 的问题应提交到 [DeepSeek Harness 官方仓库](https://github.com/deepseek-ai/deepseek-harness)。
 
 ## 许可证
 
