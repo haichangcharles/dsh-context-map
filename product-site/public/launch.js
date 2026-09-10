@@ -13,8 +13,6 @@ const zh = {
   "galleryLabel": "同一个工作区，容纳不同方向。",
   "sample": "真实应用截图 · 示例数据",
   "galleryTitle": "同一个问题，<br>可以有不同的探索路径。",
-  "galleryCopy": "从同一个起点，分别探索「社区发布」和「企业试点」。看清两条分支，在它们之间切换，再决定下一次请求带上哪些内容。",
-  "overviewCaption": "共享一个起点，分成两条原生会话分支。点击任意截图，可以查看清晰原图。",
   "branchTitle": "从这一条消息，<br>试试另一个方向。",
   "branchCopy": "一个回答引出了新的可能？就在这条消息上创建分支。原对话保留，新会话继承分叉点之前的历史，不必重新交代背景。",
   "branchAction": "右键消息 → Branch from Here（从这里分叉）。",
@@ -25,16 +23,12 @@ const zh = {
   "reviewTitle": "先看建议和理由。<br>再决定要不要应用。",
   "reviewCopy": "Fast Review 做有限范围的快速检查，Deep Review 检查完整对话树快照。建议先展示，确认后才改变上下文；应用后还可以 Undo / Redo。",
   "reviewAction": "Recommend → 审阅变更 → Apply；之后可以撤销。",
-  "archiveTitle": "归档过时内容。<br>仍然找得到它的来路。",
   "archiveCopy": "Archive 将消息的上下文内容替换为占位符，节点、连接和原始记录仍保留。需要回看时点 Show original，想重新使用时点 Restore node。",
-  "archiveAction": "归档节点 → 查看原文／恢复节点。",
   "promptsTitle": "让审阅遵循<br>你的工作习惯。",
   "promptsCopy": "为 Context、Archive、Branch 审阅器添加自己的规则，同时保留可查看的默认提示词。需要时可明确解锁完整覆盖。还可开启 Automatic Branch review，让它建议将适合独立探索的一轮对话移到分支；默认关闭。",
   "promptsAction": "设置 → Context Map prompts（提示词面板）。",
   "galleryDisclosure": "截图来自实际运行的应用，使用预先准备的示例会话。审阅截图中的建议是用于展示确认界面的预设示例，并非实时 AI 结果。",
-  "foundationLabel": "熟悉的 HARNESS，更清晰的视野。",
   "foundationTitle": "基于 DeepSeek Harness。",
-  "foundationCopy": "沿用原有的 Agent 循环、工具、模型路由与会话持久化。Context Map 在此基础上提供可视工作区与对话上下文控制。",
   "upstream": "了解上游项目",
   "startLabel": "开源，运行在你的工作区。",
   "startTitle": "给下一个想法，<br>留一点空间。",
@@ -47,7 +41,15 @@ const zh = {
   "migration": "正在升级旧版 Context Map？兼容迁移可用之前，请继续用旧运行时保留并访问现有会话数据。",
   "migrationLink": "阅读升级说明 ↗",
   "independent": "独立社区项目，与 DeepSeek 无隶属关系，未获其背书。",
-  "feedback": "反馈建议 ↗"
+  "feedback": "反馈建议 ↗",
+  "tabbranch": "分支探索",
+  "tabcontext": "组合上下文",
+  "tabreview": "审阅与恢复",
+  "tabprompts": "提示词配置",
+  "details": "了解操作细节",
+  "branchMenu": "查看「从这里分叉」菜单 ↗",
+  "archiveLink": "查看归档与恢复截图 ↗",
+  "foundationShort": "开源 · 本地运行 · 自选模型"
 };
 const textNodes=[...document.querySelectorAll('[data-i18n]')];
 const en=Object.fromEntries(textNodes.map(el=>[el.dataset.i18n,el.innerHTML]));
@@ -56,3 +58,50 @@ function renderLanguage(){textNodes.forEach(el=>{el.innerHTML=(language==='zh'?z
 document.getElementById('language').addEventListener('click',()=>{language=language==='en'?'zh':'en';const url=new URL(location.href);if(language==='zh')url.searchParams.set('lang','zh');else url.searchParams.delete('lang');history.replaceState(null,'',url);renderLanguage();});
 document.getElementById('copy').addEventListener('click',async()=>{const button=document.getElementById('copy');try{await navigator.clipboard.writeText(document.getElementById('install-command').textContent);button.textContent=language==='zh'?'已复制':'Copied';document.getElementById('copy-status').textContent=language==='zh'?'安装命令已复制':'Installation commands copied';}catch{const range=document.createRange();range.selectNodeContents(document.getElementById('install-command'));const selected=window.getSelection();selected.removeAllRanges();selected.addRange(range);document.getElementById('copy-status').textContent=language==='zh'?'请手动复制选中的命令':'Select and copy these commands manually';}});
 renderLanguage();
+
+// Native tabs keep every capability discoverable without lengthening the page.
+const tabs = [...document.querySelectorAll('[role="tab"]')];
+function selectFeature(id, focus = false) {
+  const active = tabs.find(tab => tab.dataset.feature === id);
+  if (!active) return;
+  tabs.forEach(tab => {
+    const selected = tab === active;
+    tab.setAttribute('aria-selected', String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+    document.getElementById(tab.dataset.feature).hidden = !selected;
+  });
+  if (focus) active.focus({preventScroll:true});
+}
+tabs.forEach((tab, index) => {
+  tab.addEventListener('click', () => selectFeature(tab.dataset.feature));
+  tab.addEventListener('keydown', event => {
+    const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length
+      : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length
+      : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1;
+    if (next < 0) return;
+    event.preventDefault();
+    selectFeature(tabs[next].dataset.feature, true);
+  });
+});
+function selectHash() {
+  const id = location.hash.slice(1);
+  selectFeature(id === 'archive' ? 'review' : id);
+}
+window.addEventListener('hashchange', selectHash);
+selectHash();
+const showcase = document.querySelector('.showcase-window');
+let touchStart;
+showcase.addEventListener('touchstart', event => {
+  const touch = event.touches[0];
+  touchStart = {x: touch.clientX, y: touch.clientY};
+}, {passive:true});
+showcase.addEventListener('touchend', event => {
+  if (!touchStart) return;
+  const touch = event.changedTouches[0];
+  const dx = touch.clientX - touchStart.x;
+  const dy = touch.clientY - touchStart.y;
+  touchStart = null;
+  if (Math.abs(dx) < 65 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+  const index = tabs.findIndex(tab => tab.getAttribute('aria-selected') === 'true');
+  selectFeature(tabs[(index + (dx < 0 ? 1 : tabs.length - 1)) % tabs.length].dataset.feature);
+}, {passive:true});
