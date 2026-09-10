@@ -9,9 +9,8 @@
   border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 12px;
   padding: 12px;
-  background: color-mix(in srgb, var(--dsw-alias-bg-elevated) 97%, transparent);
+  background: var(--dsw-alias-bg-layer-1);
   box-shadow: 0 16px 40px rgb(0 0 0 / 22%);
-  backdrop-filter: blur(10px);
 }
 
 .header { display: flex; align-items: flex-start; gap: 10px; }

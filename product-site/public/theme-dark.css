@@ -100,3 +100,7 @@ summary:focus-visible { outline:2px solid #c7dcb9; }
  .foundation { font-size:11px; gap:10px; padding-block:24px; }
  .foundation .text-link { width:100%; text-align:center; }
 }
+
+/* Keep review text within the capture’s Retina pixel budget. */
+#review figure a { max-width:720px; margin-inline:auto; }
+.feature-tabs button:focus-visible { outline-width:2px; outline-offset:1px; }
