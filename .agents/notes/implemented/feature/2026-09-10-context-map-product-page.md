@@ -10,7 +10,7 @@ The fork's GitHub Pages root presents upstream documentation rather than the Con
 
 ## Decision
 
-The product homepage is static HTML, CSS and browser JavaScript under `product-site/public`. Its restrained developer-tool layout uses original copy and illustrative UI, informed by Zed and Linear. English is the default; a URL-backed Chinese switch preserves demo selection. The sample graph and branch controls operate on local fixture data only, clearly labelled as a sample. No model request or real Session mutation occurs.
+The product homepage is static HTML, CSS and browser JavaScript under `product-site/public`. Its dark developer-tool layout uses near-black neutral surfaces, readable text, quiet borders and restrained green accents, informed by Linear and Zed; copy and illustrative UI are original. English is the default; a URL-backed Chinese switch preserves demo selection. The sample graph and branch controls operate on local fixture data only, clearly labelled as a sample. No model request or real Session mutation occurs.
 
 The build overlays the homepage onto the documentation output, preserving documentation routes. The fork-specific Pages workflow deploys the combined artifact from master. The upstream manual documentation workflow does not deploy in this fork, preventing a later documentation publication from overwriting the product homepage. Both workflows retain the same Pages concurrency group.
 

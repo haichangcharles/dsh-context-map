@@ -1,0 +1,88 @@
+/* Dark product theme: neutral surfaces, quiet borders, restrained green accents. */
+:root {
+  color-scheme: dark;
+  color: #ededef;
+  background: #0c0d10;
+  --green: #e6e8eb;
+  --border: #282a31;
+  --muted: #9699a3;
+}
+body { background: radial-gradient(ellipse 70% 550px at 50% 5%, #20232c66, transparent 80%); }
+.nav { border-bottom-color: #23252b; }
+.nav nav { color: #a3a5ae; }
+.nav a:hover, .nav button:hover { color: #fff; }
+.nav-github { background: #1b1d23; border-color: #363841; color: #e6e7ec; }
+.eyebrow { background: #1a1c2299; border-color: #30323b; color: #acafb9; }
+.status-dot { background: #9cc791; }
+h1 { color: #f1f1f3; }
+.muted { color: #9295a0; }
+.hero-copy { color: #a2a5af; }
+.primary { color: #15161b; box-shadow: 0 0 18px #eef0ff0b, inset 0 1px 0 #fff; }
+.primary:hover { background: #fff; }
+.secondary { background: #1c1e25; color: #e0e1e7; border-color: #373943; }
+.secondary:hover { background: #282b34; }
+.hero-note, .demo-label, .demo-caption { color: #969aa6; }
+.app-window { background: #141519; border-color: #343740; box-shadow: 0 25px 90px #0007, 0 0 70px #798bad09; }
+.app-top { background: #1b1c22; color: #a2a5b0; }
+.traffic i { background: #494c57; }
+.session-nav { background: #111216; }
+.project { color: #c9cbd3; }
+.project-icon { color: #a6abb9; }
+.tiny-label { color: #9499a7; }
+.session { color: #a0a4af; }
+.session:hover { background: #23252c; }
+.session.active { background: #252d29; color: #c2d6ba; }
+.avatar { border-color: #41454e; color: #b5c4ac; }
+.session-bottom small { color: #969da9; }
+.pane-title { color: #d1d3db; }
+.pane-title button { color: #b8bdc9; background: #22242c; }
+.chat-user p { color: #e0e1e7; }
+.chat-answer { color: #a9aeba; }
+.chat-answer strong { color: #e0e3e9; }
+.answer-summary { border-left-color: #697e64; background: #1d2220; }
+.answer-summary>span { color: #c0d0b7; }
+.chat-divider { border-color: #2b2e36; color: #9299a7; }
+.composer { background: #1a1c22; border-color: #383b46; color: #a3a9b7; }
+.send { background: #30373a; color: #d4dfcc; }
+.map-canvas { background-color: #121418; background-image: radial-gradient(#30353e .7px, transparent .7px); }
+.map-legend { color: #b0b7ab; }
+.legend-dot { background: #a0bf8e; }
+.map-node { background: #222a25; border-color: #53634b; color: #dde7d5; box-shadow: 0 4px 12px #0003; }
+.map-node:hover { border-color: #a3bc92; }
+.node-meta { color: #b1c0a8; }
+.check { background: #394b31; color: #cfebbb; }
+.answer-node { background: #2a342a; }
+.excluded { background: #1c1e24; border-color: #4b505c; color: #a5aab5; }
+.excluded .node-meta { color: #959ba8; }
+.excluded .check { background: #30333c; color: #a7adbb; }
+.stem-one, .stem-two { background: #59674f; }
+.fork-line { border-color: #59674f; }
+.map-tip { color: #949f90; }
+.context-count { color: #bacfb0; background: #1c251e; border-color: #344332; }
+.eyebrow-text { color: #959fac; }
+.section-intro>p { color: #a2a7b3; }
+.feature-grid article { background: linear-gradient(150deg, #1b1d23, #121317); }
+.feature-icon { color: #bdc8b7; }
+.feature-grid p { color: #a6abb7; }
+.feature-foot { color: #a0a7b4; }
+.foundation-mark { background: repeating-linear-gradient(0deg, transparent, transparent 15px, #252a32 15px, #252a32 16px), repeating-linear-gradient(90deg, transparent, transparent 15px, #252a32 15px, #252a32 16px); }
+.foundation-mark img { box-shadow: 0 12px 40px #90b97816; }
+.foundation p { color: #a1a8b5; }
+.text-link { color: #c3d2b9; }
+.start-section { background: radial-gradient(ellipse at 20% 0%, #23282e, #111216 70%); border-block: 1px solid #2d3039; }
+.start-section .eyebrow-text { color: #9ca7b6; }
+.start-section h2 { color: #ededf1; }
+.start-section p { color: #a4abba; }
+.start-links { color: #b3bac7; }
+.light { background: #e2e6e0; color: #20271d; }
+.light:hover { background: #fff; }
+.install { border-color: #393e49; background: #111318; }
+.install-top { border-color: #30353e; color: #a3acbc; }
+.install button { border-color: #474e5c; background: #242933; color: #d0d8e6; }
+.install pre { color: #c2d2b8; }
+.migration { background: #1c2128; color: #acb4c3; }
+.migration a { color: #d4dfca; }
+.footer p { color: #989fad; }
+.footer>div { color: #b5bdcc; }
+.skip { background: #252932; color: #fff; }
+button:focus-visible, a:focus-visible { outline-color: #c7dcb9; }
