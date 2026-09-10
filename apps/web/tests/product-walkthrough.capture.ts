@@ -34,7 +34,7 @@ it('captures branching, cross-branch context and review without losing history',
     const contextify = scaffold.ctx.contextify as unknown as { promptSettings: () => ContextifyPromptSettings }
     contextify.promptSettings = () => ({ ...CONTEXTIFY_DEFAULT_SETTINGS, automaticBranchReview: false })
     browser = await chromium.launch()
-    const page = await browser.newPage({ viewport: { width: 1440, height: 940 }, locale: 'en-US', colorScheme: 'dark' })
+    const page = await browser.newPage({ viewport: { width: 1440, height: 940 }, locale: 'en-US', colorScheme: 'dark', deviceScaleFactor: 3 })
     const cwd = join(scaffold.workspaceCwd, 'workspace')
     await mkdir(cwd, { recursive: true })
     const handle = await scaffold.ctx.agents.create({ sessionId: SessionId('launch-options'), meta: { cwd }, agentOptions: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } })
@@ -112,6 +112,7 @@ it('captures branching, cross-branch context and review without losing history',
     const review = map.getByRole('dialog', { name: 'Context recommendation review' })
     await review.getByRole('button', { name: 'Apply proposed context' }).waitFor()
     expect(scaffold.ctx.contextify.get(enterprise).plan.revision).toBe(before.revision)
+    expect(await review.evaluate(element => getComputedStyle(element).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)')
     await review.screenshot({ path: join(output, 'review.png') })
     await review.getByRole('button', { name: 'Apply proposed context' }).click()
     await expect.poll(() => scaffold.ctx.contextify.get(enterprise).plan.excluded.length).toBe(before.excluded.length + 1)
