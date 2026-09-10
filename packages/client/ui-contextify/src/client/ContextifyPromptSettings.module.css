@@ -1,18 +1,18 @@
 .root { --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2); --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2); position: relative; display: grid; gap: 14px; padding: 20px; overflow: auto; }
 .root header h2, .card h3 { margin: 0; }
 .root header p { margin: 5px 0 0; color: var(--dsw-alias-label-secondary); font-size: 13px; }
-.card { display: grid; gap: 10px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 12px; padding: 14px; background: var(--dsw-alias-bg-layer-1); }
+.card { display: grid; gap: 10px; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 12px; padding: 14px; background: var(--dsw-alias-bg-layer-1); }
 .card label { display: grid; gap: 5px; font-size: 12px; font-weight: 600; }
-.card textarea { box-sizing: border-box; width: 100%; min-height: 92px; resize: vertical; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 9px; background: var(--dsw-alias-bg-base); color: inherit; font: inherit; font-weight: 400; line-height: 1.45; }
+.card textarea { box-sizing: border-box; width: 100%; min-height: 92px; resize: vertical; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 9px; background: var(--dsw-alias-bg-base); color: inherit; font: inherit; font-weight: 400; line-height: 1.45; }
 .card textarea:read-only { background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-secondary); }
 .actions { display: flex; flex-wrap: wrap; gap: 7px; }
-.actions button { border: 1px solid var(--dsw-alias-border-l2); border-radius: 7px; padding: 7px 10px; background: var(--dsw-alias-bg-layer-2); color: inherit; cursor: pointer; }
+.actions button { border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 7px; padding: 7px 10px; background: var(--dsw-alias-bg-layer-2); color: inherit; cursor: pointer; }
 .actions button:disabled { cursor: wait; opacity: .5; }
-.override { display: grid; gap: 8px; border-top: 1px solid var(--dsw-alias-border-l2); padding-top: 10px; }
+.override { display: grid; gap: 8px; border-top: 0.5px solid var(--dsw-alias-border-l2); padding-top: 10px; }
 .card details { color: var(--dsw-alias-label-secondary); font-size: 11px; }
 .card pre { overflow: auto; white-space: pre-wrap; }
 .dialogBackdrop { position: fixed; z-index: 60; inset: 0; display: grid; place-items: center; background: rgb(0 0 0 / 35%); }
-.dialog { width: min(420px, calc(100vw - 32px)); border: 1px solid var(--dsw-alias-border-l2); border-radius: 12px; padding: 16px; background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-1)); box-shadow: 0 20px 60px rgb(0 0 0 / 30%); }
+.dialog { width: min(420px, calc(100vw - 32px)); border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 12px; padding: 16px; background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-1)); box-shadow: 0 20px 60px rgb(0 0 0 / 30%); }
 .dialog h3 { margin: 0; }
 .dialog p { line-height: 1.5; }
 .state { padding: 24px; color: var(--dsw-alias-label-secondary); }
