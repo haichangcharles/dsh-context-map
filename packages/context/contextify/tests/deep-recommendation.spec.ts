@@ -161,7 +161,7 @@ describe('Deep Context recommendation snapshot', () => {
       }),
     ])
     ctx.llm.registerAdapter(['mock'], adapter)
-    const parent = ctx.agentLoop.create(root, { provider: 'mock', model: 'mock' })
+    const parent = await ctx.agentLoop.create(root, { provider: 'mock', model: 'mock' })
     let childId: SessionId | undefined
     ctx.on('agent/created', ({ agent }) => {
       if (agent !== parent) childId = agent.id
@@ -212,7 +212,7 @@ describe('Deep Context recommendation snapshot', () => {
       },
     ])
     ctx.llm.registerAdapter(['mock'], adapter)
-    const parent = ctx.agentLoop.create(root, { provider: 'mock', model: 'mock' })
+    const parent = await ctx.agentLoop.create(root, { provider: 'mock', model: 'mock' })
     try {
       await expect(runDeepRecommendation({
         parent, snapshot: snapshot(), signal: new AbortController().signal,
@@ -230,7 +230,7 @@ describe('Deep Context recommendation snapshot', () => {
     registerNoopDeepTools(ctx)
     const adapter = new MockAdapter([textResponse('plain prose is not a submission')])
     ctx.llm.registerAdapter(['mock'], adapter)
-    const parent = ctx.agentLoop.create(root, { provider: 'mock', model: 'mock' })
+    const parent = await ctx.agentLoop.create(root, { provider: 'mock', model: 'mock' })
     let childId: SessionId | undefined
     let childDirectory = ''
     ctx.on('agent/created', ({ agent }) => {
@@ -256,7 +256,7 @@ describe('Deep Context recommendation snapshot', () => {
     registerNoopDeepTools(ctx)
     const adapter = new MockAdapter(['hang'])
     ctx.llm.registerAdapter(['mock'], adapter)
-    const parent = ctx.agentLoop.create(root, { provider: 'mock', model: 'mock' })
+    const parent = await ctx.agentLoop.create(root, { provider: 'mock', model: 'mock' })
     const controller = new AbortController()
     let childId: SessionId | undefined
     let childDirectory = ''
@@ -287,7 +287,7 @@ describe('Deep Context recommendation snapshot', () => {
     registerNoopDeepTools(ctx)
     const adapter = new MockAdapter(['hang'])
     ctx.llm.registerAdapter(['mock'], adapter)
-    const parent = ctx.agentLoop.create(root, { provider: 'mock', model: 'mock' })
+    const parent = await ctx.agentLoop.create(root, { provider: 'mock', model: 'mock' })
     let childId: SessionId | undefined
     let childDirectory = ''
     ctx.on('agent/created', ({ agent }) => {

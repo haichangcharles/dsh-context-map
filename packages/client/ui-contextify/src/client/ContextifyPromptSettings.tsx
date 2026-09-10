@@ -1,6 +1,6 @@
 /** Profile prompt dashboard for Context, Archive, and Branch review agents. */
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { ContextifyPromptSection, ContextifyPromptSettings } from '@deepseek-ai/dsh-contextify/types'
 import {
   CONTEXTIFY_CLIENT_DEFAULT_PROMPTS,

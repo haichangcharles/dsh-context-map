@@ -1,5 +1,5 @@
 /** Persisted graph-only viewing state for the pinned Context Map. */
-import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
+import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-store'
 
 /** Supported deterministic graph arrangements. */
 export type ContextMapLayout = 'tree' | 'mindmap' | 'timeline'

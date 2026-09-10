@@ -1,9 +1,11 @@
+import { SessionSeq } from '@deepseek-ai/dsh-session'
+import { createInboxStub } from '@deepseek-ai/dsh-agent-loop-testkit'
+import { ToolCallId as CallId } from '@deepseek-ai/dsh-llm/brand'
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import AgentRegistry, { agentEvents, Inbox, type Agent, type AgentOptions, type AgentStatus } from '@deepseek-ai/dsh-agent'
+import AgentRegistry, { agentEvents, type Agent, type AgentOptions, type AgentStatus } from '@deepseek-ai/dsh-agent'
 import ContextCompilerRegistry from '@deepseek-ai/dsh-context-compiler'
 import LlmRuntime, {
-  CallId,
   createAssistantMessage,
   createUserMessage,
   ReasoningEffortId,
@@ -28,7 +30,7 @@ function stubAgent(session: Session, options: AgentOptions = {}): {
   setStatus: (status: AgentStatus) => void
   maintenanceCalls: () => number
 } {
-  const inbox = new Inbox(session, { inserted() {}, discarded() {}, claimed() {} })
+  const inbox = createInboxStub()
   let status: AgentStatus = 'idle'
   let maintenanceCalls = 0
   const agent: Agent = {
@@ -68,7 +70,7 @@ function appendClosedTurn(
     source: { kind: 'user' },
   }), { surfaceOp: 'append' }).seq
   if (assistant !== undefined) {
-    session.append('assistant/message', {
+    session.append('assistant/message', { stream: [],
       turn,
       step: 1,
       message: createAssistantMessage({
@@ -91,11 +93,11 @@ async function harness() {
   await ctx.plugin(ContextCompilerRegistry)
   await ctx.plugin(SubagentRuntime)
   ctx.provide('sessionPersistence', {
-    list: async () => ctx.sessions.list().map(session => session.header),
+    list: async () => ctx.sessions.list().map(session => ({ header: session.header })),
     inspect: async (id: string): Promise<SessionInspection> => {
       const session = ctx.sessions.get(SessionId(id))
       if (session === undefined) throw new Error(`missing Session ${id}`)
-      return { meta: session.header, events: session.events }
+      return { meta: session.header, inheritedEventCount: session.inheritedEventCount, events: session.snapshotEvents() }
     },
   } as never)
   await ctx.plugin(ContextifyService)
@@ -124,6 +126,39 @@ abstract class OffReasoningAdapter extends LlmAdapter {
 }
 
 describe('ContextifyService native Session family', () => {
+  it('reads cold family members through a handle and closes it even when reading fails', async () => {
+    const { ctx, start } = await harness()
+    try {
+      const cold = ctx.sessions.prepare(SessionId('cold-family-root'))
+      const turn = appendClosedTurn(cold, 1, 'retained parent', 'parent answer')
+      const detach = ctx.sessions.enter(cold)
+      ctx.effect(() => detach)
+      const active = ctx.sessions.fork(cold, SessionSeq(turn.boundary), SessionId('live-family-child'))
+      detach()
+      const { agent } = start(active)
+      const close = vi.fn(async () => {})
+      const read = vi.fn(async () => ({ events: cold.snapshotEvents() }))
+      const persistence = ctx.sessionPersistence as unknown as {
+        list: () => Promise<unknown[]>
+        open: (id: SessionId, mode: string) => Promise<unknown>
+      }
+      persistence.list = async () => [{ header: cold.header }, ...ctx.sessions.list().map(session => ({ header: session.header }))]
+      persistence.open = async (id, mode) => {
+        expect(id).toBe(cold.id)
+        expect(mode).toBe('read')
+        return { header: cold.header, inheritedEventCount: cold.inheritedEventCount, read, close }
+      }
+      const page = await ctx.contextify.familyPage(agent)
+      expect(page.rootSessionId).toBe(cold.id)
+      expect(page.totalNodeCount).toBe(2)
+      expect(read).toHaveBeenCalledOnce()
+      expect(close).toHaveBeenCalledOnce()
+      read.mockRejectedValueOnce(new Error('cold read failed'))
+      await expect(ctx.contextify.familyPage(agent)).rejects.toThrow('cold read failed')
+      expect(close).toHaveBeenCalledTimes(2)
+    } finally { await ctx.fiber.dispose() }
+  })
+
   it('does not launch Branch classification when the Profile setting is disabled', async () => {
     const { ctx, start } = await harness()
     const session = ctx.sessions.create(SessionId('branch-disabled'))
@@ -140,7 +175,7 @@ describe('ContextifyService native Session family', () => {
     await new Promise(resolve => setTimeout(resolve, 20))
 
     expect(calls).toBe(0)
-    expect(session.events.some(event => event.type === 'contextify/branch-review')).toBe(false)
+    expect(session.snapshotEvents().some(event => event.type === 'contextify/branch-review')).toBe(false)
   })
 
   it('records a silent Keep result when the Branch classifier returns malformed output', async () => {
@@ -163,7 +198,7 @@ describe('ContextifyService native Session family', () => {
     const turn = appendClosedTurn(session, 1, 'unrelated question', 'answer')
 
     await vi.waitFor(() => {
-      const review = session.events.find(event => event.type === 'contextify/branch-review')
+      const review = session.snapshotEvents().find(event => event.type === 'contextify/branch-review')
       expect(review?.type === 'contextify/branch-review' && review.data).toEqual({
         suggestion: null, turnEndSeq: turn.boundary,
       })
@@ -202,9 +237,9 @@ describe('ContextifyService native Session family', () => {
     }), { surfaceOp: 'append' })
 
     await vi.waitFor(() => { expect(classifierStarted).toBe(true) })
-    expect(session.events.some(event => event.type === 'assistant/message' && event.data.turn === 2)).toBe(false)
+    expect(session.snapshotEvents().some(event => event.type === 'assistant/message' && event.data.turn === 2)).toBe(false)
 
-    session.append('assistant/message', {
+    session.append('assistant/message', { stream: [],
       turn: 2,
       step: 1,
       message: createAssistantMessage({
@@ -216,7 +251,7 @@ describe('ContextifyService native Session family', () => {
     release()
 
     await vi.waitFor(() => {
-      expect(session.events.some(event => event.type === 'contextify/branch-review'
+      expect(session.snapshotEvents().some(event => event.type === 'contextify/branch-review'
         && event.data.turnEndSeq === end.seq && event.data.suggestion !== null)).toBe(true)
     })
   })
@@ -249,7 +284,7 @@ describe('ContextifyService native Session family', () => {
 
     await vi.waitFor(() => { expect(captured).toBeDefined() })
     await vi.waitFor(() => {
-      expect(session.events.some(event => event.type === 'contextify/branch-review'
+      expect(session.snapshotEvents().some(event => event.type === 'contextify/branch-review'
         && event.data.turnEndSeq === target.boundary)).toBe(true)
     })
     expect(captured?.maxTokens).toBe(200)
@@ -267,7 +302,7 @@ describe('ContextifyService native Session family', () => {
     // Turn. The core primitive takes an inclusive boundary, hence -1 here.
     const nativeChild = ctx.sessions.fork(
       session,
-      preparation.beforeSeq - 1,
+      SessionSeq(preparation.beforeSeq - 1),
       SessionId('native-branch-child'),
     )
     start(nativeChild)
@@ -276,14 +311,14 @@ describe('ContextifyService native Session family', () => {
     expect(second).toEqual(first)
     const child = ctx.sessions.get(first.childSessionId)!
     expect(child.header.parentSession).toBe(session.id)
-    expect(child.events.filter(event => event.type === 'user/message')
+    expect(child.snapshotEvents().filter(event => event.type === 'user/message')
       .filter(event => event.data.source.kind === 'user').at(-1)?.data.content)
       .toEqual([{ type: 'text', text: 'temporary side topic' }])
-    expect(child.events.filter(event => event.type === 'assistant/message').at(-1)?.data.message.content)
+    expect(child.snapshotEvents().filter(event => event.type === 'assistant/message').at(-1)?.data.message.content)
       .toEqual([{ type: 'text', text: 'side answer' }])
     expect(ctx.contextify.get(active.agent).plan.replacements).toHaveLength(2)
     await new Promise(resolve => setTimeout(resolve, 20))
-    expect(child.events.some(event => event.type === 'contextify/branch-review')).toBe(false)
+    expect(child.snapshotEvents().some(event => event.type === 'contextify/branch-review')).toBe(false)
   })
 
   it('rejects relocation into a bare live Session without a native Agent', async () => {
@@ -307,7 +342,7 @@ describe('ContextifyService native Session family', () => {
     const target = appendClosedTurn(session, 2, 'side topic', 'side answer')
     await vi.waitFor(() => { expect(ctx.contextify.get(active.agent).branchSuggestion).toBeDefined() })
     const suggestion = ctx.contextify.get(active.agent).branchSuggestion!
-    const bare = ctx.sessions.fork(session, target.boundary - 4, SessionId('bare-branch-child'))
+    const bare = ctx.sessions.fork(session, SessionSeq(target.boundary - 4), SessionId('bare-branch-child'))
 
     await expect(ctx.contextify.acceptBranchSuggestion(active.agent, suggestion.id, bare.id))
       .rejects.toThrow(/native Agent/)
@@ -333,7 +368,7 @@ describe('ContextifyService native Session family', () => {
       arguments: { reason: 'The user explicitly requested a branch.' },
     })
     expect(result.isError).toBe(false)
-    session.append('assistant/message', {
+    session.append('assistant/message', { stream: [],
       turn: 2,
       step: 1,
       message: createAssistantMessage({
@@ -389,7 +424,7 @@ describe('ContextifyService native Session family', () => {
     await settled
     await new Promise(resolve => setTimeout(resolve, 20))
 
-    expect(session.events.some(event => event.type === 'contextify/branch-review'
+    expect(session.snapshotEvents().some(event => event.type === 'contextify/branch-review'
       && event.data.turnEndSeq === target.boundary)).toBe(false)
     expect(ctx.contextify.get(active.agent).branchSuggestion).toBeUndefined()
   })
@@ -519,8 +554,8 @@ describe('ContextifyService native Session family', () => {
     const root = ctx.sessions.create(SessionId('recommend-family-root'))
     start(root)
     const prefix = appendClosedTurn(root, 1, 'shared premise', 'shared answer')
-    const leftSession = ctx.sessions.fork(root, prefix.boundary, SessionId('recommend-family-left'))
-    const rightSession = ctx.sessions.fork(root, prefix.boundary, SessionId('recommend-family-right'))
+    const leftSession = ctx.sessions.fork(root, SessionSeq(prefix.boundary), SessionId('recommend-family-left'))
+    const rightSession = ctx.sessions.fork(root, SessionSeq(prefix.boundary), SessionId('recommend-family-right'))
     const left = start(leftSession, { provider: 'mock', model: 'mock' })
     const right = start(rightSession, { provider: 'mock', model: 'mock' })
     let release!: () => void
@@ -560,9 +595,9 @@ describe('ContextifyService native Session family', () => {
     const root = ctx.sessions.create(SessionId('recommend-stale-root'))
     start(root)
     const prefix = appendClosedTurn(root, 1, 'prefix', 'answer')
-    const activeSession = ctx.sessions.fork(root, prefix.boundary, SessionId('recommend-stale-active'))
+    const activeSession = ctx.sessions.fork(root, SessionSeq(prefix.boundary), SessionId('recommend-stale-active'))
     const active = start(activeSession)
-    const sibling = ctx.sessions.fork(root, prefix.boundary, SessionId('recommend-stale-sibling'))
+    const sibling = ctx.sessions.fork(root, SessionSeq(prefix.boundary), SessionId('recommend-stale-sibling'))
     start(sibling)
     let release!: () => void
     const gate = new Promise<void>((resolve) => { release = resolve })
@@ -621,10 +656,10 @@ describe('ContextifyService native Session family', () => {
       history: { past: [7], future: [] }, excluded: [], included: [],
     } as never)
     const turn = appendClosedTurn(session, 1, 'v2 prompt')
-    const planEventsBefore = session.events.filter(event => event.type === 'contextify/plan').length
+    const planEventsBefore = session.snapshotEvents().filter(event => event.type === 'contextify/plan').length
     const active = start(session)
 
-    expect(session.events.filter(event => event.type === 'contextify/plan')).toHaveLength(planEventsBefore)
+    expect(session.snapshotEvents().filter(event => event.type === 'contextify/plan')).toHaveLength(planEventsBefore)
     expect(ctx.contextify.get(active.agent).plan).toMatchObject({
       version: 3, revision: 8, stateRevision: 8, replacements: [],
     })
@@ -632,7 +667,7 @@ describe('ContextifyService native Session family', () => {
       active.agent, { revision: 8 }, { sessionId: session.id, seq: turn.userSeq }, 'exclude',
     )
     expect(changed.plan).toMatchObject({ version: 3, revision: 9 })
-    expect(session.events.findLast(event => event.type === 'contextify/plan')?.data.version).toBe(3)
+    expect(session.snapshotEvents().findLast(event => event.type === 'contextify/plan')?.data.version).toBe(3)
   })
 
   it('archives and restores one message without changing the graph node or its edges', async () => {
@@ -688,10 +723,10 @@ describe('ContextifyService native Session family', () => {
     const root = ctx.sessions.create(SessionId('root'))
     start(root)
     const rootTurn = appendClosedTurn(root, 1, 'root requirement', 'root answer')
-    const activeSession = ctx.sessions.fork(root, rootTurn.boundary, SessionId('active-child'))
+    const activeSession = ctx.sessions.fork(root, SessionSeq(rootTurn.boundary), SessionId('active-child'))
     const active = start(activeSession)
     const activeTurn = appendClosedTurn(activeSession, 2, 'active question')
-    const sibling = ctx.sessions.fork(root, rootTurn.boundary, SessionId('sibling-child'))
+    const sibling = ctx.sessions.fork(root, SessionSeq(rootTurn.boundary), SessionId('sibling-child'))
     start(sibling)
     const siblingTurn = appendClosedTurn(sibling, 2, 'sibling discovery')
     const unrelated = ctx.sessions.create(SessionId('unrelated'))
@@ -714,7 +749,7 @@ describe('ContextifyService native Session family', () => {
       { sessionId: sibling.id, seq: siblingTurn.userSeq },
       'include',
     )
-    expect(activeSession.events.slice(before).map(event => event.type))
+    expect(activeSession.snapshotEvents().slice(before).map(event => event.type))
       .toEqual(['context/compiler-snapshot', 'contextify/plan'])
     expect(included.plan.included).toMatchObject([{
       nodeId: `${sibling.id}:${String(siblingTurn.userSeq)}`,
@@ -748,9 +783,9 @@ describe('ContextifyService native Session family', () => {
     const root = ctx.sessions.create(SessionId('restore-off-path-root'))
     start(root)
     const prefix = appendClosedTurn(root, 1, 'prefix', 'answer')
-    const activeSession = ctx.sessions.fork(root, prefix.boundary, SessionId('restore-off-path-active'))
+    const activeSession = ctx.sessions.fork(root, SessionSeq(prefix.boundary), SessionId('restore-off-path-active'))
     const active = start(activeSession)
-    const sibling = ctx.sessions.fork(root, prefix.boundary, SessionId('restore-off-path-sibling'))
+    const sibling = ctx.sessions.fork(root, SessionSeq(prefix.boundary), SessionId('restore-off-path-sibling'))
     start(sibling)
     const siblingTurn = appendClosedTurn(sibling, 2, 'original sibling semantics')
     const initial = ctx.contextify.get(active.agent)
@@ -781,9 +816,9 @@ describe('ContextifyService native Session family', () => {
     const root = ctx.sessions.create(SessionId('accept-stale-root'))
     start(root)
     const prefix = appendClosedTurn(root, 1, 'prefix')
-    const activeSession = ctx.sessions.fork(root, prefix.boundary, SessionId('accept-stale-active'))
+    const activeSession = ctx.sessions.fork(root, SessionSeq(prefix.boundary), SessionId('accept-stale-active'))
     const active = start(activeSession)
-    const sibling = ctx.sessions.fork(root, prefix.boundary, SessionId('accept-stale-sibling'))
+    const sibling = ctx.sessions.fork(root, SessionSeq(prefix.boundary), SessionId('accept-stale-sibling'))
     start(sibling)
     const page = await ctx.contextify.familyPage(active.agent, undefined, 100)
     const view = ctx.contextify.get(active.agent)
@@ -811,15 +846,15 @@ describe('ContextifyService native Session family', () => {
     )
     expect(selected.plan.excluded).toHaveLength(1)
 
-    const child = ctx.sessions.fork(parent, parent.events.at(-1)!.seq, SessionId('reset-child'))
+    const child = ctx.sessions.fork(parent, SessionSeq(parent.snapshotEvents().at(-1)!.seq), SessionId('reset-child'))
     const childAgent = start(child)
     const view = ctx.contextify.get(childAgent.agent)
 
     expect(view.plan.revision).toBe(selected.plan.revision + 1)
     expect(view.plan.excluded).toEqual([])
     expect(view.plan.included).toEqual([])
-    expect(child.events.findLast(event => event.type === 'contextify/plan')!.seq)
-      .toBeGreaterThanOrEqual(child.header.seedLength ?? 0)
+    expect(child.snapshotEvents().findLast(event => event.type === 'contextify/plan')!.seq)
+      .toBeGreaterThanOrEqual(child.inheritedEventCount ?? 0)
   })
 
   it('rejects mutations while the Agent is running without appending', async () => {

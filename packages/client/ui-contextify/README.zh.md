@@ -1,9 +1,23 @@
+---
+description: "在原生右侧栏中查看 Context Map 并编辑持久上下文计划。"
+kind: "package-reference"
+---
+
 # @deepseek-ai/dsh-client-ui-contextify
 
 [English](README.md) | 中文
 
-`dsh-client-ui-contextify` 把可交互 Context Map 作为 Harness 原生右侧 details column 的一个子页。Context Map 与 Tool Details 在同一条原生可缩放侧栏中互斥显示，因此不会相互替换或上下堆叠。Map 与消息旁的 Chat control 共用同一个 Session-scoped controller，因此操作的是同一份持久 Context Plan。
+## 概述
 
+`dsh-client-ui-contextify` 在上游右侧栏中提供可交互的 Context Map 标签页。Map 与消息旁的 Chat control 共用同一个 Session-scoped controller，并操作同一份持久 Context Plan。
+
+## 目录
+
+- [用户体验](#user-experience)
+- [模型体验](#model-experience)
+- [已知限制与暂缓事项](#known-limitations-and-deferred-work)
+
+<a id="user-experience"></a>
 ## 用户体验
 
 右侧子页使用 React Flow 以唯一的自上而下 tree 渲染相互连接的原生 Session family，不暴露其他布局模式。每条真实 user input 与每个 completed Turn 的最后一条可见 assistant output 对应一个 card；复制的 Session 前缀会去重，中间 assistant step、未完成输出、reasoning 与 tool event 不进入图。每个 card 只有一个有效 context checkbox：勾选表示消息进入下一次模型请求，未勾选表示不进入。Natural 根据 active Session path 得出这个结果；checkbox 偏离自动结果时会写入相应的 Include 或 Exclude override，恢复自动结果时则移除 override。Selection 模式仍是独立的画布操作，提供累加点击、可见的 Shift 拖动框选与批量操作。被拖动的节点会持续跟随指针，只在松开后持久化最终位置。画布选择和拖动位置仅属于 viewing state，不会改变模型输入。
@@ -24,6 +38,7 @@ Map 也会订阅 Harness 原生的 Workspace archive set。仅属于已归档 Se
 
 Workspace 左侧栏会另外用递归可折叠 tree 展示原生 Session 祖先关系。在 branch family 很密集时，Map 是信息更完整的导航入口。
 
+<a id="model-experience"></a>
 ## 模型体验
 
 通过这些控件修改的 Host-owned Contextify plan 与 compiler 间接影响模型体验。
@@ -34,7 +49,14 @@ UI 不添加提示词文本。Auto 跟随 active Session 历史，Skip 排除一
 
 ## 已知限制与暂缓事项
 
+<a id="known-limitations-and-deferred-work"></a>
+
 - Chat 或 Map 存在订阅者时，family update 使用有界的 1.5 秒 polling。
 - 自动 Branch review 对新 Profile 默认开启，是 one-shot、并发且不会进入 subagent 列表的辅助调用；用户可以在 Prompt Settings 中关闭。
 - 暂不提供跨 Map import。
 - Contextify placeholder 保持为原节点 overlay；其他 compaction relationship 暂不能展开。
+
+<a id="dev-note"></a>
+### 开发备注
+
+不发布不变量伴随插件，因为 Agent Loop 伴随插件检查编译后的请求，而本插件没有独立的运行时不变量。

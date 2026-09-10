@@ -1,7 +1,7 @@
+import { ToolCallId as CallId } from '@deepseek-ai/dsh-llm/brand'
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import {
-  CallId,
   createAssistantMessage,
   createToolResultMessage,
   createUserMessage,
@@ -11,7 +11,7 @@ import type { SessionInspection } from '@deepseek-ai/dsh-session-persistence'
 import { projectSessionFamily } from '../src/family.ts'
 
 function inspect(session: Session): SessionInspection {
-  return { meta: session.header, events: session.events }
+  return { meta: session.header, inheritedEventCount: session.inheritedEventCount, events: session.snapshotEvents() }
 }
 
 function appendUserTurn(session: Session, turn: number, text: string): number {
@@ -42,7 +42,7 @@ describe('projectSessionFamily', () => {
       content: [{ type: 'text', text: '<system-reminder>Hidden skill catalog</system-reminder>' }],
       source: { kind: 'plugin', plugin: 'skill-catalog', form: 'catalog' },
     }), { surfaceOp: 'append' })
-    session.append('assistant/message', {
+    session.append('assistant/message', { stream: [],
       turn: 1,
       step: 1,
       message: createAssistantMessage({
@@ -72,7 +72,7 @@ describe('projectSessionFamily', () => {
       content: [{ type: 'text', text: 'BAI资本是什么' }],
       source: { kind: 'user' },
     }), { surfaceOp: 'append' })
-    session.append('assistant/message', {
+    session.append('assistant/message', { stream: [],
       turn: 1,
       step: 1,
       message: createAssistantMessage({
@@ -89,7 +89,7 @@ describe('projectSessionFamily', () => {
         isError: false,
       }),
     }, { surfaceOp: 'append' })
-    session.append('assistant/message', {
+    session.append('assistant/message', { stream: [],
       turn: 1,
       step: 2,
       message: createAssistantMessage({
@@ -110,7 +110,7 @@ describe('projectSessionFamily', () => {
       content: [{ type: 'text', text: '继续' }],
       source: { kind: 'user' },
     }), { surfaceOp: 'append' })
-    session.append('assistant/message', {
+    session.append('assistant/message', { stream: [],
       turn: 2,
       step: 1,
       message: createAssistantMessage({
@@ -143,7 +143,7 @@ describe('projectSessionFamily', () => {
       content: [{ type: 'text', text: 'root question' }],
       source: { kind: 'user' },
     }), { surfaceOp: 'append' })
-    const rootAnswer = root.append('assistant/message', {
+    const rootAnswer = root.append('assistant/message', { stream: [],
       turn: 1,
       step: 1,
       message: createAssistantMessage({
@@ -154,7 +154,7 @@ describe('projectSessionFamily', () => {
         source: { provider: 'mock', model: 'mock' },
       }),
     }, { surfaceOp: 'append' })
-    root.append('assistant/message', {
+    root.append('assistant/message', { stream: [],
       turn: 1,
       step: 2,
       message: createAssistantMessage({
@@ -179,7 +179,7 @@ describe('projectSessionFamily', () => {
     appendUserTurn(childB, 2, 'child B question')
     const samePointBranch = ctx.sessions.fork(childA, rootBoundary, SessionId('same-point-branch'))
     appendUserTurn(samePointBranch, 2, 'same point question')
-    const grandchild = ctx.sessions.fork(childA, childA.events.at(-1)!.seq, SessionId('grandchild'))
+    const grandchild = ctx.sessions.fork(childA, childA.snapshotEvents().at(-1)!.seq, SessionId('grandchild'))
     appendUserTurn(grandchild, 3, 'grandchild question')
     const emptyChild = ctx.sessions.fork(root, rootBoundary, SessionId('empty-child'))
 

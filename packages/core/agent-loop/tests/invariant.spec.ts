@@ -36,7 +36,6 @@ async function requestSetup() {
   session.append('request/header', {
     header: {
       config: { provider: 'mock', model: 'm' },
-      contextCompiler: { id: 'surface', version: 1 },
     },
     reason: 'initial',
   })
@@ -80,6 +79,9 @@ describe('request-reconstruction invariant', () => {
     expect(() => { dispatch(ctx, loopRequest({ model: 'm', messages: Object.freeze(divergent), sessionId: session.id })) })
       .toThrow(/diverges from the dispatch-time durable derivation/)
     expect(() => { dispatch(ctx, loopRequest({ model: 'other', messages: Object.freeze(boundary), sessionId: session.id })) })
+      .toThrow(/diverges from the folded request header/)
+    // The system prompt is surface node 0 inside `messages`; a `system` field is an unlogged prefix.
+    expect(() => { dispatch(ctx, loopRequest({ model: 'm', system: 'unlogged', messages: Object.freeze(boundary), sessionId: session.id })) })
       .toThrow(/diverges from the folded request header/)
   })
 
@@ -177,7 +179,6 @@ describe('request-reconstruction invariant', () => {
     session.append('request/header', {
       header: {
         config: { provider: 'mock', model: 'm' },
-        contextCompiler: { id: 'surface', version: 1 },
       },
       reason: 'initial',
     })

@@ -1,0 +1,69 @@
+- banner:
+  - navigation "Session hierarchy":
+    - button "Math rendering" [disabled]
+  - button "More actions":
+    - img
+  - button "Open right sidebar":
+    - img
+  - tablist:
+    - tab "Chat" [selected]
+    - tab "Trajectory"
+- text: Render this mathematical proof. {{clock}}
+- button "Copy":
+  - img
+- button "natural context for Render this mathematical proof." [disabled]: Auto
+- button "include context for Render this mathematical proof.": Use
+- button "exclude context for Render this mathematical proof.": Skip
+- button "Locate Render this mathematical proof. in Context Map": Map
+- button "Branch into a new conversation":
+  - img
+- heading "Math rendering" [level=2]
+- paragraph:
+  - text: Inline dollar
+  - math: θ
+  - text: and backslash
+  - math: 1 5
+  - text: .
+- math: π 4 < θ < π 2
+- math: θ ∈ ( π 4 , π 2 ) . (1)
+- table:
+  - rowgroup:
+    - row "Symbol Value":
+      - columnheader "Symbol"
+      - columnheader "Value"
+  - rowgroup:
+    - row:
+      - cell:
+        - math: θ
+      - cell:
+        - math: 1 5
+- paragraph: MATH_RENDERING_DONE
+- button "Copy":
+  - img
+- button "Good response":
+  - img
+- button "Bad response":
+  - img
+- 'button "natural context for ## Math rendering Inline dollar $\\theta$ and backslash \\(\\frac{1}{5}\\). \\[\\frac{\\pi}{4} < \\theta < \\frac{\\pi}{2}\\] $$\\theta \\in \\left(\\frac{\\pi}{4}, \\frac{\\pi}{2}\\right). \\tag{1}$$ | Symbol | Value | | --- | --- | | $\\theta$ | \\(\\frac{1" [disabled]': Auto
+- 'button "include context for ## Math rendering Inline dollar $\\theta$ and backslash \\(\\frac{1}{5}\\). \\[\\frac{\\pi}{4} < \\theta < \\frac{\\pi}{2}\\] $$\\theta \\in \\left(\\frac{\\pi}{4}, \\frac{\\pi}{2}\\right). \\tag{1}$$ | Symbol | Value | | --- | --- | | $\\theta$ | \\(\\frac{1"': Use
+- 'button "exclude context for ## Math rendering Inline dollar $\\theta$ and backslash \\(\\frac{1}{5}\\). \\[\\frac{\\pi}{4} < \\theta < \\frac{\\pi}{2}\\] $$\\theta \\in \\left(\\frac{\\pi}{4}, \\frac{\\pi}{2}\\right). \\tag{1}$$ | Symbol | Value | | --- | --- | | $\\theta$ | \\(\\frac{1"': Skip
+- 'button "Locate ## Math rendering Inline dollar $\\theta$ and backslash \\(\\frac{1}{5}\\). \\[\\frac{\\pi}{4} < \\theta < \\frac{\\pi}{2}\\] $$\\theta \\in \\left(\\frac{\\pi}{4}, \\frac{\\pi}{2}\\right). \\tag{1}$$ | Symbol | Value | | --- | --- | | $\\theta$ | \\(\\frac{1 in Context Map"': Map
+- button "Branch into a new conversation":
+  - img
+- button "Ran for {{duration}}":
+  - img
+  - text: Ran for {{duration}}
+- text: {{clock}}
+- textbox "Message or run a task, / commands, @ files or sessions"
+- button "Commands":
+  - img
+- button "Add attachment":
+  - img
+- 'button "Access mode, current: Workspace Write"': Workspace Write
+- button "Select model, current DeepSeek-V4-Flash":
+  - text: DeepSeek-V4-Flash
+  - img
+- button "Send message" [disabled]
+- button "1 turns 1 steps":
+  - img
+  - text: 1 turns 1 steps

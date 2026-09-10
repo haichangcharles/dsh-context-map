@@ -1,0 +1,99 @@
+- banner:
+  - navigation "Session hierarchy":
+    - button "Use the read tool twice" [disabled]
+  - button "More actions":
+    - img
+  - button "Open right sidebar":
+    - img
+  - tablist:
+    - tab "Chat" [selected]
+    - tab "Trajectory"
+- navigation "Turn navigation":
+  - button "Jump to turn 1"
+  - button "Jump to turn 2"
+- button "System prompt":
+  - img
+  - img
+  - text: System prompt
+- text: "Use the read tool twice in one assistant message: read a.txt and b.txt. Then reply with the single word DONE and stop. {{clock}}"
+- button "Copy":
+  - img
+- tooltip "Copy"
+- 'button "natural context for Use the read tool twice in one assistant message: read a.txt and b.txt. Then reply with the single word DONE and stop." [disabled]': Auto
+- 'button "include context for Use the read tool twice in one assistant message: read a.txt and b.txt. Then reply with the single word DONE and stop."': Use
+- 'button "exclude context for Use the read tool twice in one assistant message: read a.txt and b.txt. Then reply with the single word DONE and stop."': Skip
+- 'button "Locate Use the read tool twice in one assistant message: read a.txt and b.txt. Then reply with the single word DONE and stop. in Context Map"': Map
+- button "Think The user wants me to read a.txt and b.txt, then reply with \"DONE\". Let me do both reads in parallel.":
+  - img
+  - img
+  - text: Think The user wants me to read a.txt and b.txt, then reply with "DONE". Let me do both reads in parallel.
+- paragraph: I will read both files before answering.
+- button "Copy":
+  - img
+- button "Good response":
+  - img
+- button "Bad response":
+  - img
+- button "Branch into a new conversation" [disabled]:
+  - img
+- text: Available only on the last message of a completed turn
+- button "Ran for {{duration}}":
+  - img
+  - text: Ran for {{duration}}
+- text: {{clock}}
+- button "Read a.txt":
+  - img
+  - img
+  - text: Read
+  - button "a.txt"
+- button "Read b.txt":
+  - img
+  - img
+  - text: Read
+  - button "b.txt"
+- button "System prompt":
+  - img
+  - img
+  - text: System prompt
+- text: Now give the final answer. {{clock}}
+- button "Copy":
+  - img
+- button "natural context for Now give the final answer." [disabled]: Auto
+- button "include context for Now give the final answer.": Use
+- button "exclude context for Now give the final answer.": Skip
+- button "Locate Now give the final answer. in Context Map": Map
+- button "Branch into a new conversation":
+  - img
+- paragraph: DONE
+- button "Copy":
+  - img
+- button "Good response":
+  - img
+- button "Bad response":
+  - img
+- button "natural context for DONE" [disabled]: Auto
+- button "include context for DONE": Use
+- button "exclude context for DONE": Skip
+- button "Locate DONE in Context Map": Map
+- button "Branch into a new conversation":
+  - img
+- button "Ran for {{duration}}":
+  - img
+  - text: Ran for {{duration}}
+- text: {{clock}}
+- textbox "Message or run a task, / commands, @ files or sessions"
+- button "Commands":
+  - img
+- button "Add attachment":
+  - img
+- 'button "Access mode, current: Workspace Write"': Workspace Write
+- button "Select model, current DeepSeek-V4-Flash":
+  - text: DeepSeek-V4-Flash
+  - img
+- button "Send message" [disabled]
+- button "2 turns 3 steps · {{throughput}} tok/s":
+  - img
+  - text: 2 turns 3 steps{{throughput}} tok/s
+- button "7.9K tok · Cache hit 98%":
+  - img
+  - text: 7.9K tokCache hit 98%

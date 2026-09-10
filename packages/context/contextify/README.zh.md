@@ -1,9 +1,23 @@
+---
+description: "管理原生会话家族的上下文选择、归档占位与分支建议。"
+kind: "package-reference"
+---
+
 # @deepseek-ai/dsh-contextify
 
 [English](README.md) | 中文
 
-`dsh-contextify` 把一组由 Harness 原生 Session fork 连接起来的对话投影成消息级 Context Map，并注册 `contextify@3` Context Compiler。它不再创造第二套 branch 概念：每条 branch 都是普通 Session，`parentSession` 与 `seedLength` 完全由 Harness 管理。
+## 概述
 
+`dsh-contextify` 把一组由 Harness 原生 Session fork 连接起来的对话投影成消息级 Context Map，并注册 `contextify@3` Context Compiler。它不再创造第二套 branch 概念：每条 branch 都是普通 Session，`parentSession` 与 `inheritedEventCount` 完全由 Harness 管理。
+
+## 目录
+
+- [当前行为](#current-behavior)
+- [模型体验](#model-experience)
+- [已知限制与暂缓事项](#known-limitations-and-deferred-work)
+
+<a id="current-behavior"></a>
 ## 当前行为
 
 在 `agent/session-start` 时，插件会选择 Contextify compiler；若计划不存在，则创建 Natural plan。新 fork 的 child 会继承 parent 的事件前缀，但拥有自己的 Natural plan，因此 context 修改不会被静默继承。
@@ -30,6 +44,7 @@ Plan v3 还支持针对单条 user input 或最终 assistant output 的可恢复
 
 三类 review Agent 都使用 Profile 所有的设置。Package 默认 prompt 是只读基线；用户通常只追加自定义规则，也可以显式解锁完整 override。Context selection、Archive advice 与 Branch routing 分别配置，并继续使用 parent Agent 的 Harness provider/model route。
 
+<a id="model-experience"></a>
 ## 模型体验
 
 ### 编译后的 Context Plan
@@ -48,8 +63,15 @@ Compiler 不添加任何提示词文本。Exclude 可以减少对话历史的 in
 
 ## 已知限制与暂缓事项
 
+<a id="known-limitations-and-deferred-work"></a>
+
 - Web surface 有订阅者时每 1.5 秒轮询 family；后续可改为专用 projection event。
 - 启用 Branch review 后，每个 eligible Turn 最多增加一次很小的辅助模型调用；希望完全没有后台分类的用户可以按 Profile 关闭。
 - 跨 Map import 暂缓；目前只能引用连接到同一原生 root 的 Session。
 - Contextify placeholder 是原节点的 overlay；其他 compaction relationship 尚未展开成 shadow node。
 - 在 compiler、Remote、replay 与 UI seam 稳定前，package 继续保留在本 Harness fork 中。
+
+<a id="dev-note"></a>
+### 开发备注
+
+不发布不变量伴随插件，因为 Agent Loop 伴随插件检查编译后的请求，而本插件没有独立的运行时不变量。

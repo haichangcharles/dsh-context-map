@@ -18,8 +18,10 @@ DSH Context Map 是一个基于 [DeepSeek Harness](https://github.com/deepseek-a
 
 Context Map 为每个成功 Turn 保存一个最初用户输入节点和一个最终可见的模型输出节点。Reasoning、工具调用、工具结果、上下文注入、中间模型步骤和未完成输出不会进入 Map。
 
+<a id="run"></a>
 ## 运行
 
+<a id="run-from-source"></a>
 ### 从源码运行
 
 安装受支持的 Node.js 版本和 pnpm，然后运行：
@@ -40,6 +42,10 @@ Web UI 默认启动在 `http://127.0.0.1:3080`。运行时密钥沿用 DeepSeek 
 
 DeepSeek Harness 是当前版本唯一已经实现并受支持的 Context Map 宿主 Runtime。Contextify 负责持久消息图和 Context Compiler 行为，Web 插件负责可视化与交互。本项目不会引入第二套 agent loop，也不会从浏览器直接调用模型服务商。
 
+### 已有 Session 数据
+
+官方迁移链不接受本分支格式 v0 中的 `context/compiler*` 和 `contextify/*` 事件。后续格式迁移还会改变事件序号，因此不能在缺少跨 Session 引用迁移的情况下直接放行这些记录。支持完整 Session 家族的迁移实现前，已有 Context Map 数据应继续使用旧 Runtime；请在独立的配置和 Session 目录中验证本次升级。此分支不会修改已有数据目录。
+
 ### Roadmap：可移植的上下文基础设施
 
 后续将为 Claude Code 与 OpenAI Agents SDK 增加 Context Map 宿主 Runtime Adapter，并进一步探索把同一套持久上下文映射能力应用到 OpenCode 等开源 Agent 产品中。这些 Adapter 属于 Roadmap，并非当前版本已经提供的功能。DeepSeek Harness 已经继承的 Claude Code Subagent 与 Hook 互操作，是底层 Harness 的另一项能力。
@@ -54,22 +60,22 @@ git remote -v
 # upstream  https://github.com/deepseek-ai/deepseek-harness.git
 ```
 
-合并上游版本时，在专用同步分支中合并经过确认的 Tag 或 Commit。下面以当前 `rc.8` 基础之后的版本为例：
+此次同步以官方 `aa8262ec091698bae9a6b04773a6b5b06ad4aef2`（2026-09-10，包版本 `0.1.5-rc.1`）为目标，替换原来的 `0.1.0-rc.8` 基线。后续更新仍应在专用分支合并经过确认的 Tag 或 Commit：
 
 ```sh
 git fetch upstream --tags
-git switch -c codex/sync-deepseek-rc9 master
-git merge --no-ff dsh-v0.1.0-rc.9
+git switch -c codex/sync-dsh-2026-09-10 master
+git merge --no-ff aa8262ec091698bae9a6b04773a6b5b06ad4aef2
 pnpm run typecheck
 pnpm run build
 pnpm run doc-sync
 ```
 
-只在最小的 Contextify 接入位置解决冲突，不要在上游同步分支中混入产品功能。完整维护约定见[项目身份设计](docs/plans/2026-09-07-dsh-context-map-project-identity-design.md)。
+只在最小的 Contextify 接入位置解决冲突，不要在上游同步分支中混入产品功能。完整维护约定见[项目身份设计](docs/plans/2026-09-07-dsh-context-map-project-identity-design.zh.md)。
 
 ## 开发
 
-建议先阅读 [DeepSeek Harness 架构文档](docs/architecture.md)、[Contextify 包说明](packages/context/contextify/README.md)和 [Context Map UI 包说明](packages/client/ui-contextify/README.md)。参与仓库开发时必须遵循 [AGENTS.md](AGENTS.md)。
+建议先阅读 [DeepSeek Harness 架构文档](docs/architecture.zh.md)、[Contextify 包说明](packages/context/contextify/README.zh.md)和 [Context Map UI 包说明](packages/client/ui-contextify/README.zh.md)。参与仓库开发时必须遵循 [AGENTS.md](AGENTS.md)。
 
 常用检查：
 

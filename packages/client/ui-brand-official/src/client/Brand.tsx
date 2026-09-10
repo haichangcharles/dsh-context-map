@@ -1,20 +1,18 @@
-import type { HeroBrandMarkOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SidebarBrandMarkOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import css from './Brand.module.css'
 
-type OfficialBrandMarkProps = HeroBrandMarkOwnerProps & SidebarBrandMarkOwnerProps
+type OfficialBrandMarkProps = SidebarBrandMarkOwnerProps
 
 /**
  * Render the DSH Context Map mark with the presentation requested by its host surface.
  * @param props - Host-supplied mark presentation.
  * @returns the product's conversation-graph mark.
  */
-export function OfficialBrandMark({ size, className }: OfficialBrandMarkProps) {
+export function OfficialBrandMark({ size }: OfficialBrandMarkProps) {
   return (
     <svg
       role="img"
       aria-label="DSH Context Map"
-      className={className}
       width={size}
       height={size}
       viewBox="0 0 24 24"

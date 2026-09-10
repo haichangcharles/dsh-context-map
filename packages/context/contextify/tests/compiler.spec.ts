@@ -1,7 +1,8 @@
+import { ToolCallId as CallId } from '@deepseek-ai/dsh-llm/brand'
 import { describe, expect, it } from 'vitest'
 import {
-  CallId,
   createAssistantMessage,
+  createSystemMessage,
   createToolResultMessage,
   createUserMessage,
 } from '@deepseek-ai/dsh-llm'
@@ -27,7 +28,7 @@ function appendUser(session: Session, value: string): number {
 }
 
 function appendAssistant(session: Session, turn: number, value: string): number {
-  return session.append('assistant/message', {
+  return session.append('assistant/message', { stream: [],
     turn,
     step: 1,
     message: createAssistantMessage({
@@ -46,6 +47,26 @@ describe('native Contextify plan compiler', () => {
 
     expect(compileContextify({ session, turn: 1, step: 1 }).messages)
       .toEqual(session.deriveMessages())
+  })
+
+  it('omits an empty system node exactly like the upstream surface', () => {
+    const session = Session.create(SessionId('empty-system'))
+    session.append('system/message', { turn: 1, step: 1, message: createSystemMessage('', 'system-prompt') }, { surfaceOp: 'append' })
+    appendUser(session, 'question')
+    expect(compileContextify({ session, turn: 1, step: 1 }).messages).toEqual(session.deriveMessages())
+  })
+
+  it('keeps the system prompt before a sibling snapshot inserted at the front', () => {
+    const session = Session.create(SessionId('system-before-snapshot'))
+    session.append('system/message', { turn: 1, step: 1, message: createSystemMessage('System rules', 'system-prompt') }, { surfaceOp: 'append' })
+    appendUser(session, 'question')
+    const snapshot = session.append('context/compiler-snapshot', {
+      id: 'sibling', message: createUserMessage({ content: [{ type: 'text', text: 'Sibling context' }], source: { kind: 'user' } }),
+    })
+    session.append('contextify/plan', nextPlan(createInitialContextPlan(), {
+      excluded: [], replacements: [], included: [{ nodeId: 'sibling', snapshotSeq: snapshot.seq, position: 0 }],
+    }))
+    expect(compileContextify({ session, turn: 1, step: 1 }).messages.map(text)).toEqual(['System rules', 'Sibling context', 'question'])
   })
 
   it('excludes Natural history, inserts a sibling snapshot, and protects the current turn', () => {
@@ -134,7 +155,7 @@ describe('native Contextify plan compiler', () => {
     const promptSeq = appendUser(session, 'inspect both files')
     const first = CallId('call-first')
     const second = CallId('call-second')
-    const assistantSeq = session.append('assistant/message', {
+    const assistantSeq = session.append('assistant/message', { stream: [],
       turn: 1,
       step: 1,
       message: createAssistantMessage({

@@ -1,6 +1,12 @@
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 /** Browser assembly for the native Session Context Map. */
 import { useEffect } from 'react'
-import type { ClientContext, SessionId, SessionListState } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
+import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
+import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { ContextFamilyGraphNode } from '@deepseek-ai/dsh-contextify/types'
@@ -24,7 +30,7 @@ export type { ContextifyControllerSnapshot, ContextifyTransport } from './contro
 export { createContextMapStore } from './store.ts'
 
 /** Services required by the Contextify Remote adapter and details surface. */
-export const inject = ['slots', 'remote', 'remote.contextify', 'layout', 'sessions', 'conversation']
+export const inject = ['slots', 'remote', 'remote.contextify', 'layout', 'sessions', 'conversation', 'sidebarRight', 'sidebarRightTabs']
 
 /** Convert a generated transport result into the component's ordinary promise contract. */
 function valueOf<T>(result: RemoteResult<T>): T {
@@ -46,11 +52,9 @@ export function nativeBranchSource(node: ContextFamilyGraphNode): {
   return { sessionId: node.owner.sessionId, atSeq: node.branchAtSeq, increaseTitle: true }
 }
 
-/** Invisible root entry that opens wide Sessions and restores the narrow reveal affordance. */
-function DetailsOpener({ open, close, autoCollapseBreakpoint, useSessions }: {
+/** Open the Context Map when the user enters a nonempty Session. */
+function DetailsOpener({ open, useSessions }: {
   open: () => void
-  close: () => void
-  autoCollapseBreakpoint: number
   useSessions: SnapshotSelectorHook<SessionListState>
 }) {
   const sessionId = useSessions((state) => {
@@ -58,16 +62,8 @@ function DetailsOpener({ open, close, autoCollapseBreakpoint, useSessions }: {
     return current !== undefined && state.byId[current]?.blank === false ? current : undefined
   })
   useEffect(() => {
-    if (sessionId === undefined) return
-    const wide = window.matchMedia(`(min-width: ${String(autoCollapseBreakpoint)}px)`)
-    const synchronize = (): void => {
-      if (wide.matches) open()
-      else close()
-    }
-    synchronize()
-    wide.addEventListener('change', synchronize)
-    return () => { wide.removeEventListener('change', synchronize) }
-  }, [autoCollapseBreakpoint, close, open, sessionId])
+    if (sessionId !== undefined) open()
+  }, [open, sessionId])
   return null
 }
 
@@ -131,8 +127,7 @@ export function apply(ctx: ClientContext): void {
       setNodeMode: (node, mode) => controller.setNodeMode(node, mode),
       locate: (nodeId) => {
         controller.focus(nodeId)
-        ctx.conversation.openPinnedDetails(sessionId)
-        ctx.layout.openDetails()
+        ctx.sidebarRight.openTab('context-map')
       },
     }
   }
@@ -147,10 +142,13 @@ export function apply(ctx: ClientContext): void {
     }
   }
 
-  ctx.slots.inject('conversation.details.pinned', () => ctx.slots.register({
-    name: 'conversation.details.pinned',
-    id: 'contextify',
-    order: 0,
+  ctx.effect(() => ctx.sidebarRightTabs.register({
+    id: 'context-map', kind: 'context-map', priority: 'builtin', title: () => 'Context Map',
+    guide: [{ order: 10, title: () => 'Context Map', description: () => 'Inspect branches and control conversation context' }],
+  }))
+  ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
+    name: 'sidebar.right.pane.tab',
+    key: 'context-map',
     store: createContextMapStore(),
     inject: (sessionId: SessionId): ContextMapPanelInjected => {
       const controller = controllerFor(sessionId)
@@ -174,7 +172,7 @@ export function apply(ctx: ClientContext): void {
             ctx.sessions.open(childId)
           },
           locate: (node) => { ctx.conversation.revealMessage(node.owner.sessionId, node.owner.seq) },
-          close: () => { ctx.layout.closeDetails() },
+          close: () => { if (ctx.sidebarRight.isExpanded()) ctx.sidebarRight.toggleExpanded() },
         },
       }
     },
@@ -204,9 +202,7 @@ export function apply(ctx: ClientContext): void {
     id: 'contextify-open-details',
     order: -100,
     inject: () => ({
-      open: () => { ctx.layout.openDetails() },
-      close: () => { ctx.layout.closeDetails() },
-      autoCollapseBreakpoint: ctx.layout.autoCollapseBreakpoint(),
+      open: () => { ctx.sidebarRight.openTab('context-map') },
     }),
   }, DetailsOpener))
 }

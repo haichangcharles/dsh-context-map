@@ -18,8 +18,10 @@ DSH Context Map is an independently maintained conversation-context workspace bu
 
 Context Map stores one node for the initial user input and one node for the final visible assistant output of each successful Turn. Reasoning, tool calls, tool results, context injections, intermediate assistant steps, and incomplete output stay out of the map.
 
+<a id="run"></a>
 ## Run
 
+<a id="run-from-source"></a>
 ### Run from source
 
 Install a supported Node.js version and pnpm, then run:
@@ -40,6 +42,10 @@ The Web UI starts at `http://127.0.0.1:3080` by default. Runtime credentials use
 
 DeepSeek Harness is the only Context Map host runtime implemented and supported by the current release. Contextify owns the durable message graph and Context Compiler behavior, while the Web plugin owns visualization and interaction. The application does not introduce another agent loop or call model providers directly from the browser.
 
+### Existing Session data
+
+The official migration chain does not accept the fork’s format-v0 `context/compiler*` and `contextify/*` events. Later format migrations also renumber events, so accepting these records without migrating every cross-Session reference would be unsafe. Keep existing Context Map data on the previous runtime until a family-aware migration is available; validate this upgrade with an isolated configuration and Session directory. This branch does not modify existing data directories.
+
 ### Roadmap: portable context infrastructure
 
 Future work will add Context Map host-runtime adapters for Claude Code and the OpenAI Agents SDK, then explore applying the same durable context mapping capability to open-source Agent products such as OpenCode. These adapters are roadmap items, not features of the current release. The Claude Code subagent and hook interoperability already inherited from DeepSeek Harness is a separate underlying Harness capability.
@@ -54,12 +60,12 @@ git remote -v
 # upstream  https://github.com/deepseek-ai/deepseek-harness.git
 ```
 
-For an upstream release, merge the reviewed tag or commit on a dedicated synchronization branch. This example shows the next release after the current `rc.8` base:
+This synchronization targets upstream `aa8262ec091698bae9a6b04773a6b5b06ad4aef2` (2026-09-10, package version `0.1.5-rc.1`), replacing the `0.1.0-rc.8` base. Future updates should merge a reviewed tag or commit on a dedicated branch:
 
 ```sh
 git fetch upstream --tags
-git switch -c codex/sync-deepseek-rc9 master
-git merge --no-ff dsh-v0.1.0-rc.9
+git switch -c codex/sync-dsh-2026-09-10 master
+git merge --no-ff aa8262ec091698bae9a6b04773a6b5b06ad4aef2
 pnpm run typecheck
 pnpm run build
 pnpm run doc-sync

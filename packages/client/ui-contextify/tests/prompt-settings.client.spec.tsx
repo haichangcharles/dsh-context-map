@@ -2,7 +2,7 @@
 import { useSyncExternalStore } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { CONTEXTIFY_DEFAULT_PROMPTS } from '@deepseek-ai/dsh-contextify/types'
 import type { ContextifyPromptSettings } from '@deepseek-ai/dsh-contextify/types'
 import { ContextifyPromptSettingsView } from '../src/client/ContextifyPromptSettings.tsx'
@@ -28,6 +28,7 @@ function scopeFixture() {
     subscribe: (listener) => { listeners.add(listener); return () => { listeners.delete(listener) } },
     set,
     unset: vi.fn(async () => {}),
+    mutate: vi.fn(async () => {}),
   }
   function Harness() {
     const current = useSyncExternalStore(

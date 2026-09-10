@@ -1,3 +1,4 @@
+import { SessionSeq } from '@deepseek-ai/dsh-session'
 /**
  * Registry-backed selection of durable Session events for one model request.
  * @module @deepseek-ai/dsh-context-compiler
@@ -117,10 +118,11 @@ declare module '@deepseek-ai/dsh-session/types' {
 
 /** Resolve one validated selected event into its exact model message. */
 function selectedMessage(session: Session, seq: number): Message {
-  const event = session.events[seq]
+  const event = session.eventAt(SessionSeq(seq))
   if (event === undefined) throw invalidSelection(`event seq ${String(seq)} does not exist`)
   if (event.type === 'context/compiler-snapshot') return event.data.message
-  if (event.type !== 'user/message'
+  if (event.type !== 'system/message'
+    && event.type !== 'user/message'
     && event.type !== 'assistant/message'
     && event.type !== 'tool/result') {
     throw invalidSelection(`event seq ${String(seq)} has non-message type "${event.type}"`)
@@ -146,7 +148,7 @@ export class ContextCompilerRegistry extends Service {
       ...SURFACE_DESCRIPTOR,
       select: ({ session }) => ({
         eventSeqs: session.surface.nodes.filter((seq) => {
-          const event = session.events[seq]
+          const event = session.eventAt(SessionSeq(seq))
           return event !== undefined && session.deriveEventMessage(event) !== null
         }),
       }),
@@ -209,8 +211,8 @@ export class ContextCompilerRegistry extends Service {
    * @returns The latest durable selection, or the built-in surface compiler.
    */
   descriptor(session: Session): ContextCompilerDescriptor {
-    for (let index = session.events.length - 1; index >= 0; index--) {
-      const event = session.events[index]
+    for (let index = session.snapshotEvents().length - 1; index >= 0; index--) {
+      const event = session.eventAt(SessionSeq(index))
       if (event?.type === 'context/compiler') {
         return Object.freeze({ id: event.data.id, version: event.data.version })
       }

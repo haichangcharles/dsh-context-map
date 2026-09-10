@@ -9,7 +9,7 @@ import type {
   ContextArchiveCandidate, ContextFamilyGraphNode, ContextMessageRef, ContextNodeMutation,
   ContextRecommendationMode,
 } from '@deepseek-ai/dsh-contextify/types'
-import type { WorkspaceListState } from '@deepseek-ai/dsh-client-runtime/client'
+import type { WorkspaceSnapshot as WorkspaceListState } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { HostObservable, PropsStore, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import { projectUnarchivedContextFamily } from './archived-family.ts'
 import { ContextMapNode, type ContextMapNodeData, type ContextNodeMode } from './ContextMapNode.tsx'

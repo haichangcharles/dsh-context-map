@@ -18,7 +18,7 @@
       "path": "../../core/agent"
     },
     {
-      "path": "../../context/context-compiler"
+      "path": "../../core/agent-loop"
     },
     {
       "path": "../../llm/llm"
@@ -33,7 +33,7 @@
       "path": "../../core/tools"
     },
     {
-      "path": "../../runtime-diagnostics/invariants"
+      "path": "../../session/session-projection"
     }
   ]
 }
