@@ -10,9 +10,9 @@ Fork 的 GitHub Pages 首页展示上游文档，而非 Context Map 产品。访
 
 ## 决策
 
-产品首页的静态 HTML、CSS 和浏览器 JavaScript 位于 `product-site/public`。暗色版式参考 Linear 与 Zed，采用近黑中性背景、清晰文字、低对比边框和克制的绿色点缀，文案独立制作。默认英文，支持由 URL 保存的中文切换。约 20 秒的录屏替代手工搭建的示例界面：在真实暗色 Web 应用中，预先准备的发布讨论从付费企业版改为免费开源；取消勾选两条过期消息，再定位到聊天中的旧消息。上下文计数从六条变成四条，历史完整保留。明确标注示例，过程没有调用模型。三个双语章节按钮支持跳转视频，说明文字与进度同步。提供原生播放控件和封面，不自动播放。
+产品首页的静态 HTML、CSS 和浏览器 JavaScript 位于 `product-site/public`。暗色版式参考 Linear 与 Zed，采用近黑中性背景、清晰文字、低对比边框和克制的绿色点缀，文案独立制作。默认英文，支持由 URL 保存的中文切换。截图功能导览替代单一用途的视频。预设发布案例从共享起点展开两条原生分支。总览展示会话族，之后依次展示五组功能：Branch from Here、跨分支上下文、Fast/Deep Review 与撤销、Archive/Restore，以及包含可选 Automatic Branch review 的 Prompt Dashboard。每组说明使用场景并指出实际控件，截图链接到清晰原图。画面来自运行中的应用；会话和审阅建议明确标注为预设示例，不冒充实时 AI 结果。
 
-`product-site/capture.config.ts` 与 `apps/web/tests/product-walkthrough.capture.ts` 通过已有隔离 Web 脚手架和真实 UI 复现场景。录制断言排除的文字不出现在 `contextCompiler.compile()` 中，但仍保留在 `session.snapshotEvents()` 中。发布的 WebM 仅裁掉准备阶段，不伪造 UI，也不将示例回答包装成实时模型输出。
+`product-site/capture.config.ts` 与 `apps/web/tests/product-walkthrough.capture.ts` 通过隔离 Web 脚手架复现截图。用例验证原生分叉关系、跨分支消息进入真实上下文编译结果、排除消息但保留历史、审阅阶段不修改上下文、应用与撤销，以及归档与恢复。它与其他使用脚手架的 Web 测试一样，归属宿主端 TypeScript 检查。
 
 构建将产品首页覆盖到文档产物中，保留文档路由。Fork 专用 Pages 工作流从 master 发布组合产物。上游手动文档工作流不在本 fork 部署，防止后续文档发布覆盖产品首页。两个工作流保留相同的 Pages 并发组。
 
@@ -26,4 +26,4 @@ Fork 的 GitHub Pages 首页展示上游文档，而非 Context Map 产品。访
 
 ## 验证
 
-验证桌面和移动端布局、双语文案、章节跳转、视频播放、剪贴板行为和控制台错误。运行录制用例检查编译上下文与保留历史。将首页覆盖到文档构建中，确认文档路由保留，随后验证线上录屏和首页。公开页面播放预先准备的素材，不执行 Agent。
+验证桌面和移动端布局、双语文案、功能锚点、六张截图及原图链接、剪贴板行为和控制台错误。运行截图用例核实所展示的操作。将首页覆盖到文档构建中，验证线上首页及保留的文档路由。静态页面不调用模型。
