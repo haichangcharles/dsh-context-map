@@ -1,0 +1,52 @@
+name: Deploy Context Map product page
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'product-site/**'
+      - 'website/**'
+      - 'docs/**'
+      - '.github/workflows/product-pages.yml'
+  workflow_dispatch:
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  build:
+    if: github.repository == 'haichangcharles/dsh-context-map'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build documentation
+        env:
+          DOCS_BASE: /dsh-context-map/
+          DSH_TELEMETRY_DISABLED: '1'
+        run: pnpm run website:build
+      - name: Add product homepage
+        run: node product-site/build.mjs
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: website/.dist
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5

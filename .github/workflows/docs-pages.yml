@@ -35,6 +35,8 @@ env:
 
 jobs:
   build:
+    # This fork publishes its homepage and docs together through product-pages.yml.
+    if: github.repository != 'haichangcharles/dsh-context-map'
     runs-on: ubuntu-latest
     permissions:
       contents: read
