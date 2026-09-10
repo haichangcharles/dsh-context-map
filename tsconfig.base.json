@@ -289,8 +289,6 @@
       "@deepseek-ai/dsh-compaction-basic": ["./packages/compaction/compaction-basic/src"],
       "@deepseek-ai/dsh-compaction-tool-result-pruner": ["./packages/compaction/compaction-tool-result-pruner/src"],
       "@deepseek-ai/dsh-context-compiler": ["./packages/context/context-compiler/src"],
-      "@deepseek-ai/dsh-context-compiler/invariant": ["./packages/context/context-compiler/src/invariant.ts"],
-      "@deepseek-ai/dsh-contextify/invariant": ["./packages/context/contextify/src/invariant.ts"],
       "@deepseek-ai/dsh-credentials": ["./packages/credentials/credentials/src"],
       "@deepseek-ai/dsh-credentials/invariant": ["./packages/credentials/credentials/src/invariant.ts"],
       "@deepseek-ai/dsh-credentials-local": ["./packages/credentials/credentials-local/src"],

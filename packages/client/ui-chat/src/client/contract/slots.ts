@@ -208,11 +208,16 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'conversation.chat.turnTail': { kind: 'chain'; scope: 'session'; owner: TurnTailOwnerProps }
     /**
+     * Ordered actions for one user message. Each entry receives its durable
+     * event sequence. A fresh `id` adds an action; reusing it replaces that
+     * entry. Without entries, the standard user controls remain unchanged.
+     */
+    'conversation.chat.user-actions': { kind: 'list'; scope: 'session'; owner: { seq: number } }
+    /**
      * Ordered actions for one finalized assistant message. Each entry receives
      * the durable message id; a fresh `id` adds an action and reusing one replaces
      * that entry. With no entries, the standard action row remains unchanged.
      */
-    'conversation.chat.user-actions': { kind: 'list'; scope: 'session'; owner: { seq: number } }
     'conversation.chat.assistant-actions': { kind: 'list'; scope: 'session'; owner: AssistantActionOwnerProps }
   }
 }

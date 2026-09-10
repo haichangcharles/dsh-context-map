@@ -37,7 +37,11 @@ import type { InputSubmitMode } from './contract/composer-submission.ts'
  * test fake must supply.
  */
 export interface IConversation {
-  /** Open the owning Session and reveal a durable message in Chat. */
+  /**
+   * Open the owning Session and reveal a durable message in Chat.
+   * @param sessionId - Session that owns the message.
+   * @param seq - Durable event sequence identifying the message.
+   */
   revealMessage(sessionId: SessionId, seq: number): void
   /** The per-session input machine registry (SessionInputResolver face). */
   readonly input: SessionInputResolver

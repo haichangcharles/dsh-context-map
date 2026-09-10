@@ -948,7 +948,7 @@ compile(request: ContextCompileRequest): ContextCompilation
 
 Types: [Session](session.zh.md)
 
-Source: [`packages/context/context-compiler/src/index.ts:140`](../../packages/context/context-compiler/src/index.ts)
+Source: [`packages/context/context-compiler/src/index.ts`](../../packages/context/context-compiler/src/index.ts)
 
 <a id="ctxcontextify--contextifyservice"></a>
 
@@ -1071,7 +1071,7 @@ Durable Context Plan mutations and native Session-family graph reads.
 @Remote('redo') redo(agent: Agent, ref: ContextPlanRef): ContextifyView
 ```
 
-Source: [`packages/context/contextify/src/index.ts:183`](../../packages/context/contextify/src/index.ts)
+Source: [`packages/context/contextify/src/index.ts`](../../packages/context/contextify/src/index.ts)
 
 <a id="agent-events"></a>
 
