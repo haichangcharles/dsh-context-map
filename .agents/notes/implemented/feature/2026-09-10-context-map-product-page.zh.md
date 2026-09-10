@@ -10,7 +10,7 @@ Fork 的 GitHub Pages 首页展示上游文档，而非 Context Map 产品。访
 
 ## 决策
 
-产品首页的静态 HTML、CSS 和浏览器 JavaScript 位于 `product-site/public`。版式参考 Zed 与 Linear 的克制开发者工具风格，文案和示例界面独立制作。默认英文；由 URL 保存的中文切换保留演示选择。示例图和分支控件仅操作本地示例数据，并明确标记为示例，不发起模型请求或修改真实 Session。
+产品首页的静态 HTML、CSS 和浏览器 JavaScript 位于 `product-site/public`。暗色版式参考 Linear 与 Zed，采用近黑中性背景、清晰文字、低对比边框和克制的绿色点缀，文案和示例界面独立制作。默认英文；由 URL 保存的中文切换保留演示选择。示例图和分支控件仅操作本地示例数据，并明确标记为示例，不发起模型请求或修改真实 Session。
 
 构建将产品首页覆盖到文档产物中，保留文档路由。Fork 专用 Pages 工作流从 master 发布组合产物。上游手动文档工作流不在本 fork 部署，防止后续文档发布覆盖产品首页。两个工作流保留相同的 Pages 并发组。
 
