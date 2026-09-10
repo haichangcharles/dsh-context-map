@@ -32,7 +32,7 @@ The client projects the graph through the Workspace runtime's native archive set
 
 ## Append-only compatibility
 
-Context changes never edit or delete transcript events. Include writes `context/compiler-snapshot`; plan changes write complete revisioned `contextify/plan` events. The `contextify@2` compiler selects model messages at request time, restores current-turn messages, and leaves the ordinary Harness surface intact.
+Context changes never edit or delete transcript events. Include writes `context/compiler-snapshot`; plan changes write complete revisioned `contextify/plan` events. The `contextify@3` compiler selects model messages at request time, restores current-turn messages, and leaves the ordinary Harness surface intact.
 
 ## Testing
 
@@ -45,3 +45,7 @@ Cross-map import, automatic recommendations, compaction shadow relationships, an
 ## Consequences
 
 Harness has one branch authority and one context authority while the pinned canvas retains the standalone prototype's direct manipulation. Separating transient drag and canvas-selection state from Context Plan state prevents canvas gestures from creating durable model-input changes; routing message reveal through conversation keeps DOM ownership inside the package that renders it. The effective checkbox removes a three-state presentation from the frequent path, but the source distinction remains available through Restore automatic and Clear manual changes. This adds an in-memory reveal registry and exact message anchors to conversation, and a Locate request can page older history before it settles. Large Session families can still make the graph and polling projection expensive; bounded paging and subscriber-only polling limit that cost, but a push projection may still be required. Explicitly changing older messages can reduce KV-cache prefix reuse, so Natural remains the default and manual overrides persist until the user restores them.
+
+## Upstream synchronization (2026-09-10)
+
+The current integration targets official commit `aa8262ec091698bae9a6b04773a6b5b06ad4aef2`. Session reads use `snapshotEvents()` and persistence handles, fork cuts use the Session Controller, and the map registers a native right-sidebar tab. The Agent Loop retains upstream request preparation and recovery; only explicitly selected compilers replace its message derivation. System messages remain ahead of included snapshots. Empty invariant companions are omitted because request reconstruction is checked by the Agent Loop companion.

@@ -46,7 +46,7 @@ describe('ContextCompilerRegistry', () => {
     })
 
     expect(ctx.contextCompiler.select(session, 'reverse')).toEqual({ id: 'reverse', version: 2 })
-    expect(session.events.at(-1)).toMatchObject({
+    expect(session.snapshotEvents().at(-1)).toMatchObject({
       type: 'context/compiler',
       data: { id: 'reverse', version: 2 },
     })

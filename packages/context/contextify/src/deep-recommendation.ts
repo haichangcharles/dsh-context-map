@@ -189,15 +189,15 @@ export async function runDeepRecommendation(
       handle = await request.parent.ctx.agents.create({
         sessionId: SessionId(randomUUID()),
         meta: {
-          ...childSessionMeta(request.parent, childDepth, 0),
+          ...childSessionMeta(request.parent, childDepth, false),
           cwd: directory,
         },
         agentOptions: resolveChildAgentOptions(request.parent, {
           maxTokens: DEEP_RECOMMENDATION_MAX_TOKENS,
         }, childDepth),
         signal: operation.signal,
-        setup(childCtx) {
-          appendDelegatedPolicyOverrides((childCtx.agent as Agent).session, {
+        setup(childCtx, child) {
+          appendDelegatedPolicyOverrides(child.session, {
             sandboxMode: 'read-only',
             approvalPolicy: 'never',
           })

@@ -32,7 +32,7 @@ Locate in Chat 通过原生 Session ID 与持久消息序号委托给 conversati
 
 ## Append-only 兼容
 
-Context 修改不会 edit 或 delete transcript event。Include 写入 `context/compiler-snapshot`；plan 修改写入完整、带 revision 的 `contextify/plan` event。`contextify@2` compiler 在请求时选择 model message、恢复 current-turn message，并保持 Harness 普通 surface 不变。
+Context 修改不会 edit 或 delete transcript event。Include 写入 `context/compiler-snapshot`；plan 修改写入完整、带 revision 的 `contextify/plan` event。`contextify@3` compiler 在请求时选择 model message、恢复 current-turn message，并保持 Harness 普通 surface 不变。
 
 ## 测试
 
@@ -45,3 +45,7 @@ Context 修改不会 edit 或 delete transcript event。Include 写入 `context/
 ## 后果
 
 Harness 只有一个 branch authority 与一个 context authority，同时 pinned canvas 保留了独立 prototype 的直接操作体验。把临时拖动和画布选择状态与 Context Plan state 分离，可以避免画布手势产生持久 model-input 修改；把消息 reveal 交给 conversation，可以让 DOM ownership 留在实际渲染它的包内。有效 checkbox 从高频路径中移除了三状态呈现，但用户仍可通过 Restore automatic 与 Clear manual changes 区分状态来源。这会给 conversation 增加一个内存 reveal registry 和精确消息锚点；Locate 请求在完成前可能分页加载更早 history。大型 Session family 仍可能增加 graph 与 polling projection 的开销；有界分页和仅在存在订阅者时轮询可以限制该成本，但后续仍可能需要 push projection。显式修改较早消息可能降低 KV cache prefix reuse，因此 Natural 仍是默认状态，manual override 会一直保留到用户主动恢复。
+
+## 上游同步（2026-09-10）
+
+当前集成以官方提交 `aa8262ec091698bae9a6b04773a6b5b06ad4aef2` 为目标。Session 读取使用 `snapshotEvents()` 和持久化句柄，分叉截点使用 Session Controller，地图注册到原生右侧栏。Agent Loop 保留官方请求准备和恢复流程，仅显式选择的 Compiler 替换消息派生。System 消息保持在 Include 快照之前。请求重建由 Agent Loop 伴随插件检查，因此移除空的不变量伴随插件。

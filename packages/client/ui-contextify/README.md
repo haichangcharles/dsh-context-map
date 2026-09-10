@@ -1,9 +1,23 @@
+---
+description: "Pinned Context Map for controlling Contextify conversation history"
+kind: "package-reference"
+---
+
 # @deepseek-ai/dsh-client-ui-contextify
 
 English | [中文](README.zh.md)
 
-`dsh-client-ui-contextify` contributes an interactive Context Map subpage to Harness's native right details column. Context Map and Tool Details are mutually exclusive pages in the same original resizable column, so neither surface replaces or stacks over the other. The map and message-level Chat controls share one Session-scoped controller and therefore operate on the same durable Context Plan.
+## Summary
 
+`dsh-client-ui-contextify` contributes an interactive Context Map tab to the upstream right sidebar. The map and message-level Chat controls share one Session-scoped controller and operate on the same durable Context Plan.
+
+## Table of Contents
+
+- [User experience](#user-experience)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+
+<a id="user-experience"></a>
 ## User experience
 
 The right subpage renders the connected native Session family with React Flow in one fixed top-to-bottom tree; no alternate layout mode is exposed. Each genuine user input and each completed Turn's final visible assistant output is one card; copied Session prefixes are de-duplicated, while intermediate assistant steps, incomplete output, reasoning, and tool events stay out of the graph. Each card has one effective-context checkbox: checked means the message enters the next model request, and unchecked means it does not. Natural derives that result from the active Session path; changing the checkbox away from that result writes the corresponding Include or Exclude override, while changing it back removes the override. Selection mode remains a separate canvas operation with additive click, a visible Shift-drag marquee, and batch actions. Dragged nodes follow the pointer continuously and persist their final position only after release. Canvas selection and dragged positions are viewing state only and do not affect model input.
@@ -22,8 +36,9 @@ The map also subscribes to Harness's native Workspace archive set. Nodes and edg
 
 Ordinary Chat user and finalized assistant messages expose compact Auto/Use/Skip/Map controls. They use the same controller as the graph, so a change made beside Chat appears in the map and survives reload. Steering, reasoning, tool, and runtime-only rows do not receive Context Map controls.
 
-The Workspace sidebar separately renders native Session ancestry as a recursive collapsible tree. The map remains the richer navigation surface for dense branch families.
+The Workspace sidebar uses the upstream Session list. The map provides the detailed branch-family navigation surface.
 
+<a id="model-experience"></a>
 ## Model Experience
 
 Indirectly, through the host-owned Contextify plan and compiler selected by the controls.
@@ -34,7 +49,14 @@ The UI adds no prompt prose. Auto follows the active Session history, Skip exclu
 
 ## Known Limitations and Deferred Work
 
+<a id="known-limitations-and-deferred-work"></a>
+
 - Family updates use bounded 1.5-second polling while Chat or the map is subscribed.
 - Automatic Branch review is enabled for fresh Profiles, one-shot, concurrent, and invisible in the subagent roster; it can be disabled in Prompt Settings.
 - Cross-map import is not exposed.
 - Contextify placeholders remain overlays on their original nodes; unrelated compaction relationships are not expandable.
+
+<a id="dev-note"></a>
+### Dev Note
+
+No invariant companion is published because the Agent Loop companion checks compiled requests and the plugin owns no independent runtime invariant.

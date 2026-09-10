@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { Context, Service } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
-import { SlotRegistry, type SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ContextMapPanelInjected } from '../src/client/ContextMapPanel.tsx'
 import type { ContextMessageActionInjected } from '../src/client/ContextMessageAction.tsx'
 import { apply, inject } from '../src/client/index.ts'
@@ -85,6 +86,9 @@ async function bench(withCleanup = false) {
   const fork = vi.fn(async () => child)
   const open = vi.fn()
   ctx.provide('sessions', { fork, open })
+  const registerTab = vi.fn(() => () => {})
+  ctx.provide('sidebarRightTabs', { register: registerTab } as never)
+  ctx.provide('sidebarRight', { openTab: openDetails, isExpanded: () => true, toggleExpanded: closeDetails } as never)
   const revealMessage = vi.fn()
   const openPinnedDetails = vi.fn()
   ctx.provide('conversation', { revealMessage, openPinnedDetails } as never)
@@ -92,7 +96,7 @@ async function bench(withCleanup = false) {
   ctx.slots.register({
     name: 'root',
     children: {
-      'conversation.details.pinned': { kind: 'list', scope: 'session' },
+      'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session' },
       'conversation.chat.user-actions': { kind: 'list', scope: 'session' },
       'conversation.chat.assistant-actions': { kind: 'list', scope: 'session' },
       'conversation.chat.turnTail': { kind: 'chain', scope: 'session' },
@@ -101,7 +105,7 @@ async function bench(withCleanup = false) {
   } as never, (() => null) as never)
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
-  const pinned = ctx.slots.entries('conversation.details.pinned')[0]
+  const pinned = ctx.slots.entries('sidebar.right.pane.tab')[0]
   const injectPanel = pinned?.inject as unknown as ((sessionId: SessionId) => ContextMapPanelInjected)
   const userAction = ctx.slots.entries('conversation.chat.user-actions')[0]
   const assistantAction = ctx.slots.entries('conversation.chat.assistant-actions')[0]
@@ -120,7 +124,7 @@ async function bench(withCleanup = false) {
 describe('ui-contextify browser plugin', () => {
   it('shares one native-family controller across the pinned map and both Chat action slots', async () => {
     const b = await bench()
-    expect(b.pinned?.options).toMatchObject({ id: 'contextify', order: 0 })
+    expect(b.pinned?.options).toMatchObject({ key: 'context-map' })
     expect(b.opener?.options).toMatchObject({ id: 'contextify-open-details' })
     expect(b.userAction?.options).toMatchObject({ id: 'contextify', order: 20 })
     expect(b.assistantAction?.options).toMatchObject({ id: 'contextify', order: 20 })
@@ -152,8 +156,7 @@ describe('ui-contextify browser plugin', () => {
     }])
     expect(b.fork).toHaveBeenCalledWith({ sessionId: source, atSeq: 9, increaseTitle: true })
     expect(b.open).toHaveBeenNthCalledWith(1, child)
-    expect(b.revealMessage).toHaveBeenCalledWith(source, 7)
-    expect(b.openPinnedDetails).toHaveBeenCalledWith(source)
+    expect(b.revealMessage).toHaveBeenCalledWith(source, b.record.owner.seq)
     expect(b.openDetails).toHaveBeenCalledOnce()
     expect(b.closeDetails).toHaveBeenCalledOnce()
   })
@@ -161,7 +164,7 @@ describe('ui-contextify browser plugin', () => {
   it('removes all five slot contributions with the plugin fiber', async () => {
     const b = await bench()
     await b.fiber.dispose()
-    expect(b.ctx.slots.entries('conversation.details.pinned')).toHaveLength(0)
+    expect(b.ctx.slots.entries('sidebar.right.pane.tab')).toHaveLength(0)
     expect(b.ctx.slots.entries('conversation.chat.user-actions')).toHaveLength(0)
     expect(b.ctx.slots.entries('conversation.chat.assistant-actions')).toHaveLength(0)
     expect(b.ctx.slots.entries('conversation.chat.turnTail')).toHaveLength(0)

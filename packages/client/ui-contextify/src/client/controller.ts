@@ -1,5 +1,5 @@
 /** Shared observable bridge between Chat actions, Context Map, and Contextify Remote. */
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
   ContextBranchRelocationResult,
   ContextBranchRelocationPreparation,

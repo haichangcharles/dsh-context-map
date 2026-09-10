@@ -1,0 +1,65 @@
+- banner:
+  - navigation "Session hierarchy":
+    - button "Inline code links" [disabled]
+  - button "More actions":
+    - img
+  - button "Open right sidebar":
+    - img
+  - tablist:
+    - tab "Chat" [selected]
+    - tab "Trajectory"
+- text: Show the local preview URL. {{clock}}
+- button "Copy":
+  - img
+- button "natural context for Show the local preview URL." [disabled]: Auto
+- button "include context for Show the local preview URL.": Use
+- button "exclude context for Show the local preview URL.": Skip
+- button "Locate Show the local preview URL. in Context Map": Map
+- button "Branch into a new conversation":
+  - img
+- heading "Inline code links" [level=2]
+- paragraph:
+  - text: "Preview:"
+  - code:
+    - link "{{linkUrl}}":
+      - /url: {{linkUrl}}
+- paragraph:
+  - text: "Standard:"
+  - link "Open preview":
+    - /url: {{linkUrl}}
+- paragraph:
+  - text: "Command:"
+  - code: curl {{linkUrl}}
+- paragraph:
+  - text: "Unsafe:"
+  - code: javascript:alert(1)
+- paragraph: INLINE_CODE_LINK_DONE
+- button "Copy":
+  - img
+- button "Good response":
+  - img
+- button "Bad response":
+  - img
+- 'button "natural context for ## Inline code links Preview: `{{linkUrl}}` Standard: [Open preview]({{linkUrl}}) Command: `curl {{linkUrl}}` Unsafe: `javascript:alert(1)` INLINE_CODE_LINK_DONE" [disabled]': Auto
+- 'button "include context for ## Inline code links Preview: `{{linkUrl}}` Standard: [Open preview]({{linkUrl}}) Command: `curl {{linkUrl}}` Unsafe: `javascript:alert(1)` INLINE_CODE_LINK_DONE"': Use
+- 'button "exclude context for ## Inline code links Preview: `{{linkUrl}}` Standard: [Open preview]({{linkUrl}}) Command: `curl {{linkUrl}}` Unsafe: `javascript:alert(1)` INLINE_CODE_LINK_DONE"': Skip
+- 'button "Locate ## Inline code links Preview: `{{linkUrl}}` Standard: [Open preview]({{linkUrl}}) Command: `curl {{linkUrl}}` Unsafe: `javascript:alert(1)` INLINE_CODE_LINK_DONE in Context Map"': Map
+- button "Branch into a new conversation":
+  - img
+- button "Ran for {{duration}}":
+  - img
+  - text: Ran for {{duration}}
+- text: {{clock}}
+- textbox "Message or run a task, / commands, @ files or sessions"
+- button "Commands":
+  - img
+- button "Add attachment":
+  - img
+- 'button "Access mode, current: Workspace Write"': Workspace Write
+- button "Select model, current DeepSeek-V4-Flash":
+  - text: DeepSeek-V4-Flash
+  - img
+- button "Send message" [disabled]
+- button "1 turns 1 steps":
+  - img
+  - text: 1 turns 1 steps

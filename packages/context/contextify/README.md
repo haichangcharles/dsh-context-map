@@ -1,9 +1,23 @@
+---
+description: "Durable native Session-family context graph and compiler for DeepSeek Harness"
+kind: "package-reference"
+---
+
 # @deepseek-ai/dsh-contextify
 
 English | [中文](README.zh.md)
 
-`dsh-contextify` turns a connected family of native Harness Session forks into one message-level Context Map and registers the `contextify@3` Context Compiler. It does not create a second branch model: every branch is an ordinary Session whose `parentSession` and `seedLength` remain owned by Harness.
+## Summary
 
+`dsh-contextify` turns a connected family of native Harness Session forks into one message-level Context Map and registers the `contextify@3` Context Compiler. It does not create a second branch model: every branch is an ordinary Session whose `parentSession` and `inheritedEventCount` remain owned by Harness.
+
+## Table of Contents
+
+- [Current behavior](#current-behavior)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+
+<a id="current-behavior"></a>
 ## Current behavior
 
 On `agent/session-start`, the plugin selects the Contextify compiler and creates a Natural plan when no plan exists. A newly forked child inherits the parent's event prefix but starts with its own Natural plan; context edits are never silently inherited.
@@ -30,6 +44,7 @@ Automatic Branch review is enabled for fresh Profiles and can be disabled in the
 
 All three review agents use Profile-owned settings. Package default prompts remain the read-only baseline; users normally append additional instructions and may explicitly unlock a full override. Context selection, Archive advice, and Branch routing have independent sections and use the same Harness provider/model path as the parent Agent.
 
+<a id="model-experience"></a>
 ## Model Experience
 
 ### Compiled Context Plan
@@ -48,8 +63,15 @@ Any earlier change to the selected message prefix can reduce KV-cache reuse from
 
 ## Known Limitations and Deferred Work
 
+<a id="known-limitations-and-deferred-work"></a>
+
 - The Web client polls the family at 1.5-second intervals while a surface is subscribed; a dedicated projection event can replace this later.
 - Enabled Branch review adds at most one small auxiliary model call per eligible Turn; users who prefer zero background classification can disable it per Profile.
 - Cross-map import is deferred; only Sessions connected to the same native root are addressable.
 - Contextify placeholders are overlays on existing nodes; unrelated compaction relationships are not expanded into shadow nodes.
 - The package remains in this Harness fork while its compiler, Remote, replay, and UI seams stabilize.
+
+<a id="dev-note"></a>
+### Dev Note
+
+No invariant companion is published because the Agent Loop companion checks compiled requests and the plugin owns no independent runtime invariant.

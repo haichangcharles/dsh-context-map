@@ -67,6 +67,8 @@ export function effectivePrompt(defaultPrompt: string, section: ContextifyPrompt
 /** Immutable Session data consumed by the native family projection. */
 export interface ContextFamilyInspection {
   readonly meta: SessionHeader
+  /** Exact inherited prefix reported by the Session or persistence handle. */
+  readonly inheritedEventCount: number
   readonly events: readonly SessionEvent[]
 }
 

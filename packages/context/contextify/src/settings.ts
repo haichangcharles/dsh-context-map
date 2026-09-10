@@ -1,13 +1,12 @@
 /** Profile-owned prompts for Context Map review agents. */
 import z from '@deepseek-ai/schemastery'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import {
   CONTEXTIFY_PROMPT_MAX_CHARS,
   type ContextifyPromptSection,
   type ContextifyPromptSettings,
 } from './types.ts'
 /** Profile settings namespace shared by Host and Web settings surfaces. */
-export const CONTEXTIFY_SETTINGS_NAMESPACE = settingsNamespace('contextify')
+export const CONTEXTIFY_SETTINGS_NAMESPACE = 'contextify'
 
 const promptSection = z.object({
   additional: z.string().max(CONTEXTIFY_PROMPT_MAX_CHARS).default(''),

@@ -1,3 +1,4 @@
+import { SessionSeq } from '@deepseek-ai/dsh-session'
 /** Pure revision history and model-message selection for native Contextify plans. */
 import type { Message } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
@@ -201,7 +202,7 @@ export function resetPlan(current: ContextPlanSnapshot): ContextPlanSnapshot {
 }
 
 function planAtStateRevision(session: Session, stateRevision: number): ContextPlanSnapshot {
-  const event = session.events.find(candidate =>
+  const event = session.snapshotEvents().find(candidate =>
     candidate.type === 'contextify/plan' && candidate.data.revision === stateRevision)
   if (event?.type !== 'contextify/plan') {
     throw new Error(`Contextify history revision ${String(stateRevision)} is unavailable`)
@@ -259,7 +260,7 @@ export function redoPlan(session: Session, current: ContextPlanSnapshot): Contex
  * @returns The latest plan or a detached Natural default before initialization.
  */
 export function currentContextPlan(session: Session): ContextPlanSnapshot {
-  const latest = session.events.findLast(event => event.type === 'contextify/plan')?.data
+  const latest = session.snapshotEvents().findLast(event => event.type === 'contextify/plan')?.data
   return normalizeContextPlanSnapshot(latest) ?? createInitialContextPlan()
 }
 
@@ -280,12 +281,12 @@ function eventTurns(events: readonly SessionEvent[]): ReadonlyMap<number, number
 function toolGroups(session: Session): ReadonlyMap<number, ReadonlySet<number>> {
   const resultByCall = new Map<string, number>()
   for (const seq of session.surface.nodes) {
-    const event = session.events[seq]
+    const event = session.eventAt(SessionSeq(seq))
     if (event?.type === 'tool/result') resultByCall.set(event.data.message.source.callId, seq)
   }
   const bySeq = new Map<number, ReadonlySet<number>>()
   for (const seq of session.surface.nodes) {
-    const event = session.events[seq]
+    const event = session.eventAt(SessionSeq(seq))
     if (event?.type !== 'assistant/message') continue
     const calls = event.data.message.content.flatMap(block => block.type === 'tool-call' ? [block.id] : [])
     if (calls.length === 0) continue
@@ -307,23 +308,25 @@ function insertSnapshots(
 ): void {
   const ordered = [...included].sort((left, right) =>
     left.position - right.position || left.snapshotSeq - right.snapshotSeq)
+  const systemPrefix = eventSeqs.findIndex(seq => session.eventAt(SessionSeq(seq))?.type !== 'system/message')
+  const firstContent = systemPrefix < 0 ? eventSeqs.length : systemPrefix
   let samePositionOffset = 0
   let previousPosition = -1
   for (const item of ordered) {
     const selectedSeq = replacements.get(item.nodeId)?.snapshotSeq ?? item.snapshotSeq
-    const event = session.events[selectedSeq]
+    const event = session.eventAt(SessionSeq(selectedSeq))
     if (event?.type !== 'context/compiler-snapshot') {
       throw new Error(`Contextify included snapshot event ${String(selectedSeq)} is unavailable`)
     }
     if (eventSeqs.includes(selectedSeq)) throw new Error('Contextify included snapshot is duplicated')
     samePositionOffset = item.position === previousPosition ? samePositionOffset + 1 : 0
     previousPosition = item.position
-    eventSeqs.splice(Math.min(item.position + samePositionOffset, eventSeqs.length), 0, selectedSeq)
+    eventSeqs.splice(Math.min(Math.max(firstContent, item.position) + samePositionOffset, eventSeqs.length), 0, selectedSeq)
   }
 }
 
 function selectedMessage(session: Session, seq: number): Message {
-  const event = session.events[seq]
+  const event = session.eventAt(SessionSeq(seq))
   if (event === undefined) throw new Error(`Contextify selected missing event ${String(seq)}`)
   if (event.type === 'context/compiler-snapshot') return event.data.message
   const message = session.deriveEventMessage(event)
@@ -333,12 +336,12 @@ function selectedMessage(session: Session, seq: number): Message {
 
 function validateReplacementEvents(session: Session, replacements: readonly ContextReplacementNode[]): void {
   for (const replacement of replacements) {
-    const snapshot = session.events[replacement.snapshotSeq]
+    const snapshot = session.eventAt(SessionSeq(replacement.snapshotSeq))
     if (snapshot?.type !== 'context/compiler-snapshot' || snapshot.data.message.role !== replacement.role) {
       throw new Error(`Contextify replacement snapshot ${String(replacement.snapshotSeq)} is unavailable or has the wrong role`)
     }
     if (replacement.originalEventSeq === null) continue
-    const original = session.events[replacement.originalEventSeq]
+    const original = session.eventAt(SessionSeq(replacement.originalEventSeq))
     const message = original === undefined ? null : session.deriveEventMessage(original)
     if (message === null || message.role !== replacement.role) {
       throw new Error(`Contextify replacement original event ${String(replacement.originalEventSeq)} is unavailable or has the wrong role`)
@@ -358,7 +361,11 @@ export function compileContextify(request: {
 }): ContextifyCompilation {
   const plan = currentContextPlan(request.session)
   validateReplacementEvents(request.session, plan.replacements)
-  const selected = new Set(request.session.surface.nodes)
+  const natural = request.session.surface.nodes.filter((seq) => {
+    const event = request.session.eventAt(seq)
+    return event !== undefined && request.session.deriveEventMessage(event) !== null
+  })
+  const selected = new Set<number>(natural)
   const groups = toolGroups(request.session)
   const excludedGroups = new Set<ReadonlySet<number>>()
   for (const excluded of plan.excluded) {
@@ -368,8 +375,8 @@ export function compileContextify(request: {
   }
   for (const group of excludedGroups) for (const seq of group) selected.delete(seq)
 
-  const turns = eventTurns(request.session.events)
-  for (const seq of request.session.surface.nodes) {
+  const turns = eventTurns(request.session.snapshotEvents())
+  for (const seq of natural) {
     if (turns.get(seq) !== request.turn) continue
     const group = groups.get(seq)
     if (group === undefined) selected.add(seq)
@@ -379,7 +386,7 @@ export function compileContextify(request: {
   const replacements = new Map(plan.replacements.map(item => [item.nodeId, item]))
   const activeReplacementBySeq = new Map(plan.replacements.flatMap(item =>
     item.originalEventSeq === null ? [] : [[item.originalEventSeq, item.snapshotSeq] as const]))
-  const eventSeqs = request.session.surface.nodes
+  const eventSeqs = natural
     .filter(seq => selected.has(seq))
     .map(seq => activeReplacementBySeq.get(seq) ?? seq)
   if (new Set(eventSeqs).size !== eventSeqs.length) throw new Error('Contextify replacement snapshot is duplicated')

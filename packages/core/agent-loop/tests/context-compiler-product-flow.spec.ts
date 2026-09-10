@@ -1,3 +1,4 @@
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
@@ -13,6 +14,7 @@ async function harness(adapter: MockAdapter): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(SessionStore)
+  await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(AgentRegistry)
@@ -37,13 +39,28 @@ function messageText(message: Message): string {
 }
 
 describe('context compiler product flow', () => {
+  it('refuses an unsupported durable Surface compiler version before model I/O', async () => {
+    const adapter = new MockAdapter([textResponse('must not run')])
+    const ctx = await harness(adapter)
+    try {
+      const agent = await ctx.agentLoop.create(SessionId('surface-version-mismatch'), { provider: 'mock', model: 'mock' })
+      const errors: unknown[] = []
+      ctx.on('agent/error', ({ error }) => { errors.push(error) })
+      agent.session.append('context/compiler', { id: 'surface', version: 99 })
+      send(agent, 'go')
+      await agent.whenIdle()
+      expect(adapter.requests).toHaveLength(0)
+      expect(errors).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'COMPILER_VERSION_MISMATCH' })]))
+    } finally { await ctx.fiber.dispose() }
+  })
+
   it('turns a mutable Context Map plan into the exact reordered model request and survives replay', async () => {
     const adapter = new MockAdapter([
       textResponse('draft that the next branch will exclude'),
       textResponse('answer from the controlled context'),
     ])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('context-map-product-flow'), {
+    const agent = await ctx.agentLoop.create(SessionId('context-map-product-flow'), {
       provider: 'mock',
       model: 'mock',
     })
@@ -57,7 +74,7 @@ describe('context compiler product flow', () => {
       version: 1,
       select: ({ session }) => ({
         eventSeqs: visibleOrder.map((wanted) => {
-          const match = session.events.find((event) => {
+          const match = session.snapshotEvents().find((event) => {
             const message = session.deriveEventMessage(event)
             return message !== null && messageText(message) === wanted
           })
@@ -83,19 +100,20 @@ describe('context compiler product flow', () => {
       ['branch follow-up', 'root requirement'],
     ])
     expect(agent.session.deriveMessages().map(messageText)).toEqual([
+      'You are an AI agent powered by DeepSeek Harness.',
       'root requirement',
       'draft that the next branch will exclude',
       'branch follow-up',
       'answer from the controlled context',
     ])
-    expect(agent.session.events.filter(event => event.type === 'context/compiler')).toHaveLength(1)
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'context/compiler')).toHaveLength(1)
     expect(agent.session.requestHeader()?.contextCompiler).toEqual({
       id: 'context-map-mock',
       version: 1,
     })
 
     const replayed = Session.create(SessionId('context-map-product-flow-replayed'), [
-      ...agent.session.events,
+      ...agent.session.snapshotEvents(),
     ])
     expect(ctx.contextCompiler.descriptor(replayed)).toEqual({
       id: 'context-map-mock',

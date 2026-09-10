@@ -1,3 +1,4 @@
+import { SessionSeq } from '@deepseek-ai/dsh-session'
 /** Durable context selection across one native Session fork family. */
 import { createHash } from 'node:crypto'
 import { Context } from '@deepseek-ai/cordis'
@@ -6,7 +7,7 @@ import { BlockAssembler, createUserMessage, HarnessError, type Message } from '@
 import { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-context-compiler'
 import type {} from '@deepseek-ai/dsh-session-persistence'
-import { installSettingsSection } from '@deepseek-ai/dsh-settings'
+import type {} from '@deepseek-ai/dsh-settings'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { projectSessionFamily } from './family.ts'
@@ -149,10 +150,10 @@ function contentHash(message: Message): string {
 function familyRevision(inspections: ReadonlyMap<SessionId, ContextFamilyInspection>): string {
   const records = [...inspections.values()]
     .sort((left, right) => left.meta.id.localeCompare(right.meta.id))
-    .map(({ meta, events }) => ({
+    .map(({ meta, events, inheritedEventCount }) => ({
       id: meta.id,
       parentSession: meta.parentSession ?? null,
-      seedLength: meta.seedLength ?? 0,
+      seedLength: inheritedEventCount,
       // Branch review metadata does not alter visible topology and therefore
       // must not invalidate a concurrently opened Context recommendation.
       eventCount: events.filter(event => event.type !== 'contextify/branch-review').length,
@@ -195,7 +196,7 @@ export class ContextifyService extends TypertRemoteService {
     void cleanupStaleDeepSnapshots().catch((cause: unknown) => {
       ctx.logger.warn(`Contextify Deep snapshot cleanup failed: ${String(cause)}`)
     })
-    installSettingsSection(
+    ctx.inject(['settings'], (settingsCtx) => { settingsCtx.settings.installSection(
       ctx,
       CONTEXTIFY_SETTINGS_NAMESPACE,
       ContextifyPromptSettingsSchema,
@@ -205,6 +206,7 @@ export class ContextifyService extends TypertRemoteService {
         onChange: () => {},
       },
     )
+    })
     ctx.effect(() => ctx.contextCompiler.register({
       id: name,
       version: 3,
@@ -244,11 +246,11 @@ export class ContextifyService extends TypertRemoteService {
       })))
     })
     ctx.on('agent/session-start', ({ agent }) => {
-      const latest = agent.session.events.findLast(event => event.type === 'contextify/plan')
+      const latest = agent.session.snapshotEvents().findLast(event => event.type === 'contextify/plan')
       const current = latest?.data as unknown
       const inherited = agent.session.header.parentSession !== undefined
         && latest !== undefined
-        && latest.seq < (agent.session.header.seedLength ?? 0)
+        && latest.seq < (agent.session.inheritedEventCount ?? 0)
       if (latest === undefined || inherited || normalizeContextPlanSnapshot(current) === null) {
         const priorRevision = isRecordWithRevision(current) ? current.revision : 0
         agent.session.append('contextify/plan', createInitialContextPlan(
@@ -376,7 +378,7 @@ export class ContextifyService extends TypertRemoteService {
       const contents = Object.fromEntries(family.graph.nodes.map((node) => {
         const replacement = replacementByNode.get(node.id)
         if (replacement !== undefined) {
-          const event = agent.session.events[replacement.snapshotSeq]
+          const event = agent.session.eventAt(SessionSeq(replacement.snapshotSeq))
           if (event?.type === 'context/compiler-snapshot') {
             return [node.id, recommendationText(event.data.message)]
           }
@@ -390,7 +392,7 @@ export class ContextifyService extends TypertRemoteService {
         .map(node => node.id))
       for (const excluded of plan.excluded) effective.delete(excluded.nodeId)
       for (const included of plan.included) effective.add(included.nodeId)
-      const fallbackObjective = [...agent.session.events].reverse().find(event =>
+      const fallbackObjective = [...agent.session.snapshotEvents()].reverse().find(event =>
         event.type === 'user/message' && event.data.source.kind === 'user')
       const goal = boundedObjective(objective?.trim() || (fallbackObjective?.type === 'user/message'
         ? recommendationText(fallbackObjective.data)
@@ -437,7 +439,7 @@ export class ContextifyService extends TypertRemoteService {
           'Use exactly this shape: {"exclude":[{"nodeId":"...","reason":"..."}],"include":[{"nodeId":"...","reason":"..."}],"archive":[{"nodeId":"...","reason":"..."}]}.',
           'Use empty arrays when no action is needed. Never invent node IDs.',
         ].join('\n\n')
-        const latestOutput = [...agent.session.events].reverse().find(event => event.type === 'assistant/message')
+        const latestOutput = [...agent.session.snapshotEvents()].reverse().find(event => event.type === 'assistant/message')
         if (latestOutput?.type !== 'assistant/message') {
           throw new ContextifyError('a model route is unavailable for Context recommendation', 'CONTEXTIFY_RECOMMENDATION_UNAVAILABLE')
         }
@@ -536,9 +538,9 @@ export class ContextifyService extends TypertRemoteService {
 
   /** Start one direct classifier from the first human input without waiting for the main answer. */
   private startBranchReview(agent: Agent, inputSeq: number): void {
-    const start = agent.session.events.slice(0, inputSeq).findLast(event => event.type === 'turn/start')
+    const start = agent.session.snapshotEvents().slice(0, inputSeq).findLast(event => event.type === 'turn/start')
     if (start?.type !== 'turn/start') return
-    const priorHuman = agent.session.events.slice(start.seq + 1, inputSeq).some(event =>
+    const priorHuman = agent.session.snapshotEvents().slice(start.seq + 1, inputSeq).some(event =>
       event.type === 'user/message' && event.surfaceOp === 'append' && event.data.source.kind === 'user')
     if (priorHuman) return
     this.branchReviews.get(agent.id)?.controller.abort('A newer Branch candidate replaced this review')
@@ -576,7 +578,7 @@ export class ContextifyService extends TypertRemoteService {
     if (!this.promptSettings().automaticBranchReview || operation.explicitReason !== undefined
       || operation.result !== undefined || operation.controller.signal.aborted) return
     const config = agent.session.requestHeader()?.config
-    const latestOutput = agent.session.events.findLast(event => event.type === 'assistant/message')
+    const latestOutput = agent.session.snapshotEvents().findLast(event => event.type === 'assistant/message')
     const route = latestOutput?.type === 'assistant/message' ? latestOutput.data.message.source : undefined
     if (!(config?.provider ?? agent.options.provider ?? route?.provider)
       || !(config?.model ?? agent.options.model ?? route?.model)) return
@@ -614,7 +616,7 @@ export class ContextifyService extends TypertRemoteService {
     ].join('\n\n')
     const assembler = new BlockAssembler()
     const requestConfig = agent.session.requestHeader()?.config
-    const latestOutput = agent.session.events.findLast(event => event.type === 'assistant/message')
+    const latestOutput = agent.session.snapshotEvents().findLast(event => event.type === 'assistant/message')
     const outputRoute = latestOutput?.type === 'assistant/message' ? latestOutput.data.message.source : undefined
     const provider = requestConfig?.provider ?? agent.options.provider ?? outputRoute?.provider
     const model = requestConfig?.model ?? agent.options.model ?? outputRoute?.model
@@ -663,13 +665,13 @@ export class ContextifyService extends TypertRemoteService {
       || (explicitReason === undefined && !this.promptSettings().automaticBranchReview)
       || (explicitReason === undefined && operation.controller.signal.aborted)
       || currentContextPlan(agent.session).revision !== operation.planRevision
-      || agent.session.events.some(event => event.type === 'contextify/branch-review'
+      || agent.session.snapshotEvents().some(event => event.type === 'contextify/branch-review'
         && event.data.turnEndSeq === turnEndSeq)) return
-    const candidate = completedTurnCandidate(agent.session.events, turnEndSeq, agent.session.id)
+    const candidate = completedTurnCandidate(agent.session.snapshotEvents(), turnEndSeq, agent.session.id)
     if (candidate === null || candidate.input.seq !== operation.inputSeq) return
     const family = await this.loadFamily(agent.session)
     if (this.branchReviews.has(agent.id)
-      || agent.session.events.slice(turnEndSeq + 1).some(event =>
+      || agent.session.snapshotEvents().slice(turnEndSeq + 1).some(event =>
         event.type === 'turn/start' || event.type === 'turn/end'
         || event.type === 'user/message' || event.type === 'assistant/message'
         || event.type === 'tool/result')) return
@@ -706,7 +708,7 @@ export class ContextifyService extends TypertRemoteService {
     if (agent.status !== 'idle') {
       throw new ContextifyError('Branch relocation requires an idle Agent', 'CONTEXTIFY_AGENT_BUSY')
     }
-    const review = agent.session.events.findLast(event => event.type === 'contextify/branch-review'
+    const review = agent.session.snapshotEvents().findLast(event => event.type === 'contextify/branch-review'
       && event.data.suggestion?.id === suggestionId)
     if (review?.type !== 'contextify/branch-review' || review.data.suggestion === null) {
       throw new ContextifyError('Branch suggestion is unavailable', 'CONTEXTIFY_INVALID_TRANSITION')
@@ -715,7 +717,7 @@ export class ContextifyService extends TypertRemoteService {
     if (suggestion.boundaryBefore < 0) {
       throw new ContextifyError('the first conversation Turn has no preceding Branch boundary', 'CONTEXTIFY_INVALID_TRANSITION')
     }
-    const laterConversation = agent.session.events.slice(suggestion.boundaryAfter + 1).some(event =>
+    const laterConversation = agent.session.snapshotEvents().slice(suggestion.boundaryAfter + 1).some(event =>
       event.type === 'turn/start' || event.type === 'turn/end'
       || event.type === 'user/message' || event.type === 'assistant/message' || event.type === 'tool/result')
     if (laterConversation) {
@@ -878,14 +880,14 @@ export class ContextifyService extends TypertRemoteService {
   ): Promise<ContextBranchRelocationResult> {
     this.assertLive(agent)
     if (agent.status !== 'idle') throw new ContextifyError('Branch relocation requires an idle Agent', 'CONTEXTIFY_AGENT_BUSY')
-    const review = agent.session.events.findLast(event => event.type === 'contextify/branch-review'
+    const review = agent.session.snapshotEvents().findLast(event => event.type === 'contextify/branch-review'
       && event.data.suggestion?.id === suggestionId)
     if (review?.type !== 'contextify/branch-review' || review.data.suggestion === null) {
       throw new ContextifyError('Branch suggestion is unavailable', 'CONTEXTIFY_INVALID_TRANSITION')
     }
     const suggestion = review.data.suggestion
     const key = branchRelocationKey(agent.id, suggestion.boundaryAfter)
-    const laterConversation = agent.session.events.slice(suggestion.boundaryAfter + 1).some(event =>
+    const laterConversation = agent.session.snapshotEvents().slice(suggestion.boundaryAfter + 1).some(event =>
       event.type === 'turn/start' || event.type === 'turn/end'
       || event.type === 'user/message' || event.type === 'assistant/message' || event.type === 'tool/result')
     if (laterConversation) {
@@ -913,18 +915,18 @@ export class ContextifyService extends TypertRemoteService {
     }
     const child = childAgent.session
     if (child.header.parentSession !== agent.id
-      || child.header.seedLength !== suggestion.boundaryBefore + 1) {
+      || child.inheritedEventCount !== suggestion.boundaryBefore + 1) {
       throw new ContextifyError('the native Branch does not match the suggested boundary', 'CONTEXTIFY_INVALID_TRANSITION')
     }
-    const inputEvent = agent.session.events[suggestion.input.seq]
-    const outputEvent = agent.session.events[suggestion.output.seq]
+    const inputEvent = agent.session.eventAt(SessionSeq(suggestion.input.seq))
+    const outputEvent = agent.session.eventAt(SessionSeq(suggestion.output.seq))
     if (inputEvent?.type !== 'user/message' || outputEvent?.type !== 'assistant/message') {
       throw new ContextifyError('the suggested Q&A source is unavailable', 'CONTEXTIFY_INVALID_NODE')
     }
-    const relocated = child.events.some(event => event.type === 'contextify/branch-relocation'
+    const relocated = child.snapshotEvents().some(event => event.type === 'contextify/branch-relocation'
       && event.data.key === key)
     if (!relocated) {
-      const advancedChild = child.events.slice(child.header.seedLength).some(event =>
+      const advancedChild = child.snapshotEvents().slice(child.inheritedEventCount).some(event =>
         event.type === 'turn/start' || event.type === 'turn/end'
         || event.type === 'user/message' || event.type === 'assistant/message' || event.type === 'tool/result')
       if (advancedChild) {
@@ -1120,12 +1122,12 @@ export class ContextifyService extends TypertRemoteService {
   private view(session: Session): ContextifyView {
     const plan = currentContextPlan(session)
     const compilation = compileContextify({ session, turn: -1, step: -1 })
-    const totalNodeCount = session.events.filter(event =>
+    const totalNodeCount = session.snapshotEvents().filter(event =>
       event.type === 'user/message'
       || (event.type === 'assistant/message'
         && event.data.message.content.some(block => block.type === 'text' || block.type === 'image'))).length
-    const latestTurnEnd = session.events.findLast(event => event.type === 'turn/end')
-    const reviewed = session.events.findLast(event => event.type === 'contextify/branch-review'
+    const latestTurnEnd = session.snapshotEvents().findLast(event => event.type === 'turn/end')
+    const reviewed = session.snapshotEvents().findLast(event => event.type === 'contextify/branch-review'
       && event.data.suggestion !== null)
     const branchSuggestion = reviewed?.type === 'contextify/branch-review'
       && reviewed.data.suggestion !== null
@@ -1154,7 +1156,7 @@ export class ContextifyService extends TypertRemoteService {
     return Object.freeze(nodes.map((node) => {
       const replacement = replacements.get(node.id)
       if (replacement === undefined) return node
-      const event = session.events[replacement.snapshotSeq]
+      const event = session.eventAt(SessionSeq(replacement.snapshotSeq))
       if (event?.type !== 'context/compiler-snapshot') return node
       const source = inspections.get(node.owner.sessionId)
       const original = source === undefined ? null : exactMessage(source, node.owner.seq)
@@ -1174,7 +1176,7 @@ export class ContextifyService extends TypertRemoteService {
 
   private async loadFamily(active: Session): Promise<LoadedFamily> {
     const headers = new Map<SessionId, ContextFamilyInspection['meta']>()
-    for (const header of await this.ctx.sessionPersistence.list()) {
+    for (const { header } of await this.ctx.sessionPersistence.list()) {
       if (header.origin !== 'subagent') headers.set(header.id, header)
     }
     for (const session of this.ctx.sessions.list()) {
@@ -1205,9 +1207,17 @@ export class ContextifyService extends TypertRemoteService {
     const inspections = new Map<SessionId, ContextFamilyInspection>()
     for (const id of familyIds) {
       const live = this.ctx.sessions.get(id)
-      const inspection = live === undefined
-        ? await this.ctx.sessionPersistence.inspect(id)
-        : { meta: live.header, events: live.events }
+      let inspection: ContextFamilyInspection
+      if (live !== undefined) {
+        inspection = { meta: live.header, events: live.snapshotEvents(), inheritedEventCount: live.inheritedEventCount }
+      } else {
+        const handle = await this.ctx.sessionPersistence.open(id, 'read')
+        try {
+          inspection = { meta: handle.header, events: (await handle.read()).events, inheritedEventCount: handle.inheritedEventCount }
+        } finally {
+          await handle.close()
+        }
+      }
       inspections.set(id, inspection)
     }
     const graph = projectSessionFamily({

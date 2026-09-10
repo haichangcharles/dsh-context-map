@@ -68,11 +68,11 @@ describe('post-Turn Branch review', () => {
     session.append('contextify/plan', { kind: 'contextify/plan', version: 3, revision: 1, stateRevision: 1, history: { past: [], future: [] }, excluded: [], included: [], replacements: [] })
     session.append('turn/start', { turn: 4 })
     const input = session.append('user/message', createUserMessage({ content: [{ type: 'text', text: 'side topic' }], source: { kind: 'user' } }), { surfaceOp: 'append' })
-    session.append('assistant/message', { turn: 4, step: 1, message: createAssistantMessage({ content: [{ type: 'text', text: 'intermediate' }], source: { provider: 'mock', model: 'mock' } }) }, { surfaceOp: 'append' })
-    const output = session.append('assistant/message', { turn: 4, step: 2, message: createAssistantMessage({ content: [{ type: 'text', text: 'final answer' }], source: { provider: 'mock', model: 'mock' } }) }, { surfaceOp: 'append' })
+    session.append('assistant/message', { stream: [], turn: 4, step: 1, message: createAssistantMessage({ content: [{ type: 'text', text: 'intermediate' }], source: { provider: 'mock', model: 'mock' } }) }, { surfaceOp: 'append' })
+    const output = session.append('assistant/message', { stream: [], turn: 4, step: 2, message: createAssistantMessage({ content: [{ type: 'text', text: 'final answer' }], source: { provider: 'mock', model: 'mock' } }) }, { surfaceOp: 'append' })
     const end = session.append('turn/end', { turn: 4, reason: { kind: 'completed' } })
 
-    expect(completedTurnCandidate(session.events, end.seq, session.id)).toMatchObject({
+    expect(completedTurnCandidate(session.snapshotEvents(), end.seq, session.id)).toMatchObject({
       turn: 4,
       boundaryBefore: 0,
       boundaryAfter: end.seq,

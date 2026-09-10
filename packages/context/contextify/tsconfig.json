@@ -4,18 +4,39 @@
     "rootDir": "src",
     "outDir": "lib/types"
   },
-  "include": ["src"],
+  "include": [
+    "src"
+  ],
   "references": [
-    { "path": "../../../vendor/cordis" },
-    { "path": "../../core/agent" },
-    { "path": "../context-compiler" },
-    { "path": "../../runtime-diagnostics/invariants" },
-    { "path": "../../llm/llm" },
-    { "path": "../../core/session" },
-    { "path": "../../session/session-persistence" },
-    { "path": "../../settings/settings" },
-    { "path": "../../../vendor/schemastery" },
-    { "path": "../../subagent/subagent" },
-    { "path": "../../typert/protocol" }
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../core/agent"
+    },
+    {
+      "path": "../context-compiler"
+    },
+    {
+      "path": "../../llm/llm"
+    },
+    {
+      "path": "../../core/session"
+    },
+    {
+      "path": "../../session/session-persistence"
+    },
+    {
+      "path": "../../settings/settings"
+    },
+    {
+      "path": "../../../vendor/schemastery"
+    },
+    {
+      "path": "../../subagent/subagent"
+    },
+    {
+      "path": "../../typert/protocol"
+    }
   ]
 }

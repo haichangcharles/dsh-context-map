@@ -13,9 +13,9 @@ import {
   acknowledgeReloadConnectionLoss, compareOrRefreshGolden, launchWebScaffold, watchConsole, webSnapshotMode,
   type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
+import { connectFreshWorkspace, newEnglishPage, saveFailureShot, writeComposerDraft } from './support.ts'
 
-const REPLAY = fileURLToPath(new URL('./snapshots/lifecycle-chrome/session.jsonl', import.meta.url))
+const REPLAY = fileURLToPath(new URL('../../../snapshots/web/lifecycle-chrome/session.v3.jsonl', import.meta.url))
 const COMPILED_PLACEHOLDER_EXPECTED = fileURLToPath(new URL(
   './snapshots/contextify-map/compiled-placeholder.expected.md', import.meta.url,
 ))
@@ -32,6 +32,7 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
     let recommendationCall = 0
     scaffold = await launchWebScaffold({
       replayFixture: REPLAY,
+      compareReplaySession: false,
       paceMs: 5,
       contextRecommendation: (prompt) => {
         const marker = 'Conversation graph JSON:\n'
@@ -85,7 +86,7 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
     browser = await chromium.launch()
     page = await newEnglishPage(browser)
     tripwire = watchConsole(page)
-    await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
+    await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
     await connectFreshWorkspace(page, scaffold.workspaceCwd)
   }, 120_000)
 
@@ -97,8 +98,8 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
   it('opens beside Chat, forks a native child, mutates its plan, and survives reload', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-contextify-map'))
     const settled = scaffold.whenTurnSettled()
-    const input = page.locator('textarea').first()
-    await input.fill(PROMPT)
+    const input = page.locator('[data-composer-input]').first()
+    await writeComposerDraft(page, input, PROMPT)
     await input.press('Enter')
     const sessionId = await settled
     await page.getByText('LIGHTHOUSE', { exact: true }).waitFor({ timeout: 15_000 })
@@ -107,6 +108,9 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
     await map.waitFor({ timeout: 15_000 })
     await expect.poll(() => map.getByText(/2 \/ 2 in context/).count(), { timeout: 5_000 }).toBe(1)
     await expect.poll(() => map.locator('.react-flow__node').count(), { timeout: 5_000 }).toBe(2)
+
+    const rootActionName = await page.locator('button[aria-label^="Session actions for "]').first().getAttribute('aria-label')
+    if (rootActionName === null) throw new Error('Context Map root row action has no accessible name')
 
     await map.getByRole('article', { name: 'Assistant message: LIGHTHOUSE' }).click({ button: 'right' })
     await map.getByRole('menuitem', { name: 'Branch from Here' }).click()
@@ -125,9 +129,7 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
     // action must now address that visible child instead of the hidden owner.
     const sessionActions = page.locator('button[aria-label^="Session actions for "]')
     await expect.poll(() => sessionActions.count(), { timeout: 5_000 }).toBe(2)
-    const rootAction = sessionActions.first()
-    const rootActionName = await rootAction.getAttribute('aria-label')
-    if (rootActionName === null) throw new Error('Context Map root row action has no accessible name')
+    const rootAction = page.getByRole('button', { name: rootActionName, exact: true, includeHidden: true })
     const rootRow = rootAction.locator('xpath=ancestor::*[@role="treeitem"][1]')
     await rootRow.hover()
     await expect.poll(() => rootAction.isVisible(), { timeout: 5_000 }).toBe(true)
@@ -142,7 +144,10 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
 
     await map.getByRole('article', { name: `User message: ${PROMPT}` }).click({ button: 'right' })
     await map.getByRole('menuitem', { name: 'Locate in Chat' }).click()
-    await expect.poll(() => page.locator('[data-chat-revealed]').count(), { timeout: 5_000 }).toBe(1)
+    const locatedSeq = child.session.snapshotEvents().find(event => event.type === 'user/message')!.seq
+    const locatedRow = page.locator(`[data-chat-message-seq="${locatedSeq}"]`)
+    await expect.poll(() => locatedRow.isVisible(), { timeout: 5_000 }).toBe(true)
+    expect(await locatedRow.innerText()).toContain(PROMPT)
     expect(await page.locator('[role="treeitem"][aria-selected="true"]').count()).toBe(1)
 
     const beforeProposal = scaffold.ctx.contextify.get(child)
@@ -229,7 +234,7 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
       content: [{ type: 'text', text: 'Generate a long layout probe.' }],
       source: { kind: 'user' },
     }), { surfaceOp: 'append' })
-    child.session.append('assistant/message', {
+    child.session.append('assistant/message', { stream: [],
       turn: 2,
       step: 1,
       message: createAssistantMessage({

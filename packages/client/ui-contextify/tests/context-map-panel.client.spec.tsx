@@ -2,7 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
-import type { SessionId, WorkspaceListState } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { WorkspaceSnapshot as WorkspaceListState } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { ContextFamilyGraphNode } from '@deepseek-ai/dsh-contextify/types'
 import type { ReactFlowInstance, ReactFlowProps } from '@xyflow/react'
 import {
@@ -146,7 +147,6 @@ function mount(
   const workspaceSource = {
     getSnapshot: (): WorkspaceListState => ({
       items: [], archivedSessionIds, state: 'idle', phase: 'ready', error: null,
-      baselinesReady: true, recentWorkspaceId: undefined,
     }),
     subscribe: () => () => {},
   }

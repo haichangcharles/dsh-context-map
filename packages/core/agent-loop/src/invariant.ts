@@ -3,6 +3,7 @@
  * @module @deepseek-ai/dsh-agent-loop/invariant
  */
 
+import type {} from '@deepseek-ai/dsh-context-compiler'
 import type { Context } from '@deepseek-ai/cordis'
 import { isAgentLoopRequest, type GenerateOptions } from '@deepseek-ai/dsh-llm'
 import type { InvariantFailure, InvariantInstaller } from '@deepseek-ai/dsh-invariants'
@@ -28,7 +29,7 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
       fail('a loop-built request must carry a frozen messages array')
     }
 
-    const events = session.events
+    const events = session.snapshotEvents()
     const stepStart = events.findLast(event => event.type === 'step/start')
     if (stepStart === undefined) {
       return fail('a loop-built request with no step/start in its session log')
@@ -37,29 +38,30 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
     if (header === undefined) {
       return fail('a loop-built request with no request/header event in its session log')
     }
-    const compilation = ctx.contextCompiler.compile({
-      session,
-      turn: stepStart.data.turn,
-      step: stepStart.data.step,
-    })
-    if (JSON.stringify(options.messages) !== JSON.stringify(compilation.messages)) {
+    const compiler = ctx.get('contextCompiler')
+    const descriptor = compiler?.descriptor(session)
+    const compilation = descriptor?.id === 'surface' && descriptor.version === 1 ? undefined
+      : compiler?.compile({ session, turn: stepStart.data.turn, step: stepStart.data.step })
+    const expected = compilation?.messages ?? session.deriveMessages()
+    if (JSON.stringify(options.messages) !== JSON.stringify(expected)) {
       fail(`llm request for session "${String(session.id)}" diverges from the dispatch-time durable derivation (log-reconstruction desync)`)
     }
 
-    const headerMatches = options.model === header.config.model
-      && options.system === header.system
+    // The system prompt travels inside `messages` as surface node 0, never as `system`.
+    const headerMatches = header.contextCompiler?.id === compilation?.id
+      && header.contextCompiler?.version === compilation?.version
+      && options.model === header.config.model
+      && options.system === undefined
       && options.temperature === header.config.temperature
       && options.maxTokens === header.config.maxTokens
       && JSON.stringify(options.stop) === JSON.stringify(header.config.stop)
       && JSON.stringify(options.tools ?? []) === JSON.stringify(header.tools ?? [])
-      && header.contextCompiler?.id === compilation.id
-      && header.contextCompiler.version === compilation.version
     if (!headerMatches) {
       fail(`llm request for session "${String(session.id)}" diverges from the folded request header`)
     }
     return next()
   }, { global: true, prepend: true })
-}, { inject: ['sessions', 'contextCompiler'] })
+}, { inject: ['sessions'] })
 
 /**
  * Register the agent-loop invariant companion.

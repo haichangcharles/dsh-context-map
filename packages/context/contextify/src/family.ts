@@ -116,7 +116,7 @@ function canonicalOwner(
   byId: ReadonlyMap<SessionId, ContextFamilyInspection>,
 ): ContextMessageRef {
   let cursor = inspection
-  while (cursor.meta.parentSession !== undefined && event.seq < (cursor.meta.seedLength ?? 0)) {
+  while (cursor.meta.parentSession !== undefined && event.seq < (cursor.inheritedEventCount ?? 0)) {
     const parent = byId.get(cursor.meta.parentSession)
     if (parent === undefined || !sameCopiedEvent(parent.events[event.seq], event)) break
     cursor = parent
@@ -176,7 +176,7 @@ function canonicalSessionParents(
   for (const inspection of inspections) {
     const actualParent = inspection.meta.parentSession
     if (actualParent === undefined) continue
-    const seedLength = inspection.meta.seedLength ?? 0
+    const seedLength = inspection.inheritedEventCount ?? 0
     const forkEvent = seedLength > 0 ? inspection.events[seedLength - 1] : undefined
     parents.set(
       inspection.meta.id,
@@ -243,7 +243,7 @@ export function projectSessionFamily(input: {
     sessions.push(Object.freeze({
       id: inspection.meta.id,
       ...(parentSessionId === undefined ? {} : { parentSessionId }),
-      seedLength: inspection.meta.seedLength ?? 0,
+      seedLength: inspection.inheritedEventCount ?? 0,
       depth,
       tipNodeId: path.at(-1) ?? null,
     }))

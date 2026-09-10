@@ -2,7 +2,7 @@
 import type {
   ContextFamilyGraph, ContextFamilyGraphNode, ContextFamilySession,
 } from '@deepseek-ai/dsh-contextify/types'
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
 function nearestVisibleParent(
   session: ContextFamilySession,

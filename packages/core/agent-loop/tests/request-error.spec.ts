@@ -3,6 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import ContextCompilerRegistry from '@deepseek-ai/dsh-context-compiler'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import LlmRuntime, { createUserMessage, LlmError  } from '@deepseek-ai/dsh-llm'
 import type { LlmFailure, ResolvedRetryPolicy } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
@@ -14,10 +15,10 @@ async function harness(adapter: MockAdapter): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(SessionStore)
+  await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(AgentRegistry)
-  await ctx.plugin(ContextCompilerRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
   ctx.llm.registerAdapter(['mock'], adapter)
   return ctx
@@ -30,10 +31,35 @@ function fail(message: string, code: string): () => never {
 }
 
 describe('agent/request-error', () => {
+  it('recompiles selected context after recovery changes the durable selection', async () => {
+    const adapter = new MockAdapter([fail('busy', 'RATE_LIMIT'), textResponse('ok')])
+    const ctx = await harness(adapter)
+    try {
+      await ctx.plugin(ContextCompilerRegistry)
+      const agent = await ctx.agentLoop.create(SessionId('compiler-recovery'), { provider: 'mock', model: 'mock' })
+      ctx.contextCompiler.register({ id: 'latest-snapshot', version: 1, select: ({ session }) => ({
+        eventSeqs: session.snapshotEvents().filter(event => event.type === 'context/compiler-snapshot').slice(-1).map(event => event.seq),
+      }) })
+      const snapshot = (text: string) => agent.session.append('context/compiler-snapshot', {
+        id: text,
+        message: createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }),
+      })
+      snapshot('before recovery')
+      ctx.contextCompiler.select(agent.session, 'latest-snapshot')
+      ctx.on('agent/request-error', async () => { snapshot('after recovery'); return { kind: 'retry' } })
+      agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+      await agent.whenIdle()
+      expect(adapter.requests.map(request => request.messages)).toEqual([
+        [expect.objectContaining({ content: [{ type: 'text', text: 'before recovery' }] })],
+        [expect.objectContaining({ content: [{ type: 'text', text: 'after recovery' }] })],
+      ])
+    } finally { await ctx.fiber.dispose() }
+  })
+
   it('does not offer middleware failures to request recovery', async () => {
     const adapter = new MockAdapter([textResponse('unused')])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('request-error-narrow'), { provider: 'mock', model: 'mock' })
+    const agent = await ctx.agentLoop.create(SessionId('request-error-narrow'), { provider: 'mock', model: 'mock' })
     let recoveries = 0
     ctx.on('agent/request', () => {
       throw new LlmError('middleware failed', 'MIDDLEWARE')
@@ -56,7 +82,7 @@ describe('agent/request-error', () => {
       textResponse('ok'),
     ])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('request-error-retry'), { provider: 'mock', model: 'mock' })
+    const agent = await ctx.agentLoop.create(SessionId('request-error-retry'), { provider: 'mock', model: 'mock' })
     const seen: {
       turn: number
       step: number
@@ -92,48 +118,20 @@ describe('agent/request-error', () => {
         code: 'SERVICE_UNAVAILABLE',
       },
     ])
-    expect(agent.session.events.filter(event => event.type === 'turn/start')).toHaveLength(1)
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'turn/start')).toHaveLength(1)
     expect(seen.map(item => item.retryPolicy)).toEqual([
       expect.objectContaining({ mode: 'normal' }),
       expect.objectContaining({ mode: 'normal' }),
     ])
     expect(statuses).toEqual(['running', 'idle'])
-  })
-
-  it('compiles context once per step and reuses it across request retries', async () => {
-    const adapter = new MockAdapter([
-      fail('busy', 'RATE_LIMIT'),
-      textResponse('ok'),
-    ])
-    const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('request-context-retry'), { provider: 'mock', model: 'mock' })
-    let compilations = 0
-    ctx.contextCompiler.register({
-      id: 'counted',
-      version: 1,
-      select: ({ session }) => {
-        compilations += 1
-        return { eventSeqs: session.surface.nodes }
-      },
-    })
-    ctx.contextCompiler.select(agent.session, 'counted')
-    ctx.on('agent/request-error', async () => ({ kind: 'retry' }))
-
-    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
-    await agent.whenIdle()
-
-    expect(adapter.requests).toHaveLength(2)
-    // One execution compilation is reused by both attempts. The package
-    // invariant independently reconstructs once before each model dispatch;
-    // recompiling in the retry loop would make this total four.
-    expect(compilations).toBe(3)
-    expect(agent.session.requestHeader()?.contextCompiler).toEqual({ id: 'counted', version: 1 })
+    expect(agent.session.snapshotEvents().flatMap(event =>
+      event.type === 'request/header' ? [event.data.reason] : [])).toEqual(['initial'])
   })
 
   it('lets cancellation win over a retry action', async () => {
     const adapter = new MockAdapter([fail('busy', 'RATE_LIMIT'), textResponse('unused')])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('request-error-cancel'), { provider: 'mock', model: 'mock' })
+    const agent = await ctx.agentLoop.create(SessionId('request-error-cancel'), { provider: 'mock', model: 'mock' })
     ctx.on('agent/request-error', async ({ agent: subject }) => {
       subject.cancel({ kind: 'user' })
       return { kind: 'retry' }
@@ -143,8 +141,8 @@ describe('agent/request-error', () => {
     await agent.whenIdle()
 
     expect(adapter.requests).toHaveLength(1)
-    expect(agent.session.events.filter(event => event.type === 'turn/start')).toHaveLength(1)
-    expect(agent.session.events.find(event => event.type === 'turn/end')).toMatchObject({
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'turn/start')).toHaveLength(1)
+    expect(agent.session.snapshotEvents().find(event => event.type === 'turn/end')).toMatchObject({
       type: 'turn/end',
       data: { reason: { kind: 'aborted', reason: { kind: 'user' } } },
     })
@@ -153,7 +151,7 @@ describe('agent/request-error', () => {
   it('does not retry when the recovery listener fails before returning its action', async () => {
     const adapter = new MockAdapter([fail('busy', 'RATE_LIMIT'), textResponse('unused')])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('request-error-recovery-failed'), {
+    const agent = await ctx.agentLoop.create(SessionId('request-error-recovery-failed'), {
       provider: 'mock',
       model: 'mock',
     })
@@ -165,8 +163,8 @@ describe('agent/request-error', () => {
     await agent.whenIdle()
 
     expect(adapter.requests).toHaveLength(1)
-    expect(agent.session.events.filter(event => event.type === 'turn/start')).toHaveLength(1)
-    expect(agent.session.events.find(event => event.type === 'turn/end')).toMatchObject({
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'turn/start')).toHaveLength(1)
+    expect(agent.session.snapshotEvents().find(event => event.type === 'turn/end')).toMatchObject({
       type: 'turn/end',
       data: { reason: { kind: 'error' } },
     })

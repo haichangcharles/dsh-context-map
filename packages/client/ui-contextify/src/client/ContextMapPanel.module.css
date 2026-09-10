@@ -14,7 +14,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px 9px;
-  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
 }
 
 .header h2 { margin: 0; font-size: 15px; line-height: 20px; }
@@ -23,7 +23,7 @@
 .iconButton,
 .toolbar button,
 .selectionBar button {
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 6px;
   background: var(--dsw-alias-bg-elevated);
   color: inherit;
@@ -39,7 +39,7 @@
   gap: 5px;
   min-width: 0;
   padding: 6px 10px;
-  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
 }
 
 .toolbar button { padding: 4px 7px; font-size: 10px; white-space: nowrap; }
@@ -59,7 +59,7 @@
   flex-direction: column;
   width: 230px;
   padding: 5px;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 9px;
   background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-1));
   opacity: 1;
@@ -85,7 +85,7 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 7px;
   padding: 3px 7px;
   background: var(--dsw-alias-bg-elevated);
@@ -136,7 +136,7 @@
   flex-direction: column;
   width: 188px;
   padding: 5px;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 9px;
   background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-1));
   opacity: 1;
@@ -157,13 +157,13 @@
 
 .contextMenu button:hover:not(:disabled) { background: rgb(127 140 165 / 14%); }
 .contextMenu button:disabled { cursor: default; opacity: 0.42; }
-.contextMenuSeparator { height: 1px; margin: 4px 5px; background: var(--dsw-alias-border-l2); }
+.contextMenuSeparator { height: 0.5px; margin: 4px 5px; background: var(--dsw-alias-border-l2); }
 
 .mapNode {
   box-sizing: border-box;
   width: 224px;
   min-height: 116px;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-left: 3px solid #8da0bf;
   border-radius: 10px;
   padding: 9px;
@@ -196,7 +196,7 @@
 .preview::before { content: attr(data-preview); }
 .nodeMeta { overflow: hidden; color: var(--dsw-alias-fg-secondary); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .nodeBadges { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 5px; }
-.nodeBadges span { border-radius: 99px; padding: 2px 5px; background: rgb(79 125 243 / 14%); color: #4f7df3; font-size: 8px; }
+.nodeBadges span { border-radius: 99px; corner-shape: round; padding: 2px 5px; background: rgb(79 125 243 / 14%); color: #4f7df3; font-size: 8px; }
 .nodeBadges span[data-recommendation='archive'] { background: rgb(245 158 11 / 14%); color: #b56a00; }
 .nodeBadges span[data-replacement-badge] { background: rgb(22 163 74 / 12%); color: #16803c; }
 
@@ -205,7 +205,7 @@
   z-index: 12;
   inset: 15% 8%;
   overflow: auto;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 12px;
   padding: 14px;
   background: var(--dsw-alias-bg-elevated);
@@ -227,7 +227,7 @@
   align-items: center;
   gap: 5px;
   padding: 7px 9px;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 9px;
   background: color-mix(in srgb, var(--dsw-alias-bg-elevated) 94%, transparent);
   box-shadow: 0 8px 24px rgb(0 0 0 / 16%);
