@@ -1,4 +1,4 @@
-/** Opt-in product footage capture; never part of the normal Web regression lane. */
+/** Opt-in product screenshot capture; never part of the normal Web regression lane. */
 import { defineConfig } from 'vitest/config'
 import webConfig from '../vitest.web.config.ts'
 
