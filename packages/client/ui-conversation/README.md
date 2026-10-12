@@ -38,6 +38,8 @@ Target packages declaration-merge their snapshot and Location data maps, then re
 
 Workspace selection uses `uiWorkspace.openWorkspace` to prepare the target and commit navigation. Draft text and attachments move in its synchronous preparation callback only while that request is current; later navigation or owner disposal leaves the original draft intact.
 
+`ctx.conversation.moveDraft(fromId, toId, expected)` supports draft-preserving Context Map navigation. It checks the source text and editor revision, requires both composers to be plain and the destination empty, transfers attachment ownership and rebinds file uploads, and returns `false` without changing either draft when those checks fail. The caller opens the destination Session only after a successful transfer.
+
 The package occupies the root-scoped `main` key `conversation`, whose wrapper declares the optional-Session `main.conversation` shell. It registers strict Session header/body entries, View list, composer chain and bar, input regions, Hero regions, queue dock, draft persistence, and phase calculation. `ctx.uiSession.provide()` materializes the Conversation and input sources from the same Session binding and supplies `inputActions` as a stable standard prop.
 
 View selection is deterministic: a registered persisted selection wins, otherwise registered `chat` wins, otherwise no View renders. It never chooses the first registered View. Shell phase combines Session lifecycle with the active-target set; no target-specific snapshot is read by the shell.

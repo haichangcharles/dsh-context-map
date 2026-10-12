@@ -159,10 +159,16 @@ function mount(
     redo: vi.fn(async () => {}),
     recommend: vi.fn(async () => {}),
     cancelRecommendation: vi.fn(async () => {}),
+    presentRecommendation: vi.fn(async () => {}),
     applyRecommendations: vi.fn(async () => {}),
     clearRecommendation: vi.fn(),
+    acceptRoute: vi.fn(async () => {}),
+    rejectRoute: vi.fn(async () => {}),
+    dismissRecommendation: vi.fn(async () => {}),
     confirmArchive: vi.fn(async () => {}),
     archiveNode: vi.fn(async () => {}),
+    getNodeText: vi.fn(async () => ''),
+    focusNodeExcerpt: vi.fn(async () => {}),
     restoreNode: vi.fn(async () => {}),
     branch: vi.fn(async () => {}),
     locate: vi.fn(),
@@ -190,6 +196,44 @@ function mount(
 }
 
 describe('ContextMapPanel', () => {
+  it('lets users import source-bound sibling Web evidence but blocks unbound results and Archive', async () => {
+    const initial = fixture()
+    const activeWeb: ContextFamilyGraphNode = {
+      id: 'child:9', owner: { sessionId: child, seq: 9 }, role: 'tool', sourceKind: 'web',
+      preview: 'Current supplier page', time: 9_000, branchAtSeq: null,
+      sessionIds: [child], activeEventSeq: 9,
+    }
+    const offPathWeb: ContextFamilyGraphNode = {
+      id: 'root:10', owner: { sessionId: root, seq: 10 }, role: 'tool', sourceKind: 'web',
+      preview: 'Unrelated page', time: 10_000, branchAtSeq: null,
+      sessionIds: [root], activeEventSeq: null,
+    }
+    const importableWeb: ContextFamilyGraphNode = {
+      ...offPathWeb, id: 'root:11', owner: { sessionId: root, seq: 11 },
+      preview: 'Publisher policy page', time: 11_000, webAction: 'web_fetch',
+    }
+    const h = mount({ ...initial, graph: { ...initial.graph!,
+      nodes: [...initial.graph!.nodes, activeWeb, offPathWeb, importableWeb],
+      edges: [...initial.graph!.edges,
+        { id: 'active-web', source: 'child:8', target: 'child:9', sessionIds: [child] },
+        { id: 'off-path-web', source: 'root:2', target: 'root:10', sessionIds: [root] },
+        { id: 'importable-web', source: 'root:10', target: 'root:11', sessionIds: [root] }],
+    } })
+    const active = await screen.findByLabelText('Web source message: Current supplier page')
+    fireEvent.click(within(active).getByLabelText('Include Current supplier page in context'))
+    expect(h.mapActions.setNodeMode).toHaveBeenCalledWith({ sessionId: child, seq: 9 }, 'exclude')
+    fireEvent.contextMenu(active, { clientX: 100, clientY: 120 })
+    expect(screen.queryByRole('menuitem', { name: 'Archive node' })).toBeNull()
+    const offPath = screen.getByLabelText('Web source message: Unrelated page')
+    expect((within(offPath).getByLabelText('Include Unrelated page in context') as HTMLInputElement).disabled)
+      .toBe(true)
+    const importable = screen.getByLabelText('Web source message: Publisher policy page')
+    const checkbox = within(importable).getByLabelText('Include Publisher policy page in context')
+    await waitFor(() => { expect((checkbox as HTMLInputElement).disabled).toBe(false) })
+    fireEvent.click(checkbox)
+    expect(h.mapActions.setNodeMode).toHaveBeenCalledWith({ sessionId: root, seq: 11 }, 'include')
+  })
+
   it('shows one compact recommendation error without a review overlay', () => {
     const initial = fixture()
     mount({
@@ -557,6 +601,7 @@ describe('ContextMapPanel', () => {
     expect((checkbox as HTMLInputElement).checked).toBe(true)
     expect(screen.getByText('Suggested exclude')).toBeTruthy()
     expect(screen.getByRole('dialog', { name: 'Context recommendation review' })).toBeTruthy()
+    expect(h.mapActions.presentRecommendation).toHaveBeenCalledWith(proposal)
     expect(screen.getByText('Deep tree review')).toBeTruthy()
     expect(screen.getByText('Current context')).toBeTruthy()
     expect(screen.getByText('Proposed context')).toBeTruthy()
@@ -564,7 +609,7 @@ describe('ContextMapPanel', () => {
     expect(screen.getByText('1 removed')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Apply proposed context' }))
-    expect(h.mapActions.applyRecommendations).toHaveBeenCalledWith()
+    expect(h.mapActions.applyRecommendations).toHaveBeenCalledWith([])
     expect((checkbox as HTMLInputElement).checked).toBe(true)
 
     fireEvent.click(screen.getByRole('button', { name: 'Review archive' }))
@@ -574,6 +619,55 @@ describe('ContextMapPanel', () => {
     expect(screen.getByText('Empty placeholder')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Archive node' }))
     expect(h.mapActions.confirmArchive).toHaveBeenCalledWith(proposal.archive[0])
+    fireEvent.click(screen.getByRole('button', { name: 'Close recommendation review' }))
+    expect(h.mapActions.dismissRecommendation).toHaveBeenCalledOnce()
+    expect(h.mapActions.dismissRecommendation).toHaveBeenCalledWith([])
+  })
+
+  it('shows a draft route separately from Context edits and waits for explicit acceptance', async () => {
+    const original = fixture()
+    const route = { action: 'return' as const, base: {
+      planRevision: 3, graphRevision: 'family-20', activeSessionId: child,
+    }, objective: 'Return to the main thread', targetSessionId: root,
+    reason: 'Return to the parent branch.' }
+    const proposal = { mode: 'fast' as const, base: route.base,
+      currentNodeIds: ['root:1', 'root:2', 'child:8'],
+      proposedNodeIds: ['root:1', 'root:2', 'child:8'],
+      addedNodeIds: [], removedNodeIds: [], selection: [], archive: [], route }
+    const h = mount({ ...original, recommendation: { phase: 'ready', proposal } })
+    expect(screen.getByText('Where this draft belongs')).toBeTruthy()
+    expect(h.mapActions.acceptRoute).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Return with draft' }))
+    expect(h.mapActions.acceptRoute).toHaveBeenCalledWith(route)
+    expect(h.mapActions.applyRecommendations).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Stay in this branch' }))
+    expect(h.mapActions.rejectRoute).toHaveBeenCalledWith(route)
+  })
+
+  it('lets a user keep one current context item while applying another', async () => {
+    const original = fixture()
+    const proposal = {
+      mode: 'fast' as const,
+      base: { planRevision: 3, graphRevision: 'family-20', activeSessionId: child },
+      currentNodeIds: ['root:1', 'root:2', 'child:8'],
+      proposedNodeIds: ['child:8'],
+      addedNodeIds: [],
+      removedNodeIds: ['root:1', 'root:2'],
+      selection: [
+        { nodeId: 'root:1', action: 'exclude' as const, reason: 'Old requirement', confidence: 'high' as const },
+        { nodeId: 'root:2', action: 'exclude' as const, reason: 'Old answer', confidence: 'high' as const },
+      ],
+      archive: [],
+    }
+    const h = mount({ ...original, recommendation: { phase: 'ready', proposal } })
+    fireEvent.click(await screen.findByRole('button', { name: 'Keep current context for root requirement' }))
+    expect(screen.getByRole('button', { name: 'Use proposed change for root requirement' })
+      .getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByText('1 removed')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Apply selected changes' }))
+    expect(h.mapActions.applyRecommendations).toHaveBeenCalledWith(['root:1'])
+    fireEvent.click(screen.getByRole('button', { name: 'Close recommendation review' }))
+    expect(h.mapActions.dismissRecommendation).toHaveBeenCalledWith(['root:1'])
   })
 
   it('keeps a replacement on the same node and exposes original/restore from the native menu', async () => {
@@ -581,6 +675,7 @@ describe('ContextMapPanel', () => {
     const records = original.graph!.nodes.map(record => record.id === 'root:2' ? {
       ...record,
       replacement: {
+        kind: 'placeholder' as const,
         preview: '[Earlier answer removed]', reason: 'obsolete', role: 'assistant' as const,
         original: 'old draft',
         originalAvailable: true as const,
@@ -607,6 +702,54 @@ describe('ContextMapPanel', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Restore node' }))
     expect(h.mapActions.restoreNode).toHaveBeenCalledWith({ sessionId: root, seq: 2 })
     expect(h.view.container.querySelectorAll('.react-flow__node')).toHaveLength(3)
+  })
+
+  it('lets the user retain an exact Unicode excerpt from an active chat message', async () => {
+    const full = 'Sony 🎙️ HU-80 for $14.99. Or JVC for $90.'
+    const current = fixture()
+    const records = current.graph!.nodes.map(record => record.id === 'child:8'
+      ? { ...record, preview: full } : record)
+    const getNodeText = vi.fn(async () => full)
+    const focusNodeExcerpt = vi.fn(async () => {})
+    mount({ ...current, graph: { ...current.graph!, nodes: records } }, {
+      getNodeText, focusNodeExcerpt,
+    })
+    const card = await screen.findByLabelText(`User message: ${full}`)
+    fireEvent.contextMenu(card, { clientX: 160, clientY: 180 })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Keep text excerpt…' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Keep text excerpt' })
+    expect(getNodeText).toHaveBeenCalledWith({ sessionId: child, seq: 8 })
+    const field = within(dialog).getByRole('textbox', { name: 'Original text for excerpt' }) as HTMLTextAreaElement
+    field.setSelectionRange(0, full.indexOf(' Or '))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Keep selected text' }))
+    await waitFor(() => {
+      expect(focusNodeExcerpt).toHaveBeenCalledWith({ sessionId: child, seq: 8 },
+        0, Array.from(full.slice(0, full.indexOf(' Or '))).length)
+    })
+  })
+
+  it('shows a focused excerpt while keeping the original available', async () => {
+    const original = fixture()
+    const full = 'Sony HU-80 or JVC, followed by the full original detail'
+    const getNodeText = vi.fn(async () => full)
+    const records = original.graph!.nodes.map(record => record.id === 'root:2' ? {
+      ...record,
+      replacement: { kind: 'excerpt' as const, preview: 'Sony HU-80',
+        original: 'Sony HU-80 or JVC…', reason: 'Focused by user',
+        role: 'assistant' as const, originalAvailable: true as const },
+    } : record)
+    mount({ ...original, graph: { ...original.graph!, nodes: records } }, { getNodeText })
+    const card = await screen.findByLabelText('Assistant message: Sony HU-80')
+    expect(card.querySelector('p')?.dataset.preview).toBe('Sony HU-80')
+    expect(within(card).getByText('Focused excerpt')).toBeTruthy()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search Context Map' }),
+      { target: { value: 'Sony HU-80' } })
+    expect(await screen.findByText('1 / 1')).toBeTruthy()
+    fireEvent.contextMenu(card, { clientX: 160, clientY: 180 })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Show original' }))
+    expect((await screen.findByRole('dialog', { name: 'Original message' })).textContent)
+      .toContain(full)
+    expect(getNodeText).toHaveBeenCalledWith({ sessionId: root, seq: 2 })
   })
 
   it('archives an individual input or output from the native node menu', async () => {
@@ -711,9 +854,14 @@ describe('ContextifyController', () => {
         currentNodeIds: [], proposedNodeIds: [], addedNodeIds: [], removedNodeIds: [], selection: [], archive: [],
       })),
       cancelRecommendation: vi.fn(async () => {}),
+      presentRecommendation: vi.fn(async () => {}),
+      dismissRecommendation: vi.fn(async () => {}),
       archiveNode: vi.fn(async () => currentView),
+      getNodeText: vi.fn(async () => ''),
+      focusNodeExcerpt: vi.fn(async () => currentView),
       restoreNode: vi.fn(async () => currentView),
       prepareBranchSuggestion: vi.fn(async () => { calls.push('prepare'); return preparation }),
+      keepBranchSuggestion: vi.fn(async () => {}),
       forkNativeBranch: vi.fn(async (value) => {
         calls.push('fork')
         expect(value).toEqual(preparation)
@@ -757,9 +905,14 @@ describe('ContextifyController', () => {
       redo: vi.fn(async () => currentView),
       recommend: vi.fn(() => proposalPromise),
       cancelRecommendation: vi.fn(async () => {}),
+      presentRecommendation: vi.fn(async () => {}),
+      dismissRecommendation: vi.fn(async () => {}),
       archiveNode: vi.fn(async () => currentView),
+      getNodeText: vi.fn(async () => ''),
+      focusNodeExcerpt: vi.fn(async () => currentView),
       restoreNode: vi.fn(async () => currentView),
       prepareBranchSuggestion: vi.fn(async () => ({ sourceSessionId: root, beforeSeq: 5 })),
+      keepBranchSuggestion: vi.fn(async () => {}),
       forkNativeBranch: vi.fn(async () => child),
       acceptBranchSuggestion: vi.fn(async () => ({ childSessionId: child })),
     }
@@ -782,7 +935,8 @@ describe('ContextifyController', () => {
     currentView = { ...currentView, graphAsOfSeq: 21 }
     await controller.refresh()
     expect(controller.getSnapshot().recommendation).toMatchObject({ phase: 'stale', proposal })
-    controller.clearRecommendation()
+    await controller.dismissRecommendation()
+    expect(transport.dismissRecommendation).toHaveBeenCalledWith(proposal, [])
     expect(controller.getSnapshot().recommendation).toEqual({ phase: 'idle' })
   })
 
@@ -814,9 +968,14 @@ describe('ContextifyController', () => {
         addedNodeIds: [], removedNodeIds: [], selection: [], archive: [],
       })),
       cancelRecommendation: vi.fn(async () => {}),
+      presentRecommendation: vi.fn(async () => {}),
+      dismissRecommendation: vi.fn(async () => {}),
       archiveNode: vi.fn(async () => fixture().view!),
+      getNodeText: vi.fn(async () => ''),
+      focusNodeExcerpt: vi.fn(async () => fixture().view!),
       restoreNode: vi.fn(async () => fixture().view!),
       prepareBranchSuggestion: vi.fn(async () => ({ sourceSessionId: root, beforeSeq: 5 })),
+      keepBranchSuggestion: vi.fn(async () => {}),
       forkNativeBranch: vi.fn(async () => child),
       acceptBranchSuggestion: vi.fn(async () => ({ childSessionId: child })),
     }
@@ -859,9 +1018,14 @@ describe('ContextifyController', () => {
       redo: vi.fn(async () => currentView),
       recommend: vi.fn(() => proposalPromise),
       cancelRecommendation: vi.fn(async () => {}),
+      presentRecommendation: vi.fn(async () => {}),
+      dismissRecommendation: vi.fn(async () => {}),
       archiveNode: vi.fn(async () => currentView),
+      getNodeText: vi.fn(async () => ''),
+      focusNodeExcerpt: vi.fn(async () => currentView),
       restoreNode: vi.fn(async () => currentView),
       prepareBranchSuggestion: vi.fn(async () => ({ sourceSessionId: root, beforeSeq: 5 })),
+      keepBranchSuggestion: vi.fn(async () => {}),
       forkNativeBranch: vi.fn(async () => child),
       acceptBranchSuggestion: vi.fn(async () => ({ childSessionId: child })),
     }
@@ -874,6 +1038,7 @@ describe('ContextifyController', () => {
       { planRevision: 3, graphRevision: 'family-20', activeSessionId: child },
       undefined,
       'deep',
+      false,
     )
 
     await controller.cancelRecommendation()

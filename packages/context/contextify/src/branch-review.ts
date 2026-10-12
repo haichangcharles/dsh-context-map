@@ -34,6 +34,7 @@ function latestUser(
   beforeIndex: number,
 ): ContextFamilyGraphNode | undefined {
   return nodes.slice(0, beforeIndex).findLast(node => node.role === 'user'
+    && (node.sourceKind === undefined || node.sourceKind === 'chat')
     && node.owner.sessionId === ownerSessionId)
 }
 
@@ -59,7 +60,10 @@ export function buildBranchReviewInput(input: {
   readonly contents?: Readonly<Record<string, string>>
 }): ContextBranchReviewInput {
   const candidate = input.graph.nodes.find(node => node.id === input.candidateNodeId)
-  if (candidate === undefined || candidate.role !== 'user') throw new Error('Branch candidate input is unavailable')
+  if (candidate === undefined || candidate.role !== 'user'
+    || (candidate.sourceKind !== undefined && candidate.sourceKind !== 'chat')) {
+    throw new Error('Branch candidate input is unavailable')
+  }
   const candidateIndex = input.graph.nodes.indexOf(candidate)
   const active = input.graph.sessions.find(session => session.id === input.graph.activeSessionId)
   if (active === undefined) throw new Error('active Branch Session is unavailable')
@@ -77,6 +81,7 @@ export function buildBranchReviewInput(input: {
   }
   const activePath = input.graph.nodes
     .filter(node => node.sessionIds.includes(input.graph.activeSessionId)
+      && (node.sourceKind === undefined || node.sourceKind === 'chat')
       && input.graph.nodes.indexOf(node) < candidateIndex && node.id !== candidate.id)
     .sort((left, right) => (left.activeEventSeq ?? left.time) - (right.activeEventSeq ?? right.time))
   const localObjective = latestUser(input.graph.nodes, active.id, candidateIndex)

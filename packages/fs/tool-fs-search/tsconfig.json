@@ -34,6 +34,15 @@
       "path": "../../shell/shell"
     },
     {
+      "path": "../../sandbox/sandbox"
+    },
+    {
+      "path": "../../sandbox/sandbox-policy"
+    },
+    {
+      "path": "../../session/session-projection"
+    },
+    {
       "path": "../../spill/spill"
     },
     {

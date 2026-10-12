@@ -74,9 +74,9 @@ describe('Contextify recommendation protocol', () => {
         nodeId: 'root:1', reason: 'Conflicts with the newer answer',
         placeholderText: 'Agent-authored text must be ignored',
       }],
-    }, validationContext)
+    }, { ...validationContext, mode: 'deep' })
 
-    expect(proposal.mode).toBe('fast')
+    expect(proposal.mode).toBe('deep')
     expect(proposal.base).toEqual(base)
     expect(proposal.currentNodeIds).toEqual(['root:1', 'root:2'])
     expect(proposal.proposedNodeIds).toEqual(['root:1'])
@@ -98,6 +98,39 @@ describe('Contextify recommendation protocol', () => {
 
     expect(proposal.removedNodeIds).toEqual(['root:2'])
     expect(proposal.archive).toEqual([])
+  })
+
+  it('keeps Fast review limited to request-level selection when a model suggests Archive', () => {
+    const proposal = validateRecommendation({
+      exclude: [{ nodeId: 'root:2', reason: 'Not needed for the next reply' }],
+      archive: [{ nodeId: 'root:1', reason: 'Irrelevant to the current objective' }],
+    }, validationContext)
+    expect(proposal.removedNodeIds).toEqual(['root:2'])
+    expect(proposal.archive).toEqual([])
+  })
+
+  it('permits active Web exclusion and source-bound sibling import without archiving evidence', () => {
+    const web = { ...graph.nodes[0]!, id: 'root:web', role: 'tool' as const,
+      sourceKind: 'web' as const, preview: 'fetched page' }
+    const withWeb = { ...validationContext, graph: { ...graph,
+      nodes: [...graph.nodes, web] },
+    effectiveIncludedNodeIds: [...validationContext.effectiveIncludedNodeIds, web.id] }
+    expect(validateRecommendation({ exclude: [{ nodeId: web.id, reason: 'stale page' }] },
+      withWeb).removedNodeIds).toEqual([web.id])
+    expect(() => validateRecommendation({ archive: [{ nodeId: web.id, reason: 'obsolete' }] },
+      withWeb)).toThrow(/evidence rather than a conversation message/)
+    const sibling = 'recommend-sibling' as SessionId
+    const offPath = { ...web, id: 'sibling:web', owner: { sessionId: sibling, seq: 1 },
+      sessionIds: [sibling], activeEventSeq: null }
+    const withSibling = { ...validationContext, graph: { ...graph,
+      nodes: [...graph.nodes, offPath] } }
+    expect(validateRecommendation({ include: [{ nodeId: offPath.id, reason: 'copy' }] },
+      withSibling).addedNodeIds).toEqual([])
+    const sourceBound = { ...offPath, id: 'sibling:bound-web', webAction: 'web_fetch' as const }
+    const withBound = { ...validationContext, graph: { ...graph,
+      nodes: [...graph.nodes, sourceBound] } }
+    expect(validateRecommendation({ include: [{ nodeId: sourceBound.id, reason: 'reuse page' }] },
+      withBound).addedNodeIds).toEqual([sourceBound.id])
   })
 
   it.each([
@@ -159,6 +192,21 @@ describe('Contextify recommendation protocol', () => {
       ...validationContext,
       explicitIncludedNodeIds: ['root:1'],
     })).toThrow(/conflicting actions/)
+  })
+
+  it('offers restoration only for a previously reviewed temporary Exclude', () => {
+    const restore = validateRecommendation({
+      exclude: [],
+      include: [{ nodeId: 'root:2', reason: 'The user returned to this open item' }],
+      archive: [],
+    }, {
+      ...validationContext,
+      effectiveIncludedNodeIds: [],
+      explicitExcludedNodeIds: ['root:2'],
+      reviewableExcludedNodeIds: ['root:2'],
+    })
+    expect(restore.selection).toMatchObject([{ nodeId: 'root:2', action: 'include' }])
+    expect(restore.addedNodeIds).toEqual(['root:2'])
   })
 
   it('rejects graph snapshots larger than the review boundary', () => {

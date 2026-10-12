@@ -7,7 +7,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import type {
   ContextArchiveCandidate, ContextFamilyGraphNode, ContextMessageRef, ContextNodeMutation,
-  ContextRecommendationMode,
+  ContextRecommendationMode, ContextRecommendationProposal, ContextRouteAdvice,
 } from '@deepseek-ai/dsh-contextify/types'
 import type { WorkspaceSnapshot as WorkspaceListState } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { HostObservable, PropsStore, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
@@ -33,10 +33,16 @@ export interface ContextMapActions {
   redo: () => Promise<void>
   recommend: (mode?: ContextRecommendationMode, objective?: string) => Promise<void>
   cancelRecommendation: () => Promise<void>
-  applyRecommendations: () => Promise<void>
+  applyRecommendations: (declinedNodeIds?: readonly string[]) => Promise<void>
   clearRecommendation: () => void
+  acceptRoute: (route: ContextRouteAdvice) => Promise<void>
+  rejectRoute: (route: ContextRouteAdvice) => Promise<void>
+  presentRecommendation: (proposal: ContextRecommendationProposal) => Promise<void>
+  dismissRecommendation: (declinedNodeIds?: readonly string[]) => Promise<void>
   confirmArchive: (candidate: ContextArchiveCandidate) => Promise<void>
   archiveNode: (node: ContextMessageRef) => Promise<void>
+  getNodeText: (node: ContextMessageRef) => Promise<string>
+  focusNodeExcerpt: (node: ContextMessageRef, start: number, end: number) => Promise<void>
   restoreNode: (node: ContextMessageRef) => Promise<void>
   branch: (node: ContextFamilyGraphNode) => Promise<void>
   locate: (node: ContextFamilyGraphNode) => void
@@ -79,6 +85,11 @@ function modeOf(snapshot: ContextifyControllerSnapshot, node: ContextFamilyGraph
   return 'natural'
 }
 
+function canEditNode(record: ContextFamilyGraphNode, active: boolean): boolean {
+  return active || record.sourceKind === undefined || record.sourceKind === 'chat'
+    || (record.sourceKind === 'web' && record.webAction !== undefined)
+}
+
 /** The pinned header, tree canvas, search, history, and batch controls. */
 export function ContextMapPanel({
   useContextify, useWorkspaces, useStore, actions, mapActions,
@@ -93,7 +104,12 @@ export function ContextMapPanel({
   const [interactionMode, setInteractionMode] = useState<'normal' | 'selection'>('normal')
   const [marquee, setMarquee] = useState<MarqueeState | null>(null)
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
-  const [originalPreview, setOriginalPreview] = useState<ContextFamilyGraphNode | null>(null)
+  const [originalPreview, setOriginalPreview] = useState<string | null>(null)
+  const [excerptDialog, setExcerptDialog] = useState<{
+    record: ContextFamilyGraphNode
+    text: string
+  } | null>(null)
+  const excerptTextRef = useRef<HTMLTextAreaElement>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [pendingNodeId, setPendingNodeId] = useState<string | null>(null)
   const [recommendationMenuOpen, setRecommendationMenuOpen] = useState(false)
@@ -117,8 +133,11 @@ export function ContextMapPanel({
   const normalizedQuery = query.trim().toLocaleLowerCase()
   const searchResultIds = useMemo(() => normalizedQuery === ''
     ? []
-    : records.filter(node => node.replacement === undefined && node.preview
-      .toLocaleLowerCase().includes(normalizedQuery)).map(node => node.id),
+    : records.filter((node) => {
+      const preview = node.replacement?.kind === 'placeholder' ? ''
+        : node.replacement?.kind === 'excerpt' ? node.replacement.preview : node.preview
+      return preview.toLocaleLowerCase().includes(normalizedQuery)
+    }).map(node => node.id),
   [normalizedQuery, records])
   const activeSearchId = searchResultIds.length === 0
     ? undefined
@@ -166,6 +185,7 @@ export function ContextMapPanel({
   const setEffectiveMode = useCallback((record: ContextFamilyGraphNode, included: boolean): void => {
     if (graph === undefined) return
     const active = record.sessionIds.includes(graph.activeSessionId)
+    if (!canEditNode(record, active)) return
     const mode = modeForEffectiveContext(active, included)
     runMutation(record.id, () => mapActions.setNodeMode(record.owner, mode), mode)
   }, [graph, mapActions, runMutation])
@@ -230,7 +250,7 @@ export function ContextMapPanel({
         record,
         mode,
         included: effectiveContextIncluded(active, mode),
-        pending: mutationPending,
+        pending: mutationPending || !canEditNode(record, active),
         sessionLabel: session?.depth === 0 ? 'Root Session' : `Branch Session · depth ${String(session?.depth ?? 0)}`,
         active,
         focused: snapshot.focusedNodeId === record.id || activeSearchId === record.id,
@@ -238,11 +258,13 @@ export function ContextMapPanel({
         ...(recommendation === undefined ? {} : { recommendation }),
         onActivate: (candidate) => {
           if (interactionMode === 'selection') {
+            if (!canEditNode(candidate, candidate.sessionIds.includes(graph.activeSessionId))) return
             actions.setNodeSelected(candidate.id, !selected.has(candidate.id))
           }
         },
         onIncludedChange: setEffectiveMode,
         onContextMenu: (candidate, screenPoint) => {
+          if (!canEditNode(candidate, active)) return
           const bounds = canvasRef.current?.getBoundingClientRect()
           if (bounds === undefined) return
           setActionError(null)
@@ -533,7 +555,21 @@ export function ContextMapPanel({
             archive={(record) => {
               runMutation(record.id, () => mapActions.archiveNode(record.owner))
             }}
-            showOriginal={(record) => { setOriginalPreview(record) }}
+            focusExcerpt={(record) => {
+              runMutation(record.id, async () => {
+                const text = await mapActions.getNodeText(record.owner)
+                setExcerptDialog({ record, text })
+              })
+            }}
+            showOriginal={(record) => {
+              if (record.replacement?.kind !== 'excerpt') {
+                setOriginalPreview(record.replacement?.original || record.preview || '(empty message)')
+                return
+              }
+              runMutation(record.id, async () => {
+                setOriginalPreview(await mapActions.getNodeText(record.owner))
+              })
+            }}
             restoreOriginal={(record) => {
               runMutation(record.id, () => mapActions.restoreNode(record.owner))
             }}
@@ -546,17 +582,40 @@ export function ContextMapPanel({
           state={snapshot.recommendation}
           graph={graph}
           pending={mutationPending}
-          apply={mapActions.applyRecommendations}
+          acceptRoute={route => mapActions.acceptRoute(route)}
+          rejectRoute={route => mapActions.rejectRoute(route)}
+          present={proposal => mapActions.presentRecommendation(proposal)}
+          apply={declinedNodeIds => mapActions.applyRecommendations(declinedNodeIds)}
           confirmArchive={candidate => mapActions.confirmArchive(candidate)}
-          dismiss={() => {
-            mapActions.clearRecommendation()
+          dismiss={async (declinedNodeIds) => {
+            await mapActions.dismissRecommendation(declinedNodeIds)
             queueMicrotask(() => { recommendButtonRef.current?.focus() })
           }}
           reportError={(cause) => { setActionError(cause instanceof Error ? cause.message : String(cause)) }}
         />}
         {originalPreview !== null && <div className={css.originalDialog} role="dialog" aria-label="Original message">
           <header><h3>Original message</h3><button type="button" aria-label="Close original message" onClick={() => { setOriginalPreview(null) }}>×</button></header>
-          <p>{originalPreview.replacement?.original || originalPreview.preview || '(empty message)'}</p>
+          <p>{originalPreview}</p>
+        </div>}
+        {excerptDialog !== null && <div className={css.originalDialog} role="dialog" aria-label="Keep text excerpt"
+          data-opaque-surface="true" onPointerDown={(event) => { event.stopPropagation() }}>
+          <header><h3>Keep text excerpt</h3><button type="button" aria-label="Close text excerpt" onClick={() => { setExcerptDialog(null) }}>×</button></header>
+          <p>Select the exact text to retain in future model context. The full original stays in the Chat and can be restored.</p>
+          <textarea ref={excerptTextRef} className={css.excerptTextarea} readOnly value={excerptDialog.text}
+            aria-label="Original text for excerpt" />
+          <button type="button" disabled={mutationPending} onClick={() => {
+            const field = excerptTextRef.current
+            if (field === null || field.selectionStart === field.selectionEnd) {
+              setActionError('Select text to keep first')
+              return
+            }
+            const start = Array.from(excerptDialog.text.slice(0, field.selectionStart)).length
+            const end = Array.from(excerptDialog.text.slice(0, field.selectionEnd)).length
+            runMutation(excerptDialog.record.id, async () => {
+              await mapActions.focusNodeExcerpt(excerptDialog.record.owner, start, end)
+              setExcerptDialog(null)
+            })
+          }}>Keep selected text</button>
         </div>}
       </div>
       {interactionMode === 'selection' && selectedRecords.length > 0 && (

@@ -1,0 +1,24 @@
+.dock {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: calc(100% - 2 * var(--dsh-composer-side-clearance) - 4 * var(--dsh-composer-dock-inset));
+  margin: 0 auto;
+}
+
+.action {
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  padding: 5px 9px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.action:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.action:disabled { opacity: .55; cursor: wait; }
+.error { color: var(--dsw-alias-state-error-primary); font-size: 12px; }

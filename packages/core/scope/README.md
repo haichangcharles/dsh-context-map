@@ -28,7 +28,7 @@ Plugin authors use `dsh-scope` to give one agent (or one group) its own registra
 
 ### Mint a scope
 
-`createScope(ctx, key)` creates a scope under `ctx`'s fiber: its `ctx` carries the scope tag, and everything registered through it is both scope-visible and scope-lifetime. `dispose()` unwinds every registration through the scope; `rawDispose` is the exact Cordis disposer for nesting the teardown in an ordered composite effect.
+`createScope(ctx, key)` creates a scope under `ctx`'s fiber: its `ctx` carries the scope tag, and everything registered through it is both scope-visible and scope-lifetime. The tag is shared across separately loaded source and built copies of this package, so either copy can recognize a scope minted by the other. `dispose()` unwinds every registration through the scope; `rawDispose` is the exact Cordis disposer for nesting the teardown in an ordered composite effect.
 
 ```text
 const scope = createScope(ctx, agent)

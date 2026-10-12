@@ -101,7 +101,11 @@ function isReplacementNode(value: unknown): value is ContextReplacementNode {
     && (value.originalEventSeq === null
       || (Number.isSafeInteger(value.originalEventSeq) && (value.originalEventSeq as number) >= 0))
     && (value.role === 'user' || value.role === 'assistant')
-    && value.kind === 'placeholder'
+    && (value.kind === 'placeholder'
+      || (value.kind === 'excerpt'
+        && Number.isSafeInteger(value.start) && (value.start as number) >= 0
+        && Number.isSafeInteger(value.end) && (value.end as number) > (value.start as number)
+        && value.originalEventSeq !== null))
     && typeof value.reason === 'string'
 }
 
@@ -201,6 +205,33 @@ export function resetPlan(current: ContextPlanSnapshot): ContextPlanSnapshot {
   return nextPlan(current, { excluded: [], included: [], replacements: [] })
 }
 
+/** Map choice revisions to durable states and identify states later removed by Undo.
+ * @param events - Owned native Session events containing Context Plan revisions.
+ * @returns Plan-state lookup and the currently undone state revisions.
+ */
+export function contextPlanFeedbackStates(events: readonly SessionEvent[]): {
+  readonly stateByPlanRevision: ReadonlyMap<number, number>
+  readonly undoneStates: ReadonlySet<number>
+} {
+  const stateByPlanRevision = new Map<number, number>()
+  const undoneStates = new Set<number>()
+  let priorState: number | undefined
+  for (const event of events) {
+    if (event.type !== 'contextify/plan') continue
+    const plan = normalizeContextPlanSnapshot(event.data)
+    if (plan === null) continue
+    stateByPlanRevision.set(plan.revision, plan.stateRevision)
+    if (priorState !== undefined && plan.stateRevision !== priorState
+      && plan.history.future[0] === priorState) {
+      undoneStates.add(priorState)
+    } else if (undoneStates.has(plan.stateRevision)) {
+      undoneStates.delete(plan.stateRevision)
+    }
+    priorState = plan.stateRevision
+  }
+  return { stateByPlanRevision, undoneStates }
+}
+
 function planAtStateRevision(session: Session, stateRevision: number): ContextPlanSnapshot {
   const event = session.snapshotEvents().find(candidate =>
     candidate.type === 'contextify/plan' && candidate.data.revision === stateRevision)
@@ -278,14 +309,14 @@ function eventTurns(events: readonly SessionEvent[]): ReadonlyMap<number, number
   return turns
 }
 
-function toolGroups(session: Session): ReadonlyMap<number, ReadonlySet<number>> {
+function toolGroups(session: Session, natural: readonly number[]): ReadonlyMap<number, ReadonlySet<number>> {
   const resultByCall = new Map<string, number>()
-  for (const seq of session.surface.nodes) {
+  for (const seq of natural) {
     const event = session.eventAt(SessionSeq(seq))
     if (event?.type === 'tool/result') resultByCall.set(event.data.message.source.callId, seq)
   }
   const bySeq = new Map<number, ReadonlySet<number>>()
-  for (const seq of session.surface.nodes) {
+  for (const seq of natural) {
     const event = session.eventAt(SessionSeq(seq))
     if (event?.type !== 'assistant/message') continue
     const calls = event.data.message.content.flatMap(block => block.type === 'tool-call' ? [block.id] : [])
@@ -298,6 +329,28 @@ function toolGroups(session: Session): ReadonlyMap<number, ReadonlySet<number>> 
     for (const member of group) bySeq.set(member, group)
   }
   return bySeq
+}
+
+function isCompactionCheckpoint(event: SessionEvent): boolean {
+  return event.type === 'user/message' && event.data.source.kind === 'plugin'
+    && event.data.source.plugin === 'compact' && event.sourceEventSeqs !== undefined
+}
+
+function checkpointMessages(session: Session, checkpointSeq: number): number[] {
+  const result: number[] = []
+  const emitted = new Set<number>()
+  const visit = (seq: number): void => {
+    const event = session.eventAt(SessionSeq(seq))
+    if (event === undefined) throw new Error(`Contextify checkpoint source ${String(seq)} is unavailable`)
+    if (isCompactionCheckpoint(event)) {
+      for (const sourceSeq of event.sourceEventSeqs ?? []) visit(sourceSeq)
+    } else if (session.deriveEventMessage(event) !== null && !emitted.has(seq)) {
+      emitted.add(seq)
+      result.push(seq)
+    }
+  }
+  visit(checkpointSeq)
+  return result
 }
 
 function insertSnapshots(
@@ -346,6 +399,18 @@ function validateReplacementEvents(session: Session, replacements: readonly Cont
     if (message === null || message.role !== replacement.role) {
       throw new Error(`Contextify replacement original event ${String(replacement.originalEventSeq)} is unavailable or has the wrong role`)
     }
+    if (replacement.kind === 'excerpt') {
+      const source = message.content.length === 1 && message.content[0]?.type === 'text'
+        ? message.content[0].text : null
+      const copied = snapshot.data.message.content.length === 1
+        && snapshot.data.message.content[0]?.type === 'text'
+        ? snapshot.data.message.content[0].text : null
+      if (source === null || copied === null
+        || Array.from(source).slice(replacement.start, replacement.end).join('') !== copied
+        || copied.trim().length === 0) {
+        throw new Error(`Contextify excerpt snapshot ${String(replacement.snapshotSeq)} does not match its source`)
+      }
+    }
   }
 }
 
@@ -361,12 +426,21 @@ export function compileContextify(request: {
 }): ContextifyCompilation {
   const plan = currentContextPlan(request.session)
   validateReplacementEvents(request.session, plan.replacements)
-  const natural = request.session.surface.nodes.filter((seq) => {
+  const deniedSources = new Set([
+    ...plan.excluded.map(item => item.eventSeq),
+    ...plan.replacements.flatMap(item => item.originalEventSeq === null ? [] : [item.originalEventSeq]),
+  ])
+  const natural = request.session.surface.nodes.flatMap((seq) => {
     const event = request.session.eventAt(seq)
-    return event !== undefined && request.session.deriveEventMessage(event) !== null
+    if (event === undefined || request.session.deriveEventMessage(event) === null) return []
+    if (deniedSources.size > 0 && isCompactionCheckpoint(event)) {
+      const sources = checkpointMessages(request.session, seq)
+      if (sources.some(sourceSeq => deniedSources.has(sourceSeq))) return sources
+    }
+    return [seq]
   })
   const selected = new Set<number>(natural)
-  const groups = toolGroups(request.session)
+  const groups = toolGroups(request.session, natural)
   const excludedGroups = new Set<ReadonlySet<number>>()
   for (const excluded of plan.excluded) {
     const group = groups.get(excluded.eventSeq)

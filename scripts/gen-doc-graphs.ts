@@ -473,6 +473,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Projects native Session families, commits revisioned context plans, and registers the contextify@3 compiler used by the next admitted model request.',
   },
   {
+    key: 'contextifyRevisionLineage',
+    pkg: 'contextify',
+    title: 'Optional source-bound revision lineage runtime',
+    mode: 'core',
+    companions: ['context-compiler'],
+    note: 'Opt-in runtime records delegated source slices and request read sets, then filters stale child messages before model steps.',
+  },
+  {
     key: 'goals',
     pkg: 'goal',
     title: 'Same-session goal domain',

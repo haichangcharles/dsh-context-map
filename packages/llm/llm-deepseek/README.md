@@ -94,6 +94,8 @@ When `ctx.deepseekLlmApiExtensions` is present, the adapter prepares its registe
 
 Non-2xx responses fail with stable codes: `AUTH` (401/403), `QUOTA`, `RATE_LIMIT`, `CONTEXT_WINDOW_EXCEEDED`, `INVALID_REQUEST`, `SERVER`, and `HTTP_<status>` otherwise; pre-response transport failures throw `TRANSPORT`, caller aborts throw `ABORTED`, and stream-idle expiry throws `TIMEOUT`. Request-extension preparation, field collision, or post-2xx acceptance fails with `REQUEST_EXTENSION`. A normalized-image rejection names every plausible attachment and its durable position when the provider does not identify a file id. Stale-file rejection invalidates the named mappings (or every mapping used by the attempt) and permits one replacement chat attempt. Protocol violations throw `STREAM_CLOSED` or `MALFORMED_RESPONSE`, and a terminal `stop` with no content blocks becomes `EMPTY_RESPONSE`, which the default retry policy retries. A request with no key anywhere fails with `MISSING_CREDENTIAL`, and a malformed credential fails with `INVALID_CREDENTIAL` naming the reference to fix — never any part of the key.
 
+A direct `DeepSeekAdapter` consumer can provide a synchronous `authorizeDispatch` callback. A denial or non-void return fails with `REQUEST_NOT_AUTHORIZED` before the chat request is sent. The shipped plugin installs no such callback.
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -123,6 +125,8 @@ The plugin is built on one explicit resolve step and one registration fact. `res
 ### Wire flow
 
 One `stream()` call normally makes one chat request: resolve deterministic request images, prefer Files ids, prepare any registered top-level request extensions, fetch from the resolved `baseURL`, accept extension transactions after HTTP 2xx, and translate the SSE stream into the harness protocol. File-resolution failure makes the first chat inline; a provider stale-file response permits one replacement attempt, also inline if replacement resolution fails. Every chat and Files call carries shared attribution plus the stable anonymous user id outside model input, and a session call also carries its session id. Reasoning history is serialized back when required, and cache accounting maps DeepSeek's cache-hit metrics into harness usage.
+
+For direct adapter consumers, `authorizeDispatch` receives the final JSON payload after extension fields are merged and before each chat `fetch`. The callback receives neither headers nor credentials and must return synchronously. Files API uploads may already have occurred, so this check does not authorize or undo them.
 
 </details>
 

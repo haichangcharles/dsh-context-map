@@ -151,6 +151,7 @@ describe('Deep Context recommendation snapshot', () => {
         expect(options.tools?.map(tool => tool.name).sort()).toEqual([
           'grep', 'read', 'submit_context_recommendation',
         ])
+        expect(JSON.stringify(options.messages)).toContain('Archive guidance: Require a later correction')
         return toolCallResponse('deep-read', 'read', { file_path: 'context-tree.jsonl' })
       },
       toolCallResponse('deep-grep', 'grep', { path: 'context-tree.jsonl', pattern: 'sibling:1' }),
@@ -171,6 +172,7 @@ describe('Deep Context recommendation snapshot', () => {
         parent,
         snapshot: snapshot(),
         signal: new AbortController().signal,
+        archivePrompt: 'Require a later correction before suggesting Archive.',
       })
       expect(decision).toEqual({
         exclude: [{ nodeId: 'root:1', reason: 'superseded' }],

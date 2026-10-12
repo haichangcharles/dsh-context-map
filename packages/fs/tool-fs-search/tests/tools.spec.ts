@@ -20,6 +20,9 @@ import ToolRuntime, { TOOL_ABORTED_BEFORE_DISPATCH, type ToolExecution, type Too
 import { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import type { SubprocessCollectedOutputs, SubprocessHandle, SubprocessOutcome, SubprocessOutputRead, SubprocessOutputReader, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
+import { SandboxProvider, type ConfinedArgv, type SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
+import { SandboxPolicyService } from '@deepseek-ai/dsh-sandbox-policy'
 import { rgPath } from '@vscode/ripgrep'
 import { SpillLocator, SpillStore } from '@deepseek-ai/dsh-spill'
 import type { SaveTextSpill, SpillRef } from '@deepseek-ai/dsh-spill'
@@ -232,6 +235,45 @@ function matchLine(path: string, lineNumber: number, lineText: string): string {
 }
 
 describe('registration', () => {
+  it('does not mistake a confined runner startup failure for an empty search', async () => {
+    class FakeSandbox extends SandboxProvider {
+      override confine(argv: readonly string[], _policy: SandboxPolicy): ConfinedArgv {
+        return { argv: ['fake-sandbox', ...argv], enforcement: 'full', denialSignatures: [],
+          runnerFailureRules: [{ fatalSignatures: ['runner startup failed'] }] }
+      }
+    }
+    const { ctx, subprocess } = await setup()
+    try {
+      await ctx.plugin(SessionProjectionRegistry)
+      await ctx.plugin(SandboxPolicyService, { mode: 'read-only', workspaceRoot: process.cwd() })
+      await ctx.plugin(FakeSandbox)
+      subprocess.handler = () => runResult('', { exitCode: 1, stderr: { text: 'runner startup failed' } })
+      const failure = await call(ctx, 'grep', { pattern: 'needle' })
+      expect(failure.isError).toBe(true)
+      expect(text(failure)).toContain('sandbox runner failed before ripgrep ran')
+      expect(subprocess.spawns[0]?.argv[0]).toBe('fake-sandbox')
+      subprocess.handler = () => runResult('', { exitCode: 1 })
+      const noMatches = await call(ctx, 'grep', { pattern: 'needle' })
+      expect(noMatches.isError).toBe(false)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('fails closed when a confining search policy has no sandbox provider', async () => {
+    const { ctx, subprocess } = await setup()
+    try {
+      await ctx.plugin(SessionProjectionRegistry)
+      await ctx.plugin(SandboxPolicyService, { mode: 'read-only', workspaceRoot: process.cwd() })
+      const result = await call(ctx, 'grep', { pattern: 'needle' })
+      expect(result.isError).toBe(true)
+      expect(text(result)).toContain('cannot run under read-only without a sandbox provider')
+      expect(subprocess.spawns).toHaveLength(0)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('registers glob and grep unconditionally with their prompt sections', async () => {
     const { ctx, subprocess } = await setup()
     // Registration performs NO load-time probe: the packaged binary is always

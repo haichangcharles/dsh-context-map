@@ -82,7 +82,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### Enforce policy on calls
 
-`ctx.tools.guard(guard)` registers a monotonic synchronous guard after the extensible `tools/pre-execute` waterfall: a returned reason denies the call, and no later listener can turn that denial back into permission. The pipeline's events give plugins more control — `tools/pre-execute` decides allow/deny/ask, `tools/execute` wraps dispatch for timeout or retry, `tools/post-execute` inspects or replaces the result, and `tools/result` observes the frozen final outcome.
+`ctx.tools.guard(guard)` registers a monotonic synchronous guard after the extensible `tools/pre-execute` waterfall and rechecks it immediately before the registered tool body starts. Guards must tolerate repeated evaluation. A returned reason denies the call, and no later listener can turn that denial back into permission. This closes the gap when a queued call or an asynchronous `tools/execute` wrapper outlives a policy revision; a body already started before the revision still needs its own commit-time check for irreversible effects. The pipeline's events give plugins more control — `tools/pre-execute` decides allow/deny/ask, `tools/execute` wraps dispatch for timeout or retry, `tools/post-execute` inspects or replaces the result, and `tools/result` observes the frozen final outcome.
 
 ### Host presentation descriptors
 

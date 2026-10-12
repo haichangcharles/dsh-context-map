@@ -28,6 +28,8 @@ import type { RetainedItems } from '@deepseek-ai/dsh-output-retention'
 import type { SubprocessHandle, SubprocessOutcome, SubprocessOutputRead, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import type { SaveTextSpill, SpillRef } from '@deepseek-ai/dsh-spill'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
+import type { RunnerFailureRule } from '@deepseek-ai/dsh-sandbox'
+import type {} from '@deepseek-ai/dsh-sandbox-policy'
 
 /**
  * Default cap on the complete raw `rg` stdout the tools will parse (the
@@ -129,6 +131,23 @@ function classifyRunFailure(toolName: string, exitCode: number, stderrText: stri
   return new SearchError(`${toolName} search failed (exit ${exitCode})${stderr.length > 0 ? `: ${stderr}` : ''}`, 'SEARCH_FAILED')
 }
 
+/** A sandbox runner failure must not be interpreted as ripgrep's exit-1 no-match result. */
+function runnerFailureDetail(exitCode: number, stderr: string, rules: readonly RunnerFailureRule[]): string | undefined {
+  if (exitCode === 0) return undefined
+  const lines = stderr.split(/\r?\n/)
+  for (const rule of rules) {
+    if (rule.allowedExitCodes !== undefined && !rule.allowedExitCodes.includes(exitCode)) continue
+    const informational = new Set((rule.informationalLines ?? []).map(line => line.toLowerCase()))
+    const fatal = rule.fatalSignatures.filter(signature => signature.trim().length > 0)
+      .map(signature => signature.toLowerCase())
+    for (const line of lines) {
+      const lowered = line.toLowerCase()
+      if (!informational.has(lowered) && fatal.some(signature => lowered.includes(signature))) return line
+    }
+  }
+  return undefined
+}
+
 /**
  * Acquire the COMPLETE raw stdout of a finished run, enforcing
  * `rawOutputMaxBytes` on the in-memory transport. A truncated result means the
@@ -188,15 +207,19 @@ export function resolveRgPath(): Promise<string> {
  * (`@deepseek-ai/dsh-tool-call-timeout-policy`) and caller cancellation terminate the
  * process tree.
  *
- * The spawn is unconfined (a plain `ctx.subprocess` call), so `--no-config`
+ * When a sandbox and policy service are mounted, the packaged ripgrep process
+ * inherits the calling session's policy through the same provider used by
+ * shell tools. Without those optional services it remains an ordinary local
+ * subprocess. `--no-config`
  * is prepended: a host `RIPGREP_CONFIG_PATH` (or `rg.conf` next to the
  * binary) can otherwise inject `--pre` and make ripgrep execute an arbitrary
  * preprocessor for every matched file. The collect dispositions are the
  * seam's diagnostic-tail shape (no spill files): the tools never read a raw
  * spill path, and truncated stdout fails as `SEARCH_RAW_OUTPUT_OVERFLOW`.
  *
- * Exit semantics are tool-owned: exit 0 is success with results, exit 1 is
- * success with zero results (`noMatches`), anything else throws a
+ * Exit semantics are tool-owned: after checking a confined runner's fatal
+ * diagnostics, ripgrep exit 0 is success with results, exit 1 is success with
+ * zero results (`noMatches`), anything else throws a
  * {@link SearchError} (abort/timeout → `SEARCH_ABORTED`, invalid pattern →
  * `SEARCH_INVALID_PATTERN`, the rest → `SEARCH_FAILED` /
  * `SEARCH_RAW_OUTPUT_OVERFLOW`). Both launch-time failure domains are
@@ -231,9 +254,28 @@ export async function runRipgrep(
   const cwd = exec.agent?.session.header.cwd
   const workdir = cwd ?? process.cwd()
   let handle: SubprocessHandle
+  let confinedMode: 'read-only' | 'workspace-write' | undefined
+  let runnerFailureRules: readonly RunnerFailureRule[] = []
   try {
+    const searchArgv = [await resolveRgPath(), '--no-config', ...argv]
+    const sandbox = ctx.get('sandbox')
+    const policyService = ctx.get('sandboxPolicy')
+    if (sandbox !== undefined && policyService === undefined) {
+      throw new SearchError(`${toolName} cannot use a sandbox without its policy service`, 'SEARCH_FAILED')
+    }
+    const policy = policyService?.resolve(exec.agent === undefined ? {} : { session: exec.agent.session })
+    let confinedArgv = searchArgv
+    if (policy !== undefined && policy.mode !== 'danger-full-access') {
+      if (sandbox === undefined) {
+        throw new SearchError(`${toolName} cannot run under ${policy.mode} without a sandbox provider`, 'SEARCH_FAILED')
+      }
+      const confined = sandbox.confine(searchArgv, { ...policy, mode: policy.mode })
+      confinedArgv = confined.argv
+      confinedMode = policy.mode
+      runnerFailureRules = confined.runnerFailureRules
+    }
     handle = ctx.subprocess.spawn({
-      argv: [await resolveRgPath(), '--no-config', ...argv],
+      argv: confinedArgv,
       cwd: workdir,
       stdio: {
         stdin: 'ignore',
@@ -244,6 +286,7 @@ export async function runRipgrep(
       signal: exec.signal,
     } satisfies SubprocessSpawnSpec)
   } catch (error: unknown) {
+    if (error instanceof HarnessError) throw error
     // Node's spawn() throws synchronously for a NUL in argv, and the local
     // impl can throw synchronously when the signal aborts between the check
     // above and this call (or when the platform-package resolution rejects).
@@ -274,6 +317,12 @@ export async function runRipgrep(
   }
   if (outcome.signal !== null || outcome.exitCode === null) {
     throw new SearchError(`${toolName} search command was killed by signal ${outcome.signal ?? '(unknown)'}`, 'SEARCH_FAILED')
+  }
+  if (confinedMode !== undefined) {
+    const failure = runnerFailureDetail(outcome.exitCode, stderr.text, runnerFailureRules)
+    if (failure !== undefined) {
+      throw new HarnessError(`${toolName} sandbox runner failed before ripgrep ran: ${failure}`, 'SANDBOX_UNAVAILABLE')
+    }
   }
   if (outcome.exitCode !== 0 && outcome.exitCode !== 1) {
     throw classifyRunFailure(toolName, outcome.exitCode, stderr.text, stderr.lossy)

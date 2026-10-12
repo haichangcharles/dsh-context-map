@@ -6,6 +6,7 @@ import { BranchSuggestionCard } from './BranchSuggestionCard.tsx'
 
 export interface BranchSuggestionTailInjected {
   readonly hooks: { readonly contextify: HostObservable<ContextifyControllerSnapshot> }
+  readonly keepBranchSuggestion: (suggestionId: string) => Promise<void>
   readonly moveBranchSuggestion: (suggestionId: string) => Promise<void>
 }
 
@@ -16,7 +17,7 @@ type BranchSuggestionTailProps = InjectFace<BranchSuggestionTailInjected> & {
 
 /** Render only the suggestion owned by this exact completed assistant output. */
 export const BranchSuggestionTail = memo(function BranchSuggestionTail({
-  matched, useContextify, moveBranchSuggestion,
+  matched, useContextify, keepBranchSuggestion, moveBranchSuggestion,
 }: BranchSuggestionTailProps) {
   const [dismissedSuggestionId, setDismissedSuggestionId] = useState<string | null>(null)
   const snapshot = useContextify(value => value)
@@ -26,7 +27,10 @@ export const BranchSuggestionTail = memo(function BranchSuggestionTail({
   return <BranchSuggestionCard
     suggestion={suggestion}
     pending={snapshot.pending}
-    keep={() => { setDismissedSuggestionId(suggestion.id) }}
+    keep={async () => {
+      await keepBranchSuggestion(suggestion.id)
+      setDismissedSuggestionId(suggestion.id)
+    }}
     move={() => moveBranchSuggestion(suggestion.id)}
   />
 })

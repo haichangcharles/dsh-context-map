@@ -13,6 +13,7 @@ export interface ContextMapMenuProps {
   readonly branch: (record: ContextFamilyGraphNode) => Promise<void>
   readonly restoreAutomatic: (record: ContextFamilyGraphNode) => void
   readonly archive: (record: ContextFamilyGraphNode) => void
+  readonly focusExcerpt: (record: ContextFamilyGraphNode) => void
   readonly showOriginal: (record: ContextFamilyGraphNode) => void
   readonly restoreOriginal: (record: ContextFamilyGraphNode) => void
   readonly reportError: (cause: unknown) => void
@@ -20,7 +21,7 @@ export interface ContextMapMenuProps {
 
 /** Pointer-positioned node actions backed only by Harness-native operations. */
 export function ContextMapMenu({
-  point, record, mode, pending, close, locate, branch, restoreAutomatic, archive, showOriginal, restoreOriginal, reportError,
+  point, record, mode, pending, close, locate, branch, restoreAutomatic, archive, focusExcerpt, showOriginal, restoreOriginal, reportError,
 }: ContextMapMenuProps) {
   const run = (action: () => void | Promise<void>): void => {
     try {
@@ -50,9 +51,12 @@ export function ContextMapMenu({
         disabled={pending || record.branchAtSeq === null}
         onClick={() => { run(() => branch(record)) }}
       >Branch from Here</button>
-      {record.replacement === undefined && <>
+      {record.replacement === undefined
+        && (record.sourceKind === undefined || record.sourceKind === 'chat') && <>
         <div className={css.contextMenuSeparator} />
         <button type="button" role="menuitem" disabled={pending} onClick={() => { run(() => { archive(record) }) }}>Archive node</button>
+        {record.activeEventSeq !== null && <button type="button" role="menuitem" disabled={pending}
+          onClick={() => { run(() => { focusExcerpt(record) }) }}>Keep text excerpt…</button>}
       </>}
       {record.replacement !== undefined && <>
         <div className={css.contextMenuSeparator} />

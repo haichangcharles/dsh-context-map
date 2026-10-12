@@ -17,7 +17,9 @@ const MAX_ITEM_TEXT = 500
 /** One exact, bounded message plus topology metadata supplied as untrusted review data. */
 export interface ContextRecommendationInputNode {
   readonly id: string
-  readonly role: 'user' | 'assistant'
+  readonly role: 'user' | 'assistant' | 'tool'
+  readonly sourceKind?: 'chat' | 'web' | 'worker'
+  readonly webAction?: 'web_search' | 'web_fetch'
   readonly content: string
   readonly truncated: boolean
   readonly included: boolean
@@ -122,6 +124,8 @@ export function buildRecommendationInput(request: {
     return Object.freeze({
       id: node.id,
       role: node.role,
+      ...(node.sourceKind === undefined ? {} : { sourceKind: node.sourceKind }),
+      ...(node.webAction === undefined ? {} : { webAction: node.webAction }),
       content,
       truncated: content.length < exact.length,
       included: included.has(node.id),
@@ -167,6 +171,8 @@ export function validateRecommendation(
     readonly effectiveIncludedNodeIds: readonly string[]
     readonly explicitIncludedNodeIds: readonly string[]
     readonly explicitExcludedNodeIds: readonly string[]
+    /** Earlier Agent exclusions accepted in a visible review may be proposed for restoration. */
+    readonly reviewableExcludedNodeIds?: readonly string[]
   },
 ): ContextRecommendationProposal {
   const root = record(value, 'recommendation')
@@ -174,6 +180,7 @@ export function validateRecommendation(
   const effective = new Set(context.effectiveIncludedNodeIds)
   const explicitIncluded = new Set(context.explicitIncludedNodeIds)
   const explicitExcluded = new Set(context.explicitExcludedNodeIds)
+  const reviewableExcluded = new Set(context.reviewableExcludedNodeIds ?? [])
   const allowed = new Set(['exclude', 'include', 'archive'])
   for (const key of Object.keys(root)) {
     if (!allowed.has(key)) throw new Error(`recommendation field "${key}" is unsupported`)
@@ -203,10 +210,15 @@ export function validateRecommendation(
   const graphOrder = context.graph.nodes.map(node => node.id)
   const selection = graphOrder.flatMap((nodeId) => {
     const item = selectionByNode.get(nodeId)
+    const node = context.graph.nodes.find(candidate => candidate.id === nodeId)
     if (item === undefined
       || (item.action === 'include') === effective.has(nodeId)
       || (item.action === 'exclude' && explicitIncluded.has(nodeId))
-      || (item.action === 'include' && explicitExcluded.has(nodeId))) return []
+      || (item.action === 'include' && explicitExcluded.has(nodeId)
+        && !reviewableExcluded.has(nodeId))
+      || (item.action === 'include' && node?.sourceKind !== undefined
+        && node.sourceKind !== 'chat' && !node.sessionIds.includes(context.graph.activeSessionId)
+        && !(node.sourceKind === 'web' && node.webAction !== undefined))) return []
     return [item]
   })
   const seenArchive = new Set<string>()
@@ -215,6 +227,10 @@ export function validateRecommendation(
     const item = record(raw, `archive[${String(index)}]`)
     const nodeId = boundedText(item.nodeId, 'archive nodeId')
     if (!nodeIds.has(nodeId)) throw new Error(`archive node "${nodeId}" is unavailable`)
+    const node = context.graph.nodes.find(candidate => candidate.id === nodeId)
+    if (node?.sourceKind !== undefined && node.sourceKind !== 'chat') {
+      throw new Error(`archive node "${nodeId}" is evidence rather than a conversation message`)
+    }
     if (seenArchive.has(nodeId)) throw new Error(`archive node "${nodeId}" is duplicated`)
     seenArchive.add(nodeId)
     return Object.freeze({
@@ -239,6 +255,9 @@ export function validateRecommendation(
     addedNodeIds: Object.freeze(proposedNodeIds.filter(nodeId => !effective.has(nodeId))),
     removedNodeIds: Object.freeze(currentNodeIds.filter(nodeId => !proposed.has(nodeId))),
     selection: Object.freeze(selection),
-    archive: Object.freeze(archive),
+    // Fast review selects evidence for one request. Retiring a conversation
+    // node is a durable lifecycle decision and requires the separate Deep
+    // review path, even if the Fast model emits an Archive entry anyway.
+    archive: Object.freeze(context.mode === 'fast' ? [] : archive),
   })
 }

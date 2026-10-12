@@ -694,8 +694,9 @@ interface ToolView {
 }
 
 /**
- * A monotonic execution guard evaluated after every `tools/pre-execute`
- * listener and before the tool body. Returning a reason denies the call;
+ * A monotonic execution guard evaluated after the `tools/pre-execute`
+ * waterfall and again at registered tool-body entry. It must tolerate
+ * repeated evaluation. Returning a reason denies the call;
  * returning `undefined` leaves it unchanged. Because guards have no allow
  * result, listener ordering cannot turn a denial back into permission.
  * @param execution - the identity-protected call after extensible pre-execute policy completed.
@@ -1089,7 +1090,9 @@ export class ToolRuntime extends Service {
 
   /**
    * Register a monotonic guard after the extensible `tools/pre-execute`
-   * waterfall. A plain-context guard applies globally; one registered through
+   * waterfall and again immediately before the tool body starts. A
+   * guard must tolerate repeated evaluation. A plain-context guard applies
+   * globally; one registered through
    * `agent.ctx` applies only to that agent. Any matching guard may deny by
    * returning a reason, while no guard can force-allow a call another guard
    * denied. The exact effect disposer is returned for ordered ownership and
@@ -1533,6 +1536,16 @@ export class ToolRuntime extends Service {
     }
     exec.signal = signal
     try {
+      // A scheduled call or an async tools/execute wrapper can outlive the
+      // policy state checked during pre-execute. Recheck before the effect.
+      const denialReason = this.guardReason(exec)
+      if (denialReason !== undefined) {
+        return this.materializeFinalResult({
+          content: [{ type: 'text', text: `Error: ${denialReason}` }],
+          isError: true,
+          error: { message: denialReason },
+        })
+      }
       const tool = this.resolveExecution(exec.name, exec.agent, exec.parent !== undefined)
       if (!tool) throw new ToolNotFoundError(exec.name)
       state.bodyInvoked = true

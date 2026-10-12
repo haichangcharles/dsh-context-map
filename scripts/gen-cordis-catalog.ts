@@ -56,6 +56,7 @@ export { REGION_BEGIN, REGION_END }
 export const SERVICE_PAGE: Record<string, string> = {
   contextCompiler: 'core.md',
   contextify: 'core.md',
+  contextifyRevisionLineage: 'core.md',
   agentLoop: 'core.md',
   agentDefaultModel: 'core.md',
   agentPresets: 'core.md',
@@ -702,6 +703,8 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   ContextRecommendationBase: 'Context Map contract is owned by packages/context/contextify/src/types.ts',
   ContextRecommendationMode: 'Context Map contract is owned by packages/context/contextify/src/types.ts',
   ContextRecommendationProposal: 'Context Map contract is owned by packages/context/contextify/src/types.ts',
+  ContextRouteAdvice: 'Context Map contract is owned by packages/context/contextify/src/types.ts',
+  ContextStewardProfile: 'Context Map contract is owned by packages/context/contextify/src/types.ts',
   ContextifyView: 'Context Map contract is owned by packages/context/contextify/src/types.ts',
   z: 'schemastery schema constructor is owned by vendor/schemastery (vendored upstream)',
   BeginCommandRequest: 'event-local request contract is owned by packages/client/ui-input-trigger/src/types.ts',

@@ -172,7 +172,7 @@ export class SubagentContinuationManager {
           signal: spec.signal,
         })
         const childHeader = activation.handle.agent.session.header
-        return await this.submitMaterialized(
+        const submitted = await this.submitMaterialized(
           activation,
           isAdjacentAgentSendMessageTool(this.ctx.get('tools')?.get('send_message', activation.handle.agent))
             ? withContinuableReturnGuidance(parent.id, request.prompt)
@@ -181,6 +181,7 @@ export class SubagentContinuationManager {
           parent,
           () => { establishCatalogChild(parent.session, childHeader, descriptor) },
         )
+        return submitted
       })
       return { childId, messageId }
     } catch (error: unknown) {

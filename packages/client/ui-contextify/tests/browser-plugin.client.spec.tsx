@@ -5,6 +5,8 @@ import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ContextMapPanelInjected } from '../src/client/ContextMapPanel.tsx'
 import type { ContextMessageActionInjected } from '../src/client/ContextMessageAction.tsx'
+import type { DraftContextReviewInjected } from '../src/client/DraftContextReview.tsx'
+import type { BranchSuggestionTailInjected } from '../src/client/BranchSuggestionTail.tsx'
 import { apply, inject } from '../src/client/index.ts'
 
 const sid = (value: string): SessionId => value as SessionId
@@ -58,7 +60,8 @@ async function bench(withCleanup = false) {
       revision: 'family-7',
       rootSessionId: source,
       activeSessionId: source,
-      sessions: [{ id: source, seedLength: 0, depth: 0, tipNodeId: record.id }],
+      sessions: [{ id: source, seedLength: 0, depth: 0, tipNodeId: record.id },
+        { id: child, parentSessionId: source, seedLength: 0, depth: 1, tipNodeId: record.id }],
       edges: [],
       records: [record],
       totalNodeCount: 1,
@@ -69,10 +72,15 @@ async function bench(withCleanup = false) {
     undo: answer('undo', view),
     redo: answer('redo', view),
     recommend: answer('recommend', proposal),
+    reviewRoute: answer('reviewRoute', undefined),
+    recordManualBranch: answer('recordManualBranch', undefined),
     cancelRecommendation: answer('cancelRecommendation', undefined),
+    presentRecommendation: answer('presentRecommendation', undefined),
+    dismissRecommendation: answer('dismissRecommendation', undefined),
     archiveNode: answer('archiveNode', view),
     restoreNode: answer('restoreNode', view),
     prepareBranchSuggestion: answer('prepareBranchSuggestion', { sourceSessionId: source, beforeSeq: 4 }),
+    keepBranchSuggestion: answer('keepBranchSuggestion', undefined),
     acceptBranchSuggestion: answer('acceptBranchSuggestion', { childSessionId: child }),
   })
   const openDetails = vi.fn()
@@ -85,13 +93,18 @@ async function bench(withCleanup = false) {
   })
   const fork = vi.fn(async () => child)
   const open = vi.fn()
-  ctx.provide('sessions', { fork, open })
+  ctx.provide('sessions', { fork, open, scope: () => ctx })
   const registerTab = vi.fn(() => () => {})
   ctx.provide('sidebarRightTabs', { register: registerTab } as never)
   ctx.provide('sidebarRight', { openTab: openDetails, isExpanded: () => true, toggleExpanded: closeDetails } as never)
   const revealMessage = vi.fn()
   const openPinnedDetails = vi.fn()
-  ctx.provide('conversation', { revealMessage, openPinnedDetails } as never)
+  const draftState = { draft: '', draftRev: 0, phase: 'plain' as const, attachmentIds: [] }
+  const moveDraft = vi.fn(() => true)
+  ctx.provide('conversation', {
+    revealMessage, openPinnedDetails, moveDraft,
+    input: { for: () => ({ state: { getSnapshot: () => draftState } }) },
+  } as never)
   await ctx.plugin(SlotRegistry).await()
   ctx.slots.register({
     name: 'root',
@@ -100,6 +113,7 @@ async function bench(withCleanup = false) {
       'conversation.chat.user-actions': { kind: 'list', scope: 'session' },
       'conversation.chat.assistant-actions': { kind: 'list', scope: 'session' },
       'conversation.chat.turnTail': { kind: 'chain', scope: 'session' },
+      'conversation.input.dock': { kind: 'list', scope: 'session' },
       'shell.overlay': { kind: 'list', scope: 'root' },
     },
   } as never, (() => null) as never)
@@ -111,12 +125,14 @@ async function bench(withCleanup = false) {
   const assistantAction = ctx.slots.entries('conversation.chat.assistant-actions')[0]
   const turnTail = ctx.slots.entries('conversation.chat.turnTail')[0]
   return {
-    ctx, fiber, calls, closeDetails, openDetails, fork, open, revealMessage, openPinnedDetails, record,
+    ctx, fiber, calls, closeDetails, openDetails, fork, open, moveDraft, draftState,
+    revealMessage, openPinnedDetails, record,
     panel: injectPanel(source),
     pinned,
     userAction,
     assistantAction,
     turnTail,
+    draftReview: ctx.slots.entries('conversation.input.dock')[0],
     opener: ctx.slots.entries('shell.overlay')[0],
   }
 }
@@ -152,23 +168,111 @@ describe('ui-contextify browser plugin', () => {
     b.panel.mapActions.close()
 
     expect(b.calls.filter(call => call.method === 'setNodeMode')).toEqual([{
-      method: 'setNodeMode', args: [source, { revision: 4 }, b.record.owner, 'exclude'],
+      method: 'setNodeMode', args: [source, { revision: 4 }, b.record.owner, 'exclude', 'contextify-client'],
     }])
     expect(b.fork).toHaveBeenCalledWith({ sessionId: source, atSeq: 9, increaseTitle: true })
+    expect(b.moveDraft).toHaveBeenCalledWith(source, child, { draft: '', draftRev: 0 })
     expect(b.open).toHaveBeenNthCalledWith(1, child)
     expect(b.revealMessage).toHaveBeenCalledWith(source, b.record.owner.seq)
     expect(b.openDetails).toHaveBeenCalledOnce()
     expect(b.closeDetails).toHaveBeenCalledOnce()
   })
 
-  it('removes all five slot contributions with the plugin fiber', async () => {
+  it('removes all six slot contributions with the plugin fiber', async () => {
     const b = await bench()
     await b.fiber.dispose()
     expect(b.ctx.slots.entries('sidebar.right.pane.tab')).toHaveLength(0)
     expect(b.ctx.slots.entries('conversation.chat.user-actions')).toHaveLength(0)
     expect(b.ctx.slots.entries('conversation.chat.assistant-actions')).toHaveLength(0)
     expect(b.ctx.slots.entries('conversation.chat.turnTail')).toHaveLength(0)
+    expect(b.ctx.slots.entries('conversation.input.dock')).toHaveLength(0)
     expect(b.ctx.slots.entries('shell.overlay')).toHaveLength(0)
+  })
+
+  it('carries the reviewed draft into a new native branch before opening it', async () => {
+    const b = await bench()
+    b.draftState.draft = 'Use the previous Web evidence'
+    b.draftState.draftRev = 7
+    await b.panel.mapActions.branch(b.record)
+    expect(b.moveDraft).toHaveBeenCalledWith(source, child, {
+      draft: 'Use the previous Web evidence', draftRev: 7,
+    })
+    expect(b.moveDraft.mock.invocationCallOrder[0]).toBeLessThan(b.open.mock.invocationCallOrder[0]!)
+    expect(b.calls.filter(call => call.method === 'recordManualBranch')).toMatchObject([{
+      args: [source, child, 'contextify-client'],
+    }])
+  })
+
+  it('keeps the current Session selected when the draft cannot be transferred', async () => {
+    const b = await bench()
+    b.moveDraft.mockReturnValueOnce(false)
+    await expect(b.panel.mapActions.branch(b.record)).rejects.toThrow(/draft changed/)
+    expect(b.open).not.toHaveBeenCalled()
+  })
+
+  it('accepts a reviewed draft route only at the same graph and editor revision', async () => {
+    const b = await bench()
+    b.draftState.draft = 'Continue the writing branch'
+    b.draftState.draftRev = 5
+    await b.panel.mapActions.acceptRoute({
+      action: 'navigate', base: { planRevision: 4, graphRevision: 'family-7', activeSessionId: source },
+      objective: 'Continue the writing branch', targetSessionId: child, reason: 'Use child',
+    })
+    expect(b.moveDraft).toHaveBeenCalledWith(source, child, {
+      draft: 'Continue the writing branch', draftRev: 5,
+    })
+    expect(b.open).toHaveBeenCalledWith(child)
+    expect(b.calls.filter(call => call.method === 'reviewRoute')).toMatchObject([{
+      args: [source, expect.objectContaining({ action: 'navigate' }), 'accept', child, 'contextify-client'],
+    }])
+  })
+
+  it('rejects stale draft route advice without switching Sessions', async () => {
+    const b = await bench()
+    b.draftState.draft = 'An edited draft'
+    await expect(b.panel.mapActions.acceptRoute({
+      action: 'navigate', base: { planRevision: 4, graphRevision: 'family-7', activeSessionId: source },
+      objective: 'Original draft', targetSessionId: child, reason: 'Use child',
+    })).rejects.toThrow(/draft changed/)
+    expect(b.moveDraft).not.toHaveBeenCalled()
+    expect(b.open).not.toHaveBeenCalled()
+  })
+
+  it('carries the next unsent draft after accepting an Agent branch relocation', async () => {
+    const b = await bench()
+    b.draftState.draft = 'Continue the new line of thought'
+    b.draftState.draftRev = 11
+    const actions = (b.turnTail?.inject as (id: SessionId) => BranchSuggestionTailInjected)(source)
+    await actions.moveBranchSuggestion('suggestion-1')
+    expect(b.calls.filter(call => call.method === 'acceptBranchSuggestion')).toHaveLength(1)
+    expect(b.moveDraft).toHaveBeenCalledWith(source, child, {
+      draft: 'Continue the new line of thought', draftRev: 11,
+    })
+    expect(b.moveDraft.mock.invocationCallOrder[0]).toBeLessThan(b.open.mock.invocationCallOrder[0]!)
+    expect(b.open).toHaveBeenCalledWith(child)
+  })
+
+  it('leaves the current Session selected if the draft changes during Agent branch relocation', async () => {
+    const b = await bench()
+    b.moveDraft.mockReturnValueOnce(false)
+    const actions = (b.turnTail?.inject as (id: SessionId) => BranchSuggestionTailInjected)(source)
+    await expect(actions.moveBranchSuggestion('suggestion-1')).rejects.toThrow(/draft changed/)
+    expect(b.open).not.toHaveBeenCalled()
+  })
+
+  it('reviews an unsent draft through the shared DSH Contextify Remote without mutation', async () => {
+    const b = await bench()
+    expect(b.draftReview?.options).toMatchObject({ id: 'contextify-draft-review' })
+    const actions = (b.draftReview?.inject as (id: SessionId) => DraftContextReviewInjected)(source)
+    await actions.review('Bring the prior Web evidence into this draft')
+    expect(b.calls.filter(call => call.method === 'recommend')).toEqual([{
+      method: 'recommend',
+      args: [source, { planRevision: 4, graphRevision: 'family-7', activeSessionId: source },
+        'Bring the prior Web evidence into this draft', 'fast', true],
+    }])
+    expect(b.calls.filter(call => call.method === 'setNodeModes')).toHaveLength(0)
+    actions.openMap()
+    expect(b.openDetails).toHaveBeenCalledOnce()
   })
 
   it('keeps recommendations review-only until accepted, then applies one atomic mutation', async () => {
@@ -186,7 +290,8 @@ describe('ui-contextify browser plugin', () => {
     await b.panel.mapActions.applyRecommendations()
     expect(b.calls.filter(call => call.method === 'setNodeModes')).toEqual([{
       method: 'setNodeModes',
-      args: [source, { revision: 4 }, [{ node: b.record.owner, mode: 'exclude' }], 'family-7'],
+      args: [source, { revision: 4 }, [{ node: b.record.owner, mode: 'exclude' }], 'family-7',
+        'contextify-client', []],
     }])
     expect(controller.getSnapshot().recommendation).toMatchObject({ phase: 'idle' })
   })

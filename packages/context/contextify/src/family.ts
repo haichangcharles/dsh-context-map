@@ -13,7 +13,9 @@ import type {
 interface MutableNode {
   readonly id: string
   readonly owner: ContextMessageRef
-  readonly role: 'user' | 'assistant'
+  readonly role: ContextFamilyGraphNode['role']
+  readonly sourceKind: NonNullable<ContextFamilyGraphNode['sourceKind']>
+  readonly webAction?: ContextFamilyGraphNode['webAction']
   readonly preview: string
   readonly time: number
   readonly branchAtSeq: number | null
@@ -21,11 +23,16 @@ interface MutableNode {
   activeEventSeq: number | null
 }
 
-function branchBoundaries(events: readonly SessionEvent[]): ReadonlyMap<number, number> {
+interface WebCallRef {
+  readonly action: NonNullable<ContextFamilyGraphNode['webAction']>
+  readonly seq: number
+}
+
+function branchBoundaries(events: readonly SessionEvent[], webCalls: ReadonlyMap<string, WebCallRef>): ReadonlyMap<number, number> {
   const pending: number[] = []
   const boundaries = new Map<number, number>()
   for (const event of events) {
-    if (visibleMessage(event) !== null) pending.push(event.seq)
+    if (visibleMessage(event, webCalls) !== null) pending.push(event.seq)
     if (event.type !== 'turn/end') continue
     for (const seq of pending) boundaries.set(seq, event.seq)
     pending.length = 0
@@ -40,19 +47,46 @@ interface MutableEdge {
   readonly sessionIds: Set<SessionId>
 }
 
-function visibleMessage(event: SessionEvent): { role: 'user' | 'assistant'; message: Message } | null {
-  if (event.type !== 'user/message' && event.type !== 'assistant/message') return null
+interface VisibleMessage {
+  readonly role: ContextFamilyGraphNode['role']
+  readonly sourceKind: NonNullable<ContextFamilyGraphNode['sourceKind']>
+  readonly webAction?: ContextFamilyGraphNode['webAction']
+  readonly message: Message
+}
+
+function visibleMessage(event: SessionEvent, webCalls: ReadonlyMap<string, WebCallRef>): VisibleMessage | null {
   if (event.surfaceOp !== 'append') return null
   if (event.type === 'user/message') {
-    return event.data.source.kind === 'user' ? { role: 'user', message: event.data } : null
+    if (event.data.source.kind === 'user') {
+      return { role: 'user', sourceKind: 'chat', message: event.data }
+    }
+    if (event.data.source.kind === 'agent-message' || event.data.source.kind === 'subagent-settled') {
+      return { role: 'user', sourceKind: 'worker', message: event.data }
+    }
+    return null
   }
+  if (event.type === 'tool/result') {
+    const call = webCalls.get(event.data.message.source.callId)
+    if (call === undefined) return null
+    const blocks = event.data.message.content
+    const result = blocks.length === 1 && blocks[0]?.type === 'tool-result'
+      && blocks[0].toolCallId === event.data.message.source.callId && !blocks[0].isError
+      ? blocks[0].content : null
+    const importable = event.sourceEventSeqs?.length === 1
+      && event.sourceEventSeqs[0] === call.seq
+      && result !== null && result.length > 0
+      && result.every(block => block.type === 'text')
+    return { role: 'tool', sourceKind: 'web',
+      ...(importable ? { webAction: call.action } : {}), message: event.data.message }
+  }
+  if (event.type !== 'assistant/message') return null
   const visible = event.data.message.content.some(block => block.type === 'text' || block.type === 'image')
-  return visible ? { role: 'assistant', message: event.data.message } : null
+  return visible ? { role: 'assistant', sourceKind: 'chat', message: event.data.message } : null
 }
 
 interface ProjectedMessage {
   readonly event: SessionEvent
-  readonly visible: { role: 'user' | 'assistant'; message: Message }
+  readonly visible: VisibleMessage
 }
 
 /**
@@ -65,6 +99,9 @@ interface ProjectedMessage {
 function projectedMessages(events: readonly SessionEvent[]): ProjectedMessage[] {
   const projected: ProjectedMessage[] = []
   let finalAssistant: ProjectedMessage | undefined
+  const webCalls = new Map<string, WebCallRef>(events.flatMap(event =>
+    event.type === 'tool/call' && (event.data.name === 'web_fetch' || event.data.name === 'web_search')
+      ? [[event.data.callId, { action: event.data.name, seq: event.seq }] as const] : []))
   for (const event of events) {
     if (event.type === 'turn/start') {
       finalAssistant = undefined
@@ -77,9 +114,9 @@ function projectedMessages(events: readonly SessionEvent[]): ProjectedMessage[] 
       finalAssistant = undefined
       continue
     }
-    const visible = visibleMessage(event)
+    const visible = visibleMessage(event, webCalls)
     if (visible === null) continue
-    if (visible.role === 'user') projected.push({ event, visible })
+    if (visible.sourceKind !== 'chat' || visible.role === 'user') projected.push({ event, visible })
     else finalAssistant = { event, visible }
   }
   return projected
@@ -88,6 +125,7 @@ function projectedMessages(events: readonly SessionEvent[]): ProjectedMessage[] 
 function blockPreview(block: ContentBlock): string[] {
   if (block.type === 'text') return [block.text]
   if (block.type === 'image') return ['[Image]']
+  if (block.type === 'tool-result') return block.content.flatMap(blockPreview)
   return []
 }
 
@@ -97,16 +135,14 @@ function preview(message: Message): string {
 
 function sameCopiedEvent(left: SessionEvent | undefined, right: SessionEvent): boolean {
   if (left === undefined || left.type !== right.type || left.time !== right.time) return false
-  const leftEnvelope = left as SessionEvent & { surfaceOp?: unknown; sourceEventSeqs?: unknown }
-  const rightEnvelope = right as SessionEvent & { surfaceOp?: unknown; sourceEventSeqs?: unknown }
   return JSON.stringify({
-    data: leftEnvelope.data,
-    surfaceOp: leftEnvelope.surfaceOp,
-    sourceEventSeqs: leftEnvelope.sourceEventSeqs,
+    data: left.data,
+    surfaceOp: left.surfaceOp,
+    sourceEventSeqs: left.sourceEventSeqs,
   }) === JSON.stringify({
-    data: rightEnvelope.data,
-    surfaceOp: rightEnvelope.surfaceOp,
-    sourceEventSeqs: rightEnvelope.sourceEventSeqs,
+    data: right.data,
+    surfaceOp: right.surfaceOp,
+    sourceEventSeqs: right.sourceEventSeqs,
   })
 }
 
@@ -114,14 +150,35 @@ function canonicalOwner(
   inspection: ContextFamilyInspection,
   event: SessionEvent,
   byId: ReadonlyMap<SessionId, ContextFamilyInspection>,
+  cache: Map<SessionId, Map<number, ContextMessageRef>>,
 ): ContextMessageRef {
   let cursor = inspection
-  while (cursor.meta.parentSession !== undefined && event.seq < (cursor.inheritedEventCount ?? 0)) {
+  const traversed: SessionId[] = []
+  let owner: ContextMessageRef | undefined
+  while (cursor.meta.parentSession !== undefined && event.seq < cursor.inheritedEventCount) {
+    const cached = cache.get(cursor.meta.id)?.get(event.seq)
+    if (cached !== undefined) {
+      owner = cached
+      break
+    }
     const parent = byId.get(cursor.meta.parentSession)
     if (parent === undefined || !sameCopiedEvent(parent.events[event.seq], event)) break
+    traversed.push(cursor.meta.id)
     cursor = parent
   }
-  return { sessionId: cursor.meta.id, seq: event.seq }
+  owner ??= cache.get(cursor.meta.id)?.get(event.seq)
+    ?? { sessionId: cursor.meta.id, seq: event.seq }
+  // One projection may inspect the same inherited event through many
+  // descendants. Reuse the verified owner only within this immutable input.
+  for (const id of traversed) {
+    let events = cache.get(id)
+    if (events === undefined) {
+      events = new Map()
+      cache.set(id, events)
+    }
+    events.set(event.seq, owner)
+  }
+  return owner
 }
 
 function familyRoot(
@@ -171,16 +228,17 @@ function orderedFamily(
 function canonicalSessionParents(
   inspections: readonly ContextFamilyInspection[],
   byId: ReadonlyMap<SessionId, ContextFamilyInspection>,
+  ownerCache: Map<SessionId, Map<number, ContextMessageRef>>,
 ): ReadonlyMap<SessionId, SessionId> {
   const parents = new Map<SessionId, SessionId>()
   for (const inspection of inspections) {
     const actualParent = inspection.meta.parentSession
     if (actualParent === undefined) continue
-    const seedLength = inspection.inheritedEventCount ?? 0
+    const seedLength = inspection.inheritedEventCount
     const forkEvent = seedLength > 0 ? inspection.events[seedLength - 1] : undefined
     parents.set(
       inspection.meta.id,
-      forkEvent === undefined ? actualParent : canonicalOwner(inspection, forkEvent, byId).sessionId,
+      forkEvent === undefined ? actualParent : canonicalOwner(inspection, forkEvent, byId, ownerCache).sessionId,
     )
   }
   return parents
@@ -199,7 +257,8 @@ export function projectSessionFamily(input: {
   const active = byId.get(input.activeSessionId)
   if (active === undefined) throw new Error(`active Session "${input.activeSessionId}" is unavailable`)
   const root = familyRoot(active, byId)
-  const canonicalParents = canonicalSessionParents(input.sessions, byId)
+  const ownerCache = new Map<SessionId, Map<number, ContextMessageRef>>()
+  const canonicalParents = canonicalSessionParents(input.sessions, byId, ownerCache)
   const ordered = orderedFamily(root, input.sessions, canonicalParents)
   const nodes = new Map<string, MutableNode>()
   const edges = new Map<string, MutableEdge>()
@@ -207,9 +266,12 @@ export function projectSessionFamily(input: {
 
   for (const { inspection, depth } of ordered) {
     const path: string[] = []
-    const boundaries = branchBoundaries(inspection.events)
+    const webCalls = new Map<string, WebCallRef>(inspection.events.flatMap(event =>
+      event.type === 'tool/call' && (event.data.name === 'web_fetch' || event.data.name === 'web_search')
+        ? [[event.data.callId, { action: event.data.name, seq: event.seq }] as const] : []))
+    const boundaries = branchBoundaries(inspection.events, webCalls)
     for (const { event, visible } of projectedMessages(inspection.events)) {
-      const owner = canonicalOwner(inspection, event, byId)
+      const owner = canonicalOwner(inspection, event, byId, ownerCache)
       const id = `${owner.sessionId}:${String(owner.seq)}`
       let node = nodes.get(id)
       if (node === undefined) {
@@ -217,9 +279,11 @@ export function projectSessionFamily(input: {
           id,
           owner,
           role: visible.role,
+          sourceKind: visible.sourceKind,
+          ...(visible.webAction === undefined ? {} : { webAction: visible.webAction }),
           preview: preview(visible.message),
           time: event.time,
-          branchAtSeq: boundaries.get(event.seq) ?? null,
+          branchAtSeq: visible.sourceKind === 'chat' ? boundaries.get(event.seq) ?? null : null,
           sessionIds: new Set(),
           activeEventSeq: null,
         }
@@ -243,7 +307,7 @@ export function projectSessionFamily(input: {
     sessions.push(Object.freeze({
       id: inspection.meta.id,
       ...(parentSessionId === undefined ? {} : { parentSessionId }),
-      seedLength: inspection.inheritedEventCount ?? 0,
+      seedLength: inspection.inheritedEventCount,
       depth,
       tipNodeId: path.at(-1) ?? null,
     }))
@@ -253,6 +317,8 @@ export function projectSessionFamily(input: {
     id: node.id,
     owner: Object.freeze({ ...node.owner }),
     role: node.role,
+    sourceKind: node.sourceKind,
+    ...(node.webAction === undefined ? {} : { webAction: node.webAction }),
     preview: node.preview,
     time: node.time,
     branchAtSeq: node.branchAtSeq,

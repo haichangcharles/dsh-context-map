@@ -18,6 +18,10 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./revision-lineage-runtime": {
+      "types": "./lib/types/revision-lineage-runtime.d.ts",
+      "default": "./lib/revision-lineage-runtime.js"
+    },
     "./types": {
       "types": "./lib/types/types.d.ts",
       "default": "./lib/types/types.js"
@@ -35,6 +39,7 @@
   },
   "files": [
     "lib/index.js",
+    "lib/revision-lineage-runtime.js",
     "lib/types/**/*.js",
     "lib/types/**/*.d.ts",
     "lib/typert.host.js",

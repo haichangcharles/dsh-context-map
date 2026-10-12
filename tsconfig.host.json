@@ -32,6 +32,8 @@
     "apps/web/tests/lifecycle-chrome.e2e.ts",
     "apps/web/tests/details-session-lifecycle.e2e.ts",
     "apps/web/tests/contextify-map.e2e.ts",
+    "apps/web/tests/contextify-long-horizon.e2e.ts",
+    "apps/web/tests/research-contextify-web-evidence.e2e.ts",
     "apps/web/tests/product-walkthrough.capture.ts",
     "apps/web/tests/document-preview.e2e.ts",
     "apps/web/tests/plugin-config.e2e.ts",

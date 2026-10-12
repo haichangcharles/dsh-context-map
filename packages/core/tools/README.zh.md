@@ -82,7 +82,7 @@ ctx.tools.register(defineTool({
 
 ### 对调用实施策略
 
-`ctx.tools.guard(guard)` 在可扩展的 `tools/pre-execute` waterfall（瀑布式事件）之后注册单调同步守卫：返回的理由会拒绝调用，后续监听器无法把该拒绝重新变为允许。流水线事件给插件更多控制——`tools/pre-execute` 决定允许／拒绝／询问，`tools/execute` 为超时或重试包装分发，`tools/post-execute` 检查或替换结果，`tools/result` 观测冻结的最终结果。
+`ctx.tools.guard(guard)` 在可扩展的 `tools/pre-execute` waterfall（瀑布式事件）之后注册单调同步守卫，并在已注册工具的函数体开始前再次检查。守卫必须容许重复求值。返回的理由会拒绝调用，后续监听器无法把该拒绝重新变为允许。这关闭了排队调用或异步 `tools/execute` 包装器跨越策略修订的缺口；修订前已经开始的函数体仍需自行在不可逆副作用提交时校验。流水线事件给插件更多控制——`tools/pre-execute` 决定允许／拒绝／询问，`tools/execute` 为超时或重试包装分发，`tools/post-execute` 检查或替换结果，`tools/result` 观测冻结的最终结果。
 
 ### Host 展示描述
 

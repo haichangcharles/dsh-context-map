@@ -21,6 +21,7 @@ const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/message-actio
 // a new recording (workspace-management / sidebar-scrollbar pattern).
 const SEED = fileURLToPath(new URL('../../../snapshots/web/seeded-history/session.v3.jsonl', import.meta.url))
 const UI_EXPECTED = join(SNAPSHOT_DIR, 'ui.expected.md')
+const DRAFT_REVIEW_EXPECTED = join(SNAPSHOT_DIR, 'draft-review.expected.md')
 const FORK_EXPECTED = join(SNAPSHOT_DIR, 'fork.expected.md')
 const MODE = webSnapshotMode()
 const SEED_ID = 'message-actions-web-e2e'
@@ -204,6 +205,29 @@ describe('web e2e: message IconActions and clocks on settled history', () => {
     await expect.poll(() => page.getByRole('button', { name: 'Edit' }).count(), { timeout: 5_000 }).toBe(0)
   }, 60_000)
 
+  it.skipIf(MODE === 'record')('offers keyless draft-bound Context review before Send', async () => {
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-draft-context-review'))
+    const groupRow = page.locator('[role="treeitem"]').first()
+    await groupRow.waitFor({ timeout: 15_000 })
+    const sessionRow = page.locator('[role="treeitem"]').nth(1)
+    if (await sessionRow.count() === 0) await groupRow.click()
+    await sessionRow.waitFor({ timeout: 10_000 })
+    await sessionRow.click()
+    const input = page.locator('[data-composer-input][contenteditable="true"]').last()
+    await input.waitFor({ timeout: 10_000 })
+    await input.fill('Use the earlier Web evidence for this answer')
+    try {
+      const review = page.getByRole('button', { name: 'Review context for draft' })
+      await review.waitFor({ timeout: 10_000 })
+      const snapshot = await captureStableAria(page, '[data-contextify-draft-review]', scaffold.workspaceCwd)
+      await compareOrRefreshGolden(DRAFT_REVIEW_EXPECTED, snapshot, MODE)
+      expect(await input.innerText()).toBe('Use the earlier Web evidence for this answer')
+      expect(scaffold.ctx.agents.list().every(agent => agent.status !== 'running')).toBe(true)
+    } finally {
+      await input.fill('')
+    }
+  })
+
   it.skipIf(MODE === 'record')('matches the conversation aria golden with IconActions and clocks', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-message-actions-aria'))
     await page.getByRole('button', { name: /^Select model, current/ })
@@ -278,6 +302,6 @@ describe('web e2e: message IconActions and clocks on settled history', () => {
   it.skipIf(MODE === 'record')('issued zero model calls and kept a closed inventory', async () => {
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])
-    await assertFixtureInventory(SNAPSHOT_DIR, ['fork.expected.md', 'ui.expected.md'])
+    await assertFixtureInventory(SNAPSHOT_DIR, ['draft-review.expected.md', 'fork.expected.md', 'ui.expected.md'])
   })
 })

@@ -179,6 +179,7 @@
 .mapNode[data-selected], .mapNode[data-focused] { border-color: #2563eb; box-shadow: 0 0 0 3px rgb(37 99 235 / 22%); }
 .mapNode[data-search-match] .preview { background: rgb(250 204 21 / 18%); }
 .mapNode[data-replacement='placeholder'] { border-style: dashed; }
+.mapNode[data-replacement='excerpt'] { border-style: solid; border-color: #16a34a; }
 
 .nodeHeader { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .role { color: var(--dsw-alias-fg-secondary); font-size: 10px; font-weight: 650; text-transform: uppercase; }
@@ -214,6 +215,21 @@
 .originalDialog header { display: flex; align-items: center; justify-content: space-between; }
 .originalDialog h3 { margin: 0; font-size: 13px; }
 .originalDialog p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; line-height: 1.55; }
+.excerptTextarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 145px;
+  max-height: 48vh;
+  resize: vertical;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 7px;
+  padding: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-fg-primary);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.5;
+}
 
 .handle { width: 7px; height: 7px; border: 1px solid var(--dsw-alias-bg-elevated); background: #7890b8; }
 

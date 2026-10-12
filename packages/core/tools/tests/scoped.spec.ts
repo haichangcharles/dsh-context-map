@@ -332,6 +332,37 @@ describe('scoped execution dispatch', () => {
     expect(bodyCalls).toBe(0)
   })
 
+  it('rechecks a guard after an async dispatch wrapper before the tool body begins', async () => {
+    const ctx = await mount()
+    let valid = true
+    let bodyCalls = 0
+    const entered = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    ctx.tools.register({
+      ...tool('write'),
+      execute: () => {
+        bodyCalls += 1
+        return Promise.resolve('written')
+      },
+    })
+    ctx.tools.guard(() => valid ? undefined : 'source revision changed')
+    ctx.on('tools/execute', async (_exec, next) => {
+      entered.resolve(undefined)
+      await release.promise
+      return next()
+    })
+
+    const pending = ctx.tools.execute({ signal: testToolSignal, callId: ToolCallId('late-write'),
+      name: 'write', arguments: {} })
+    await entered.promise
+    valid = false
+    release.resolve(undefined)
+    const result = await pending
+    expect(result.isError).toBe(true)
+    expect(result.content).toContainEqual({ type: 'text', text: 'Error: source revision changed' })
+    expect(bodyCalls).toBe(0)
+  })
+
   it('live-iterates a guard registered by an earlier guard', async () => {
     const ctx = await mount()
     const calls: string[] = []
@@ -353,7 +384,7 @@ describe('scoped execution dispatch', () => {
     expect(calls).toEqual(['first', 'late'])
   })
 
-  it('defers a scoped guard that replaces the last guard in its generation', async () => {
+  it('applies a scoped guard replacement at the second check before the body', async () => {
     const ctx = await mount()
     const { scope, key } = await mintAgentScope(ctx, 'a')
     const calls: string[] = []
@@ -369,10 +400,10 @@ describe('scoped execution dispatch', () => {
       return undefined
     })
 
-    expect(await run(ctx, 't', key)).toBe('ran:t')
-    expect(calls).toEqual(['first'])
     expect(await run(ctx, 't', key)).toBe('Error: replacement denial')
     expect(calls).toEqual(['first', 'replacement'])
+    expect(await run(ctx, 't', key)).toBe('Error: replacement denial')
+    expect(calls).toEqual(['first', 'replacement', 'replacement'])
   })
 
   it('shares one token and materialized argument value across the pipeline', async () => {

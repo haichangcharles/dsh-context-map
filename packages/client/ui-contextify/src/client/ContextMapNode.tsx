@@ -27,9 +27,13 @@ export interface ContextMapNodeData extends Record<string, unknown> {
 export const ContextMapNode = memo(function ContextMapNode({ data, selected, sourcePosition, targetPosition }: NodeProps) {
   const value = data as ContextMapNodeData
   const record = value.record
-  const emptyPlaceholder = record.replacement !== undefined
-  const preview = emptyPlaceholder ? '' : record.preview || '(empty message)'
-  const role = record.role === 'user' ? 'User' : 'Assistant'
+  const emptyPlaceholder = record.replacement?.kind === 'placeholder'
+  const preview = emptyPlaceholder ? ''
+    : record.replacement?.kind === 'excerpt'
+      ? record.replacement.preview
+      : record.preview || '(empty message)'
+  const role = record.sourceKind === 'web' ? 'Web source'
+    : record.sourceKind === 'worker' ? 'Worker' : record.role === 'user' ? 'User' : 'Assistant'
   return (
     <article
       className={css.mapNode}
@@ -42,7 +46,7 @@ export const ContextMapNode = memo(function ContextMapNode({ data, selected, sou
       data-search-match={value.searchMatch || undefined}
       data-selected={selected || undefined}
       data-context-node-id={record.id}
-      data-replacement={record.replacement === undefined ? undefined : 'placeholder'}
+      data-replacement={record.replacement?.kind}
       onContextMenu={(event) => {
         event.preventDefault()
         event.stopPropagation()
@@ -51,7 +55,7 @@ export const ContextMapNode = memo(function ContextMapNode({ data, selected, sou
     >
       <Handle type="target" position={targetPosition ?? Position.Top} className={css.handle} />
       <header className={css.nodeHeader}>
-        <span className={css.role}>{record.role === 'user' ? 'User' : 'Assistant'}</span>
+        <span className={css.role}>{role}</span>
         <label
           className={`${css.contextCheckbox} nodrag nopan`}
           onPointerDown={(event) => { event.stopPropagation() }}
@@ -72,7 +76,9 @@ export const ContextMapNode = memo(function ContextMapNode({ data, selected, sou
         {value.recommendation !== undefined && <span data-recommendation={value.recommendation}>
           {value.recommendation === 'include' ? 'Suggested include' : value.recommendation === 'exclude' ? 'Suggested exclude' : 'Archive suggested'}
         </span>}
-        {record.replacement !== undefined && <span data-replacement-badge="">Archived</span>}
+        {record.replacement !== undefined && <span data-replacement-badge="">
+          {record.replacement.kind === 'excerpt' ? 'Focused excerpt' : 'Archived'}
+        </span>}
       </div>}
       <div className={css.nodeMeta}>{value.sessionLabel}</div>
       <Handle type="source" position={sourcePosition ?? Position.Bottom} className={css.handle} />

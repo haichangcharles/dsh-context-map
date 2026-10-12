@@ -1,12 +1,12 @@
 import { ToolCallId as CallId } from '@deepseek-ai/dsh-llm/brand'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   createAssistantMessage,
   createSystemMessage,
   createToolResultMessage,
   createUserMessage,
 } from '@deepseek-ai/dsh-llm'
-import { Session, SessionId } from '@deepseek-ai/dsh-session'
+import { Session, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
 import {
   compileContextify,
   createInitialContextPlan,
@@ -20,14 +20,14 @@ function text(message: ReturnType<Session['deriveMessages']>[number]): string {
   return message.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('')
 }
 
-function appendUser(session: Session, value: string): number {
+function appendUser(session: Session, value: string): SessionSeq {
   return session.append('user/message', createUserMessage({
     content: [{ type: 'text', text: value }],
     source: { kind: 'user' },
   }), { surfaceOp: 'append' }).seq
 }
 
-function appendAssistant(session: Session, turn: number, value: string): number {
+function appendAssistant(session: Session, turn: number, value: string): SessionSeq {
   return session.append('assistant/message', { stream: [],
     turn,
     step: 1,
@@ -39,6 +39,25 @@ function appendAssistant(session: Session, turn: number, value: string): number 
 }
 
 describe('native Contextify plan compiler', () => {
+  it('does not scan a checkpoint source chain for an unedited Natural plan', () => {
+    const session = Session.create(SessionId('natural-checkpoint-chain'))
+    session.append('contextify/plan', createInitialContextPlan())
+    let previous = appendUser(session, 'original source')
+    for (let depth = 0; depth < 200; depth += 1) {
+      previous = session.append('user/message', createUserMessage({
+        content: [{ type: 'text', text: `checkpoint ${String(depth)}` }],
+        source: { kind: 'plugin', plugin: 'compact' },
+      }), {
+        surfaceOp: { op: 'replace', startSeq: previous, endSeq: previous },
+        sourceEventSeqs: [previous],
+      }).seq
+    }
+    const eventAt = vi.spyOn(session, 'eventAt')
+    expect(compileContextify({ session, turn: 1, step: 1 }).messages.map(text))
+      .toEqual(['checkpoint 199'])
+    expect(eventAt.mock.calls.length).toBeLessThan(10)
+  })
+
   it('keeps the Natural default equivalent to the Harness surface', () => {
     const session = Session.create(SessionId('contextify-natural'))
     session.append('contextify/plan', createInitialContextPlan())
@@ -273,5 +292,27 @@ describe('native Contextify plan compiler', () => {
     session.append('contextify/plan', undone!)
     expect(compileContextify({ session, turn: 2, step: 1 }).messages.map(text))
       .toEqual(['[Earlier answer removed]'])
+  })
+
+  it('rejects an excerpt snapshot that is not the recorded source substring', () => {
+    const session = Session.create(SessionId('forged-excerpt'))
+    const initial = createInitialContextPlan()
+    session.append('contextify/plan', initial)
+    const originalSeq = appendAssistant(session, 1, 'Sony offer. Or JVC offer.')
+    const forged = session.append('context/compiler-snapshot', {
+      id: 'offer',
+      message: createAssistantMessage({
+        content: [{ type: 'text', text: 'invented offer' }],
+        source: { provider: 'mock', model: 'mock' },
+      }),
+    })
+    session.append('contextify/plan', nextPlan(initial, {
+      excluded: [], included: [], replacements: [{
+        nodeId: 'offer', snapshotSeq: forged.seq, originalEventSeq: originalSeq,
+        role: 'assistant', kind: 'excerpt', start: 0, end: 10, reason: 'invalid',
+      }],
+    }))
+    expect(() => compileContextify({ session, turn: 2, step: 1 }))
+      .toThrow(/does not match its source/)
   })
 })

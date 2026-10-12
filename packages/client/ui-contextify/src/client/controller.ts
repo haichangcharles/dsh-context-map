@@ -28,6 +28,7 @@ export interface ContextifyTransport {
     ref: ContextPlanRef,
     mutations: readonly ContextNodeMutation[],
     expectedGraphRevision?: string,
+    reviewedDeclinedNodeIds?: readonly string[],
   ) => Promise<ContextifyView>
   reset: (ref: ContextPlanRef) => Promise<ContextifyView>
   undo: (ref: ContextPlanRef) => Promise<ContextifyView>
@@ -36,16 +37,30 @@ export interface ContextifyTransport {
     base: ContextRecommendationBase,
     objective?: string,
     mode?: ContextRecommendationMode,
+    draftBound?: boolean,
   ) => Promise<ContextRecommendationProposal>
   cancelRecommendation: () => Promise<void>
+  presentRecommendation: (proposal: ContextRecommendationProposal) => Promise<void>
+  dismissRecommendation: (
+    proposal: ContextRecommendationProposal, declinedNodeIds?: readonly string[],
+  ) => Promise<void>
   archiveNode: (
     ref: ContextPlanRef,
     node: ContextMessageRef,
     reason: string,
     expectedGraphRevision?: string,
   ) => Promise<ContextifyView>
+  getNodeText: (node: ContextMessageRef) => Promise<string>
+  focusNodeExcerpt: (
+    ref: ContextPlanRef,
+    node: ContextMessageRef,
+    start: number,
+    end: number,
+    reason: string,
+  ) => Promise<ContextifyView>
   restoreNode: (ref: ContextPlanRef, node: ContextMessageRef) => Promise<ContextifyView>
   prepareBranchSuggestion: (suggestionId: string) => Promise<ContextBranchRelocationPreparation>
+  keepBranchSuggestion: (suggestionId: string) => Promise<void>
   forkNativeBranch: (preparation: ContextBranchRelocationPreparation) => Promise<SessionId>
   acceptBranchSuggestion: (
     suggestionId: string,
@@ -160,8 +175,10 @@ export class ContextifyController {
    * Run an isolated, review-only Context recommendation against the current revision.
    * @param mode - Manually selected bounded Fast or full-tree Deep review.
    * @param objective - Optional review objective forwarded to the isolated Agent.
+   * @param draftBound - Whether the review must remain bound to the current unsent draft.
    */
-  async recommend(mode: ContextRecommendationMode = 'fast', objective?: string): Promise<void> {
+  async recommend(mode: ContextRecommendationMode = 'fast', objective?: string,
+    draftBound = false): Promise<void> {
     if (this.snapshot.recommendation.phase === 'running') {
       throw new Error('Context recommendation is already running')
     }
@@ -179,7 +196,7 @@ export class ContextifyController {
     const request = ++this.recommendationRequest
     this.publish({ ...this.snapshot, recommendation: Object.freeze({ phase: 'running', mode }) })
     try {
-      const proposal = await this.transport.recommend(base, objective, mode)
+      const proposal = await this.transport.recommend(base, objective, mode, draftBound)
       if (request !== this.recommendationRequest) return
       const stale = this.isProposalStale(proposal)
       this.publish({
@@ -225,17 +242,43 @@ export class ContextifyController {
     this.publish({ ...this.snapshot, recommendation: Object.freeze({ phase: 'idle' }) })
   }
 
+  /** Record that this exact review was rendered in a visible Client document.
+   * @param proposal - The proposal shown to the user.
+   */
+  async presentRecommendation(proposal: ContextRecommendationProposal): Promise<void> {
+    const recommendation = this.snapshot.recommendation
+    if (recommendation.phase !== 'ready' || recommendation.proposal !== proposal) return
+    await this.transport.presentRecommendation(proposal)
+  }
+
+  /** Persist only an explicit review-sheet closure before clearing the Client proposal.
+   * @param declinedNodeIds - Items explicitly marked Keep current; an empty list means Later.
+   */
+  async dismissRecommendation(declinedNodeIds: readonly string[] = []): Promise<void> {
+    const recommendation = this.snapshot.recommendation
+    if (recommendation.phase !== 'ready' && recommendation.phase !== 'stale') {
+      throw new Error('No Context recommendation is open for review')
+    }
+    await this.transport.dismissRecommendation(recommendation.proposal, declinedNodeIds)
+    if (this.snapshot.recommendation === recommendation) this.clearRecommendation()
+  }
+
   /**
    * Replace the effective Context version in one atomic Context Plan revision.
+   * @param declinedNodeIds - Proposed items the user explicitly declined.
    */
-  async applyRecommendations(): Promise<void> {
+  async applyRecommendations(declinedNodeIds: readonly string[] = []): Promise<void> {
     const recommendation = this.snapshot.recommendation
     if (recommendation.phase === 'stale') throw new Error('Context recommendation is stale')
     if (recommendation.phase !== 'ready') throw new Error('No Context recommendation is ready')
     const graph = this.snapshot.graph
     if (graph === undefined) throw new Error('Context Map is unavailable')
-    const accepted = recommendation.proposal.selection
-    if (accepted.length === 0) return
+    const declined = new Set(declinedNodeIds)
+    if (declined.size !== declinedNodeIds.length
+      || declinedNodeIds.some(id => !recommendation.proposal.selection.some(item => item.nodeId === id))) {
+      throw new Error('Keep-current choices must belong to the current recommendation')
+    }
+    const accepted = recommendation.proposal.selection.filter(item => !declined.has(item.nodeId))
     const byId = new Map(graph.nodes.map(node => [node.id, node]))
     const mutations = accepted.map((item): ContextNodeMutation => {
       const node = byId.get(item.nodeId)
@@ -249,7 +292,7 @@ export class ContextifyController {
     })
     try {
       await this.mutate(ref => this.transport.setNodeModes(
-        ref, mutations, recommendation.proposal.base.graphRevision,
+        ref, mutations, recommendation.proposal.base.graphRevision, declinedNodeIds,
       ))
     } catch (cause) {
       this.publish({
@@ -299,6 +342,25 @@ export class ContextifyController {
     ))
   }
 
+  /** Read the exact source text so the user can select a provenance-bound span.
+   * @param node - Source message in the native Session family.
+   * @returns The source text from the Host.
+   */
+  getNodeText(node: ContextMessageRef): Promise<string> {
+    return this.transport.getNodeText(node)
+  }
+
+  /** Commit one user-selected source span as a reversible Context Plan overlay.
+   * @param node - Source message in the native Session family.
+   * @param start - Start offset of the selected span.
+   * @param end - End offset of the selected span.
+   */
+  async focusNodeExcerpt(node: ContextMessageRef, start: number, end: number): Promise<void> {
+    await this.mutate(ref => this.transport.focusNodeExcerpt(
+      ref, node, start, end, 'Focused by user',
+    ))
+  }
+
   /**
    * Accept one durable post-Turn suggestion and refresh the native family.
    * @param suggestionId - Suggestion identity exposed by the Host view.
@@ -313,7 +375,16 @@ export class ContextifyController {
   }
 
   /**
-   * Restore one placeholder overlay without changing its Include/Exclude mode.
+   * Persist one explicit Keep choice and refresh the visible suggestion.
+   * @param suggestionId - Suggestion identity exposed by the Host view.
+   */
+  async keepBranchSuggestion(suggestionId: string): Promise<void> {
+    await this.transport.keepBranchSuggestion(suggestionId)
+    await this.refresh()
+  }
+
+  /**
+   * Restore one placeholder or excerpt overlay without changing Include/Exclude.
    * @param node - Native family message whose original semantics are restored.
    */
   async restoreNode(node: ContextMessageRef): Promise<void> {

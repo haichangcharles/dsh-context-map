@@ -20,14 +20,14 @@ const suggestion = {
 
 describe('BranchSuggestionCard', () => {
   it('keeps the decision non-modal and moves only after explicit confirmation', async () => {
-    const keep = vi.fn()
+    const keep = vi.fn(async () => {})
     const move = vi.fn(async () => {})
     render(<BranchSuggestionCard suggestion={suggestion} pending={false} keep={keep} move={move} />)
     expect(screen.getByText('Move this Q&A to a new branch?')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Move to new branch' }))
     await waitFor(() => { expect(move).toHaveBeenCalledOnce() })
     fireEvent.click(screen.getByRole('button', { name: 'Keep here' }))
-    expect(keep).toHaveBeenCalledOnce()
+    await waitFor(() => { expect(keep).toHaveBeenCalledOnce() })
   })
 
   it('renders through the matching completed turn tail and declines other turns', () => {
@@ -38,12 +38,28 @@ describe('BranchSuggestionCard', () => {
     const useContextify = ((selector: (value: ContextifyControllerSnapshot) => unknown) =>
       selector(snapshot)) as SnapshotSelectorHook<ContextifyControllerSnapshot>
     const move = vi.fn(async () => {})
+    const keep = vi.fn(async () => {})
     const { rerender } = render(
-      <BranchSuggestionTail matched={suggestion.output.seq} useContextify={useContextify} moveBranchSuggestion={move} />,
+      <BranchSuggestionTail matched={suggestion.output.seq} useContextify={useContextify}
+        keepBranchSuggestion={keep} moveBranchSuggestion={move} />,
     )
     expect(screen.getByRole('complementary', { name: 'Branch suggestion' })).toBeTruthy()
 
-    rerender(<BranchSuggestionTail matched={suggestion.output.seq + 1} useContextify={useContextify} moveBranchSuggestion={move} />)
+    rerender(<BranchSuggestionTail matched={suggestion.output.seq + 1} useContextify={useContextify}
+      keepBranchSuggestion={keep} moveBranchSuggestion={move} />)
     expect(screen.queryByRole('complementary', { name: 'Branch suggestion' })).toBeNull()
+  })
+
+  it('keeps the card visible when recording Keep fails', async () => {
+    const snapshot = { pending: false, view: { branchSuggestion: suggestion } } as ContextifyControllerSnapshot
+    const useContextify = ((selector: (value: ContextifyControllerSnapshot) => unknown) =>
+      selector(snapshot)) as SnapshotSelectorHook<ContextifyControllerSnapshot>
+    const keep = vi.fn(async () => { throw new Error('Could not save choice') })
+    render(<BranchSuggestionTail matched={suggestion.output.seq} useContextify={useContextify}
+      keepBranchSuggestion={keep} moveBranchSuggestion={vi.fn(async () => {})} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Keep here' }))
+    await waitFor(() => { expect(screen.getByRole('alert').textContent).toBe('Could not save choice') })
+    expect(screen.getByRole('complementary', { name: 'Branch suggestion' })).toBeTruthy()
   })
 })
