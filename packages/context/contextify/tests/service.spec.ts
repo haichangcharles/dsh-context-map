@@ -1949,6 +1949,67 @@ describe('ContextifyService native Session family', () => {
     } finally { await ctx.fiber.dispose() }
   })
 
+  it('suggests an exact Web-source correction before Send without a model call or automatic Plan edit', async () => {
+    const { ctx, start } = await harness()
+    try {
+      const session = ctx.sessions.create(SessionId('web-explicit-correction'))
+      const { agent } = start(session, { provider: 'mock', model: 'mock' })
+      appendClosedTurn(session, 1, 'Compare two supplier reports', 'I found two reports.')
+      const addWebResult = (turn: number, url: string, text: string) => {
+        const callId = CallId(`web-correction-${String(turn)}`)
+        session.append('turn/start', { turn })
+        const call = session.append('tool/call', { turn, step: 1, callId,
+          name: 'web_fetch', arguments: JSON.stringify({ url }) })
+        const result = session.append('tool/result', { turn, step: 1,
+          message: createToolResultMessage({ callId,
+            content: [{ type: 'text', text }], isError: false }),
+        }, { surfaceOp: 'append', sourceEventSeqs: [SessionSeq(call.seq)] })
+        session.append('turn/end', { turn, reason: { kind: 'completed' } })
+        return result.seq
+      }
+      addWebResult(2, 'https://research.test/valid',
+        'VALID-WEB-REPORT mentions https://research.test/unbound only in page text')
+      const revokedSeq = addWebResult(3, 'https://research.test/revoked', 'REVOKED-WEB-REPORT')
+      let modelCalls = 0
+      ctx.llm.registerAdapter(['mock'], new class extends OffReasoningAdapter {
+        override async * stream(): AsyncIterable<StreamChunk> {
+          modelCalls += 1
+          const text = '{"exclude":[],"include":[],"archive":[]}'
+          yield { type: 'block-start', index: 0, blockType: 'text' }
+          yield { type: 'text-delta', index: 0, text }
+          yield { type: 'block-end', index: 0, block: { type: 'text', text } }
+          yield { type: 'finish', reason: { kind: 'stop' } }
+        }
+      }())
+      const view = ctx.contextify.get(agent)
+      const page = await ctx.contextify.familyPage(agent)
+      const proposal = await ctx.contextify.recommend(agent, {
+        planRevision: view.plan.revision, graphRevision: page.revision,
+        activeSessionId: session.id,
+      }, 'Ignore https://research.test/revoked. Continue comparing the reports.', 'fast', true)
+      expect(modelCalls).toBe(0)
+      expect(proposal.selection).toMatchObject([{ nodeId: `${session.id}:${String(revokedSeq)}`,
+        action: 'exclude' }])
+      expect(ctx.contextify.get(agent).plan.excluded).toHaveLength(0)
+      await ctx.contextify.setNodeModes(agent, { revision: view.plan.revision }, [
+        { node: { sessionId: session.id, seq: revokedSeq }, mode: 'exclude' },
+      ], page.revision, 'contextify-client')
+      const request = JSON.stringify(compileContextify({ session, turn: 4, step: 1 }).messages)
+      expect(request).toContain('VALID-WEB-REPORT')
+      expect(request).not.toContain('REVOKED-WEB-REPORT')
+      expect(session.snapshotEvents().some(event => event.type === 'contextify/recommendation-reviewed'
+        && event.data.uiOrigin === 'contextify-client')).toBe(true)
+      const after = ctx.contextify.get(agent)
+      const afterPage = await ctx.contextify.familyPage(agent)
+      const spoof = await ctx.contextify.recommend(agent, {
+        planRevision: after.plan.revision, graphRevision: afterPage.revision,
+        activeSessionId: session.id,
+      }, 'Ignore https://research.test/unbound.', 'fast', true)
+      expect(spoof.selection).toEqual([])
+      expect(modelCalls).toBe(1)
+    } finally { await ctx.fiber.dispose() }
+  })
+
   it('restores original semantics after an off-path placeholder is included', async () => {
     const { ctx, start } = await harness()
     const root = ctx.sessions.create(SessionId('restore-off-path-root'))

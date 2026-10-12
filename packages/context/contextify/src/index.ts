@@ -18,6 +18,7 @@ import {
   type ContextRecommendationDecision,
 } from './recommendation.ts'
 import { buildFastRecommendationInput } from './fast-recommendation.ts'
+import { explicitWebSourceExclusion } from './explicit-web-source.ts'
 import { draftRouteAdvice } from './draft-route.ts'
 import { contextActivityFromObjective } from './context-activity.ts'
 import {
@@ -266,16 +267,33 @@ function recommendationText(message: Message): string {
   }).join('\n')
 }
 
-function recommendationNodeText(inspection: ContextFamilyInspection, seq: number, message: Message,
+function sourceBoundWebCall(inspection: ContextFamilyInspection, seq: number,
   webAction?: 'web_search' | 'web_fetch'): string {
-  const content = recommendationText(message)
-  if (webAction === undefined) return content
+  if (webAction === undefined) return ''
   const result = inspection.events[seq]
   const callSeq = result?.sourceEventSeqs?.length === 1 ? result.sourceEventSeqs[0] : undefined
   const call = callSeq === undefined ? undefined : inspection.events[callSeq]
   if (result?.type !== 'tool/result' || call?.type !== 'tool/call'
-    || call.data.name !== webAction || call.data.callId !== result.data.message.source.callId) return content
-  return `${call.data.arguments}\n${content}`
+    || call.data.name !== webAction || call.data.callId !== result.data.message.source.callId) return ''
+  return call.data.arguments
+}
+
+function recommendationNodeText(inspection: ContextFamilyInspection, seq: number, message: Message,
+  webAction?: 'web_search' | 'web_fetch'): string {
+  const content = recommendationText(message)
+  const callArguments = sourceBoundWebCall(inspection, seq, webAction)
+  return callArguments.length === 0 ? content : `${callArguments}\n${content}`
+}
+
+function sourceBoundWebFetchUrl(inspection: ContextFamilyInspection, seq: number): string | null {
+  const argumentsText = sourceBoundWebCall(inspection, seq, 'web_fetch')
+  if (argumentsText.length === 0) return null
+  try {
+    const parsed: unknown = JSON.parse(argumentsText)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)
+      || !('url' in parsed) || typeof parsed.url !== 'string') return null
+    return parsed.url
+  } catch { return null }
 }
 
 /** Durable Context Plan mutations and native Session-family graph reads. */
@@ -546,6 +564,15 @@ export class ContextifyService extends TypertRemoteService {
       )
       let decision: ContextRecommendationDecision
       let fastInput: ReturnType<typeof buildFastRecommendationInput> | undefined
+      const exactWebCorrection = recommendationMode === 'fast' && draftBound
+        && objective?.trim() === goal
+        ? explicitWebSourceExclusion(goal, family.graph.nodes.flatMap((node) => {
+          if (node.sourceKind !== 'web' || node.webAction !== 'web_fetch') return []
+          const inspection = family.inspections.get(node.owner.sessionId)
+          const url = inspection === undefined ? null : sourceBoundWebFetchUrl(inspection, node.owner.seq)
+          return url === null ? [] : [{ nodeId: node.id, url, included: effective.has(node.id),
+            explicitlyIncluded: plan.included.some(item => item.nodeId === node.id) }]
+        })) : null
       if (recommendationMode === 'deep') {
         decision = await this.deepRecommendation({
           parent: agent,
@@ -561,6 +588,8 @@ export class ContextifyService extends TypertRemoteService {
           archivePrompt: effectivePrompt(
             CONTEXTIFY_DEFAULT_PROMPTS.archive, this.promptSettings().archive),
         })
+      } else if (exactWebCorrection !== null) {
+        decision = exactWebCorrection
       } else {
         let input
         try {
@@ -666,7 +695,8 @@ export class ContextifyService extends TypertRemoteService {
           archive: candidate.archive,
         })
         const generic = validateRecommendation(withoutRepeatedDeclines(decision), validation)
-        const calibrated = recommendationMode === 'fast' && contextEdits.length > 0
+        const calibrated = recommendationMode === 'fast' && exactWebCorrection === null
+          && contextEdits.length > 0
           ? calibrateContextRecommendation({
             exclude: generic.selection.filter(item => item.action === 'exclude'),
             include: generic.selection.filter(item => item.action === 'include'),

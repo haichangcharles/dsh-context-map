@@ -149,7 +149,9 @@ it('admits only source-valid worker reports through the optional assembled Web l
   const childGate = Promise.withResolvers<boolean>()
   const requests: Array<{ sessionId: string | undefined
     body: string
-    toolNames: string[] }> = []
+    toolNames: string[]
+    recommendation: boolean }> = []
+  let browserDraftReviewModelCalls = 0
   try {
     scaffold.ctx.llm.registerAdapter(['context-lineage-fixture'], new class extends LlmAdapter {
       override resolveModel(provider: string, model: string) {
@@ -159,9 +161,9 @@ it('admits only source-valid worker reports through the optional assembled Web l
 
       override async * stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
         const body = JSON.stringify(options.messages)
-        requests.push({ sessionId: options.sessionId, body,
-          toolNames: options.tools?.map(tool => tool.name) ?? [] })
         const recommendation = String(options.system).includes('Return JSON immediately without analysis')
+        requests.push({ sessionId: options.sessionId, body,
+          toolNames: options.tools?.map(tool => tool.name) ?? [], recommendation })
         if (recommendation && external !== undefined) {
           const packetOutput = process.env.WWW_TOPIOCQA_RECOMMENDATION_PACKET_OUTPUT
           if (packetOutput !== undefined) writeFileSync(packetOutput, JSON.stringify({
@@ -313,7 +315,23 @@ it('admits only source-valid worker reports through the optional assembled Web l
         nodes.map(node => node.getAttribute('aria-label')))
       throw new Error(`Revoked Web node was not visible: ${JSON.stringify(labels)}`, { cause })
     }
-    await evidence.getByRole('checkbox').uncheck()
+    if (external === undefined) {
+      await evidence.getByRole('checkbox').uncheck()
+    } else {
+      const draft = 'Ignore https://research.test/revoked. Continue A only with the current Web question.'
+      const composer = page.locator('[data-composer-input][contenteditable="true"]').last()
+      await composer.fill(draft)
+      const modelCallsBeforeReview = requests.filter(item => item.recommendation).length
+      await page.getByRole('button', { name: 'Review context for draft' }).click()
+      await map.getByText('You asked to exclude this exact Web source from the next request.')
+        .waitFor()
+      browserDraftReviewModelCalls = requests.filter(item => item.recommendation).length
+        - modelCallsBeforeReview
+      expect(browserDraftReviewModelCalls).toBe(0)
+      expect(scaffold.ctx.contextify.get(parent).plan.excluded).toHaveLength(0)
+      await map.getByRole('button', { name: 'Apply proposed context' }).click()
+      expect(await composer.textContent()).toBe(draft)
+    }
     await expect.poll(() => scaffold.ctx.contextify.get(parent).plan.excluded.map(item => item.eventSeq))
       .toContain(b.seq)
     expect(parent.session.snapshotEvents().some(event => event.type === 'contextify/node-choice'
@@ -387,7 +405,7 @@ it('admits only source-valid worker reports through the optional assembled Web l
     const output = process.env.WWW_LONG_WEB_REPLAY_OUTPUT
     if (output !== undefined) writeFileSync(output, JSON.stringify({
       version: external === undefined ? 'assembled-long-web-context-replay-v1'
-        : 'assembled-topiocqa-long-web-context-replay-v1',
+        : 'assembled-topiocqa-long-web-context-replay-v2',
       preparedLongChatTurns: 30,
       ...(external === undefined ? {} : { externalSourceConversationTurns: 31,
         graphSessionCount: (await scaffold.ctx.contextify.familyPage(parent)).sessions.length,
@@ -397,6 +415,11 @@ it('admits only source-valid worker reports through the optional assembled Web l
         event.type === 'contextify/node-choice' && event.data.uiOrigin === 'contextify-client'
         && event.data.mutations.some(item => item.nodeId === `${parent.id}:${String(b.seq)}`
           && item.mode === 'exclude')),
+      browserReviewedAgentExclude: parent.session.snapshotEvents().some(event =>
+        event.type === 'contextify/recommendation-reviewed'
+        && event.data.uiOrigin === 'contextify-client'
+        && event.data.acceptedNodeIds.includes(`${parent.id}:${String(b.seq)}`)),
+      browserDraftReviewModelCalls,
       nativeWebResults: [a.seq, b.seq],
       childRequestCount: requests.filter(item => item.sessionId === childA
         || item.sessionId === childB).length,
