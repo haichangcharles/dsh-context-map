@@ -188,6 +188,7 @@ export function apply(ctx: ClientContext): void {
           undo: () => controller.undo(),
           redo: () => controller.redo(),
           recommend: (mode, objective) => controller.recommend(mode, objective),
+          inspectPolicy: async () => valueOf(await remote.stewardProfile(sessionId)),
           cancelRecommendation: () => controller.cancelRecommendation(),
           applyRecommendations: declinedNodeIds => controller.applyRecommendations(declinedNodeIds),
           clearRecommendation: () => { controller.clearRecommendation() },

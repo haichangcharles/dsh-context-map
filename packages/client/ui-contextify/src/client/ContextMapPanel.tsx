@@ -7,7 +7,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import type {
   ContextArchiveCandidate, ContextFamilyGraphNode, ContextMessageRef, ContextNodeMutation,
-  ContextRecommendationMode, ContextRecommendationProposal, ContextRouteAdvice,
+  ContextRecommendationMode, ContextRecommendationProposal, ContextRouteAdvice, ContextStewardProfile,
 } from '@deepseek-ai/dsh-contextify/types'
 import type { WorkspaceSnapshot as WorkspaceListState } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { HostObservable, PropsStore, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
@@ -32,6 +32,7 @@ export interface ContextMapActions {
   undo: () => Promise<void>
   redo: () => Promise<void>
   recommend: (mode?: ContextRecommendationMode, objective?: string) => Promise<void>
+  inspectPolicy: () => Promise<ContextStewardProfile>
   cancelRecommendation: () => Promise<void>
   applyRecommendations: (declinedNodeIds?: readonly string[]) => Promise<void>
   clearRecommendation: () => void
@@ -113,6 +114,12 @@ export function ContextMapPanel({
   const [actionError, setActionError] = useState<string | null>(null)
   const [pendingNodeId, setPendingNodeId] = useState<string | null>(null)
   const [recommendationMenuOpen, setRecommendationMenuOpen] = useState(false)
+  const [policyOpen, setPolicyOpen] = useState(false)
+  const [policyState, setPolicyState] = useState<
+    { phase: 'idle' | 'loading' } | { phase: 'ready'; profile: ContextStewardProfile }
+    | { phase: 'error'; error: string }
+  >({ phase: 'idle' })
+  const policyRequest = useRef(0)
   const [optimisticModes, setOptimisticModes] = useState<Record<string, ContextNodeMode>>({})
   const [transientPositions, setTransientPositions] = useState<Record<string, CanvasPoint>>({})
   const [measuredSizes, setMeasuredSizes] = useState<ContextMapNodeSizes>({})
@@ -150,6 +157,21 @@ export function ContextMapPanel({
   const proposal = snapshot.recommendation.phase === 'ready' || snapshot.recommendation.phase === 'stale'
     ? snapshot.recommendation.proposal
     : undefined
+  const learnedProfile = policyState.phase === 'ready' ? policyState.profile : undefined
+  const reviewedSupport = learnedProfile === undefined ? 0
+    : learnedProfile.evidence.support + learnedProfile.destination.support
+      + learnedProfile.branch.support + learnedProfile.return.support + learnedProfile.release.support
+  const loadPolicy = (): void => {
+    const request = ++policyRequest.current
+    setPolicyState({ phase: 'loading' })
+    void mapActions.inspectPolicy().then((profile) => {
+      if (request === policyRequest.current) setPolicyState({ phase: 'ready', profile })
+    }).catch((cause: unknown) => {
+      if (request === policyRequest.current) {
+        setPolicyState({ phase: 'error', error: cause instanceof Error ? cause.message : String(cause) })
+      }
+    })
+  }
   const recommendationByNode = useMemo(() => {
     const result = new Map<string, 'include' | 'exclude' | 'archive'>()
     for (const item of proposal?.selection ?? []) result.set(item.nodeId, item.action)
@@ -358,8 +380,59 @@ export function ContextMapPanel({
             ? 'Loading context…'
             : `${String(visibleSelectedCount)} / ${String(records.length)} in context`}</p>
         </div>
-        <button type="button" className={css.iconButton} aria-label="Close Context Map" onClick={mapActions.close}>×</button>
+        <div className={css.headerActions}>
+          <button type="button" aria-label="Context preferences" aria-expanded={policyOpen}
+            onClick={() => {
+              if (policyOpen) {
+                policyRequest.current += 1
+                setPolicyOpen(false)
+              } else {
+                setPolicyOpen(true)
+                loadPolicy()
+              }
+            }}>Preferences</button>
+          <button type="button" className={css.iconButton} aria-label="Close Context Map" onClick={mapActions.close}>×</button>
+        </div>
       </header>
+      {policyOpen && <section className={css.policyPanel} aria-label="Learned Context preferences">
+        <div className={css.policyHeading}>
+          <strong>What the Agent learned</strong>
+          <div className={css.policyHeadingActions}>
+            <button type="button" aria-label="Refresh Context preferences"
+              disabled={policyState.phase === 'loading'} onClick={loadPolicy}>Refresh</button>
+            <button type="button" aria-label="Close Context preferences" onClick={() => {
+              policyRequest.current += 1
+              setPolicyOpen(false)
+            }}>×</button>
+          </div>
+        </div>
+        <p>Only explicit Context choices count. These are adjustable action patterns, not personal facts. Refresh after Apply or Undo.</p>
+        {policyState.phase === 'loading' && <p>Loading reviewed choices…</p>}
+        {policyState.phase === 'error' && <p role="alert">{policyState.error} <button type="button"
+          onClick={loadPolicy}>Retry</button></p>}
+        {policyState.phase === 'ready' && <>
+          {reviewedSupport > 0 && <ul className={css.policyStats}>{([
+            ['Include evidence', policyState.profile.evidence],
+            ['Navigate', policyState.profile.destination],
+            ['Branch', policyState.profile.branch],
+            ['Return', policyState.profile.return],
+            ['Release context', policyState.profile.release],
+          ] as const).filter(([, estimate]) => estimate.support > 0).map(([label, estimate]) => <li key={label}>
+            {`${label}: ${String(estimate.support)} effective reviews · ${String(Math.round(estimate.acceptRate * 100))}% smoothed acceptance`}
+          </li>)}</ul>}
+          {policyState.profile.rules.length === 0
+            ? <p>{reviewedSupport >= 4 ? 'No stable action tendency yet.'
+              : reviewedSupport > 0 ? 'More confirmed choices are needed to infer a tendency.'
+                : 'No confirmed Context choices yet.'}</p>
+            : <ul>{policyState.profile.rules.map((rule, index) => <li key={`${rule.action}:${rule.sourceKind ?? 'all'}:${index}`}>
+              <strong>{rule.action === 'include' && rule.sourceKind === 'web'
+                ? 'Include Web sources' : `${rule.action[0]?.toUpperCase() ?? ''}${rule.action.slice(1)} ${rule.sourceKind ?? 'context'}`}</strong>
+              <span>{rule.tendency === 'favor' ? 'Often accepted' : 'Often declined'} · {String(rule.support)} effective reviews</span>
+            </li>)}</ul>}
+          {policyState.profile.destination.support + policyState.profile.branch.support
+            + policyState.profile.return.support === 0 && <p>No confirmed route choices yet</p>}
+        </>}
+      </section>}
       <div className={css.toolbar}>
         <label className={css.searchBox}>
           <span className={css.visuallyHidden}>Search Context Map</span>

@@ -158,6 +158,12 @@ function mount(
     undo: vi.fn(async () => {}),
     redo: vi.fn(async () => {}),
     recommend: vi.fn(async () => {}),
+    inspectPolicy: vi.fn(async () => ({
+      evidence: { acceptRate: 0.5, support: 0 }, destination: { acceptRate: 0.5, support: 0 },
+      branch: { acceptRate: 0.5, support: 0 }, return: { acceptRate: 0.5, support: 0 },
+      release: { acceptRate: 0.5, support: 0 },
+      thresholds: { evidence: 0.7, destination: 0.7 }, rules: [],
+    })),
     cancelRecommendation: vi.fn(async () => {}),
     presentRecommendation: vi.fn(async () => {}),
     applyRecommendations: vi.fn(async () => {}),
@@ -196,6 +202,85 @@ function mount(
 }
 
 describe('ContextMapPanel', () => {
+  it('loads inspectable Context preferences only when requested', async () => {
+    const inspectPolicy = vi.fn(async () => ({
+      evidence: { acceptRate: 0.8, support: 8 },
+      destination: { acceptRate: 0.5, support: 0 },
+      branch: { acceptRate: 0.5, support: 0 },
+      return: { acceptRate: 0.5, support: 0 },
+      release: { acceptRate: 0.5, support: 0 },
+      thresholds: { evidence: 0.6, destination: 0.7 },
+      rules: [{ action: 'include' as const, sourceKind: 'web' as const,
+        tendency: 'favor' as const, support: 8, acceptRate: 0.8 }],
+    }))
+    mount(fixture(), { inspectPolicy })
+    expect(inspectPolicy).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Context preferences' }))
+    await waitFor(() => {
+      expect(screen.getByText('Include Web sources')).toBeTruthy()
+      expect(screen.getByText(/Include evidence: 8 effective reviews/)).toBeTruthy()
+    })
+    expect(inspectPolicy).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('No confirmed route choices yet')).toBeTruthy()
+  })
+
+  it('distinguishes mixed feedback from a cold Context preference profile', async () => {
+    const inspectPolicy = vi.fn(async () => ({
+      evidence: { acceptRate: 0.5, support: 4 },
+      destination: { acceptRate: 0.5, support: 0 },
+      branch: { acceptRate: 0.5, support: 0 },
+      return: { acceptRate: 0.5, support: 0 },
+      release: { acceptRate: 0.5, support: 0 },
+      thresholds: { evidence: 0.7, destination: 0.7 }, rules: [],
+    }))
+    mount(fixture(), { inspectPolicy })
+    fireEvent.click(screen.getByRole('button', { name: 'Context preferences' }))
+    await waitFor(() => {
+      expect(screen.getByText(/Include evidence: 4 effective reviews/)).toBeTruthy()
+      expect(screen.getByText('No stable action tendency yet.')).toBeTruthy()
+    })
+  })
+
+  it('keeps a reopened preference view from being overwritten by an older request', async () => {
+    const profile = (support: number) => ({
+      evidence: { acceptRate: 0.8, support },
+      destination: { acceptRate: 0.5, support: 0 }, branch: { acceptRate: 0.5, support: 0 },
+      return: { acceptRate: 0.5, support: 0 }, release: { acceptRate: 0.5, support: 0 },
+      thresholds: { evidence: 0.7, destination: 0.7 }, rules: [],
+    })
+    let resolveFirst!: (value: ReturnType<typeof profile>) => void
+    let resolveSecond!: (value: ReturnType<typeof profile>) => void
+    const first = new Promise<ReturnType<typeof profile>>((resolve) => { resolveFirst = resolve })
+    const second = new Promise<ReturnType<typeof profile>>((resolve) => { resolveSecond = resolve })
+    const inspectPolicy = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second)
+    mount(fixture(), { inspectPolicy })
+    fireEvent.click(screen.getByRole('button', { name: 'Context preferences' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close Context preferences' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Context preferences' }))
+    await act(async () => { resolveSecond(profile(8)) })
+    expect(screen.getByText(/Include evidence: 8 effective reviews/)).toBeTruthy()
+    await act(async () => { resolveFirst(profile(0)) })
+    expect(screen.getByText(/Include evidence: 8 effective reviews/)).toBeTruthy()
+  })
+
+  it('refreshes the read-only profile after a Context choice is corrected', async () => {
+    const estimate = (support: number) => ({ acceptRate: 0.5, support })
+    const profile = (support: number) => ({
+      evidence: estimate(support), destination: estimate(0), branch: estimate(0),
+      return: estimate(0), release: estimate(0),
+      thresholds: { evidence: 0.7, destination: 0.7 }, rules: [],
+    })
+    const inspectPolicy = vi.fn().mockResolvedValueOnce(profile(4)).mockResolvedValueOnce(profile(0))
+    const { mapActions } = mount(fixture(), { inspectPolicy })
+    fireEvent.click(screen.getByRole('button', { name: 'Context preferences' }))
+    await waitFor(() => { expect(screen.getByText(/Include evidence: 4 effective reviews/)).toBeTruthy() })
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh Context preferences' }))
+    await waitFor(() => { expect(screen.getByText('No confirmed Context choices yet.')).toBeTruthy() })
+    expect(inspectPolicy).toHaveBeenCalledTimes(2)
+    expect(mapActions.setNodeMode).not.toHaveBeenCalled()
+    expect(mapActions.undo).not.toHaveBeenCalled()
+  })
+
   it('lets users import source-bound sibling Web evidence but blocks unbound results and Archive', async () => {
     const initial = fixture()
     const activeWeb: ContextFamilyGraphNode = {

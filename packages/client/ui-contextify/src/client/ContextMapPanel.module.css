@@ -19,6 +19,36 @@
 
 .header h2 { margin: 0; font-size: 15px; line-height: 20px; }
 .header p { margin: 2px 0 0; color: var(--dsw-alias-fg-secondary); font-size: 11px; }
+.headerActions { display: flex; align-items: center; gap: 8px; }
+.headerActions > button:first-child {
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  padding: 4px 7px;
+  background: var(--dsw-alias-bg-elevated);
+  color: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.policyPanel {
+  flex: none;
+  max-height: 220px;
+  overflow: auto;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  padding: 9px 14px;
+  background: var(--dsw-alias-bg-elevated);
+  font-size: 11px;
+}
+.policyPanel p { margin: 5px 0; color: var(--dsw-alias-fg-secondary); line-height: 1.4; }
+.policyPanel ul { margin: 7px 0; padding-left: 18px; }
+.policyPanel li { margin: 5px 0; }
+.policyPanel li strong { margin-right: 6px; }
+.policyPanel li span { color: var(--dsw-alias-fg-secondary); }
+.policyStats { color: var(--dsw-alias-fg-secondary); }
+.policyHeading { display: flex; align-items: center; justify-content: space-between; }
+.policyHeadingActions { display: flex; align-items: center; gap: 6px; }
+.policyHeading button { border: 0; background: transparent; color: inherit; cursor: pointer; }
+.policyHeading button:disabled { cursor: default; opacity: 0.5; }
 
 .iconButton,
 .toolbar button,
