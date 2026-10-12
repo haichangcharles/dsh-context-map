@@ -61,6 +61,8 @@ export interface ContextPolicyEstimate {
 export interface ContextPolicyRule extends ContextPolicyEstimate {
   readonly action: ContextPolicyAction
   readonly sourceKind?: ContextPolicyObservation['sourceKind']
+  /** A repeated choice may be local to writing, planning, or brainstorming. */
+  readonly activity?: ContextPolicyObservation['activity']
   readonly tendency: 'favor' | 'avoid'
 }
 

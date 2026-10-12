@@ -424,9 +424,10 @@ export function ContextMapPanel({
             ? <p>{reviewedSupport >= 4 ? 'No stable action tendency yet.'
               : reviewedSupport > 0 ? 'More confirmed choices are needed to infer a tendency.'
                 : 'No confirmed Context choices yet.'}</p>
-            : <ul>{policyState.profile.rules.map((rule, index) => <li key={`${rule.action}:${rule.sourceKind ?? 'all'}:${index}`}>
+            : <ul>{policyState.profile.rules.map((rule, index) => <li key={`${rule.action}:${rule.sourceKind ?? 'all'}:${rule.activity ?? 'all'}:${index}`}>
               <strong>{rule.action === 'include' && rule.sourceKind === 'web'
-                ? 'Include Web sources' : `${rule.action[0]?.toUpperCase() ?? ''}${rule.action.slice(1)} ${rule.sourceKind ?? 'context'}`}</strong>
+                ? 'Include Web sources' : `${rule.action[0]?.toUpperCase() ?? ''}${rule.action.slice(1)} ${rule.sourceKind ?? 'context'}`}
+              {rule.activity === undefined ? '' : ` during ${rule.activity}`}</strong>
               <span>{rule.tendency === 'favor' ? 'Often accepted' : 'Often declined'} · {String(rule.support)} effective reviews</span>
             </li>)}</ul>}
           {policyState.profile.destination.support + policyState.profile.branch.support

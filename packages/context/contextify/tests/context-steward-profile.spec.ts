@@ -95,6 +95,68 @@ describe('Context Steward policy memory', () => {
     expect(deep.branch).toEqual({ acceptRate: 0.2, support: 6 })
   })
 
+  it('summarizes opposite task-specific branch preferences without inventing a global rule', () => {
+    const observations: ContextPolicyObservation[] = [
+      ...Array.from({ length: 6 }, (_, at) => ({ action: 'branch' as const,
+        choice: 'accept' as const, origin: 'explicit-review' as const,
+        activity: 'writing' as const, branchDepth: 1, at })),
+      ...Array.from({ length: 6 }, (_, index) => ({ action: 'branch' as const,
+        choice: 'reject' as const, origin: 'explicit-review' as const,
+        activity: 'planning' as const, branchDepth: 1, at: index + 6 })),
+    ]
+    const profile = deriveContextStewardProfile(observations, { activity: 'writing', branchDepth: 1 })
+    expect(profile.rules).toContainEqual({ action: 'branch', activity: 'writing',
+      tendency: 'favor', support: 6, acceptRate: 0.8 })
+    expect(profile.rules).toContainEqual({ action: 'branch', activity: 'planning',
+      tendency: 'avoid', support: 6, acceptRate: 0.2 })
+    expect(profile.rules.some(rule => rule.action === 'branch' && rule.activity === undefined)).toBe(false)
+  })
+
+  it('retains a source-by-activity exception only when broader summaries hide it', () => {
+    const observations: ContextPolicyObservation[] = [
+      ...(['web', 'chat'] as const).flatMap(sourceKind =>
+        (['writing', 'planning'] as const).flatMap(activity =>
+          Array.from({ length: 4 }, (_, index) => ({ action: 'include' as const,
+            choice: (sourceKind === 'web') === (activity === 'writing')
+              ? 'accept' as const : 'reject' as const,
+            origin: 'explicit-review' as const, sourceKind, activity,
+            branchDepth: 1, at: index + (sourceKind === 'web' ? 0 : 8)
+              + (activity === 'writing' ? 0 : 4) })))),
+    ]
+    const rules = deriveContextStewardProfile(observations, { branchDepth: 1 }).rules
+    expect(rules).toContainEqual({ action: 'include', sourceKind: 'web', activity: 'writing',
+      tendency: 'favor', support: 4, acceptRate: 0.75 })
+    expect(rules).toContainEqual({ action: 'include', sourceKind: 'web', activity: 'planning',
+      tendency: 'avoid', support: 4, acceptRate: 0.25 })
+    expect(rules.every(rule => rule.sourceKind !== undefined && rule.activity !== undefined)).toBe(true)
+  })
+
+  it('does not duplicate a global tendency as a task-specific rule', () => {
+    const rules = deriveContextStewardProfile(history('accept'), { activity: 'writing', branchDepth: 1 }).rules
+    expect(rules).toContainEqual({ action: 'include', tendency: 'favor', support: 8, acceptRate: 10 / 12 })
+    expect(rules).toHaveLength(1)
+  })
+
+  it('keeps a narrow exception even when it agrees with the global trend', () => {
+    const observations: ContextPolicyObservation[] = [
+      ...Array.from({ length: 24 }, (_, at) => ({ action: 'include' as const,
+        choice: 'accept' as const, origin: 'explicit-review' as const,
+        sourceKind: 'chat' as const, activity: 'writing' as const, branchDepth: 1, at })),
+      ...Array.from({ length: 12 }, (_, index) => ({ action: 'include' as const,
+        choice: 'reject' as const, origin: 'explicit-review' as const,
+        sourceKind: 'web' as const, activity: 'planning' as const, branchDepth: 1, at: index + 24 })),
+      ...Array.from({ length: 4 }, (_, index) => ({ action: 'include' as const,
+        choice: 'accept' as const, origin: 'explicit-review' as const,
+        sourceKind: 'web' as const, activity: 'writing' as const, branchDepth: 1, at: index + 36 })),
+    ]
+    const rules = deriveContextStewardProfile(observations, { branchDepth: 1 }).rules
+    expect(rules).toContainEqual(expect.objectContaining({ action: 'include', tendency: 'favor' }))
+    expect(rules).toContainEqual(expect.objectContaining({ action: 'include', sourceKind: 'web',
+      tendency: 'avoid' }))
+    expect(rules).toContainEqual({ action: 'include', sourceKind: 'web', activity: 'writing',
+      tendency: 'favor', support: 4, acceptRate: 0.75 })
+  })
+
   it('backs off when a Context cell contains many low-weight items from one review', () => {
     const observations: ContextPolicyObservation[] = [
       ...Array.from({ length: 8 }, (_, at) => ({ action: 'include' as const,

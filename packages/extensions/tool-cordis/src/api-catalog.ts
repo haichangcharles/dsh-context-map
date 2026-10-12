@@ -4193,7 +4193,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContextPolicyRule',
-    declaration: 'export interface ContextPolicyRule extends ContextPolicyEstimate {\n    readonly action: ContextPolicyAction;\n    readonly sourceKind?: ContextPolicyObservation[\'sourceKind\'];\n    readonly tendency: \'favor\' | \'avoid\';\n}',
+    declaration: 'export interface ContextPolicyRule extends ContextPolicyEstimate {\n    readonly action: ContextPolicyAction;\n    readonly sourceKind?: ContextPolicyObservation[\'sourceKind\'];\n    readonly activity?: ContextPolicyObservation[\'activity\'];\n    readonly tendency: \'favor\' | \'avoid\';\n}',
   },
   {
     name: 'ContextRecommendationBase',

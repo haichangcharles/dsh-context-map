@@ -10,6 +10,8 @@ import { contextActivityFromObjective } from './context-activity.ts'
 const ACTIONS: readonly ContextPolicyAction[] = ['include', 'navigate', 'branch', 'return', 'release']
 const SOURCE_KINDS: readonly NonNullable<ContextPolicyObservation['sourceKind']>[]
   = ['chat', 'web', 'worker']
+const ACTIVITIES: readonly NonNullable<ContextPolicyObservation['activity']>[]
+  = ['planning', 'writing', 'brainstorming']
 
 function compactRules(observations: readonly ContextPolicyObservation[]): readonly ContextPolicyRule[] {
   const rules: ContextPolicyRule[] = []
@@ -17,18 +19,40 @@ function compactRules(observations: readonly ContextPolicyObservation[]): readon
     const recent = observations.filter(item => item.action === action && !item.undone
       && Number.isFinite(item.at) && (item.weight ?? 1) > 0)
       .sort((a, b) => b.at - a.at).slice(0, 40)
-    for (const sourceKind of [undefined, ...SOURCE_KINDS]) {
-      const matching = sourceKind === undefined ? recent
-        : recent.filter(item => item.sourceKind === sourceKind)
+    const cells: readonly { readonly sourceKind?: ContextPolicyObservation['sourceKind']
+      readonly activity?: ContextPolicyObservation['activity']
+      readonly matching: readonly ContextPolicyObservation[] }[] = [
+      { matching: recent },
+      ...SOURCE_KINDS.map(sourceKind => ({ sourceKind,
+        matching: recent.filter(item => item.sourceKind === sourceKind) })),
+      ...ACTIVITIES.map(activity => ({ activity,
+        matching: recent.filter(item => item.activity === activity) })),
+      ...SOURCE_KINDS.flatMap(sourceKind => ACTIVITIES.map(activity => ({ sourceKind, activity,
+        matching: recent.filter(item => item.sourceKind === sourceKind && item.activity === activity) }))),
+    ]
+    for (const cell of cells) {
+      const { matching } = cell
       const support = matching.reduce((sum, item) => sum + (item.weight ?? 1), 0)
       if (support < 4) continue
       const accepted = matching.reduce((sum, item) => sum
         + (item.choice === 'accept' ? item.weight ?? 1 : 0), 0)
       const acceptRate = (2 + accepted) / (4 + support)
       if (acceptRate > 0.35 && acceptRate < 0.65) continue
+      const tendency = acceptRate >= 0.65 ? 'favor' : 'avoid'
+      // A contextual rule is useful only when it adds an exception to a
+      // broader rule, or when the broader evidence is too mixed to summarize.
+      const parents = rules.filter(rule => rule.action === action
+        && (rule.sourceKind === undefined || rule.sourceKind === cell.sourceKind)
+        && (rule.activity === undefined || rule.activity === cell.activity))
+      const parentSpecificity = Math.max(-1, ...parents.map(rule =>
+        Number(rule.sourceKind !== undefined) + Number(rule.activity !== undefined)))
+      const nearestParents = parents.filter(rule => Number(rule.sourceKind !== undefined)
+        + Number(rule.activity !== undefined) === parentSpecificity)
+      if (nearestParents.length > 0 && nearestParents.every(rule => rule.tendency === tendency)) continue
       rules.push(Object.freeze({ action,
-        ...(sourceKind === undefined ? {} : { sourceKind }),
-        tendency: acceptRate >= 0.65 ? 'favor' : 'avoid', support, acceptRate }))
+        ...(cell.sourceKind === undefined ? {} : { sourceKind: cell.sourceKind }),
+        ...(cell.activity === undefined ? {} : { activity: cell.activity }),
+        tendency, support, acceptRate }))
     }
   }
   return Object.freeze(rules)
