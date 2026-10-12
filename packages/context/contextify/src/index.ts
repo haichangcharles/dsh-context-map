@@ -18,7 +18,7 @@ import {
   type ContextRecommendationDecision,
 } from './recommendation.ts'
 import { buildFastRecommendationInput } from './fast-recommendation.ts'
-import { explicitWebSourceExclusion } from './explicit-web-source.ts'
+import { explicitWebSourceExclusion, explicitWebSourceInclusion } from './explicit-web-source.ts'
 import { draftRouteAdvice } from './draft-route.ts'
 import { contextActivityFromObjective } from './context-activity.ts'
 import {
@@ -564,15 +564,20 @@ export class ContextifyService extends TypertRemoteService {
       )
       let decision: ContextRecommendationDecision
       let fastInput: ReturnType<typeof buildFastRecommendationInput> | undefined
-      const exactWebCorrection = recommendationMode === 'fast' && draftBound
+      const exactWebSources = recommendationMode === 'fast' && draftBound
         && objective?.trim() === goal
-        ? explicitWebSourceExclusion(goal, family.graph.nodes.flatMap((node) => {
+        ? family.graph.nodes.flatMap((node) => {
           if (node.sourceKind !== 'web' || node.webAction !== 'web_fetch') return []
           const inspection = family.inspections.get(node.owner.sessionId)
           const url = inspection === undefined ? null : sourceBoundWebFetchUrl(inspection, node.owner.seq)
           return url === null ? [] : [{ nodeId: node.id, url, included: effective.has(node.id),
-            explicitlyIncluded: plan.included.some(item => item.nodeId === node.id) }]
-        })) : null
+            explicitlyIncluded: plan.included.some(item => item.nodeId === node.id),
+            explicitlyExcluded: plan.excluded.some(item => item.nodeId === node.id),
+            reviewableExcluded: reviewableExcludedNodeIds.includes(node.id) }]
+        }) : null
+      const exactWebSelection = exactWebSources === null ? null
+        : explicitWebSourceExclusion(goal, exactWebSources)
+          ?? explicitWebSourceInclusion(goal, exactWebSources)
       if (recommendationMode === 'deep') {
         decision = await this.deepRecommendation({
           parent: agent,
@@ -588,8 +593,8 @@ export class ContextifyService extends TypertRemoteService {
           archivePrompt: effectivePrompt(
             CONTEXTIFY_DEFAULT_PROMPTS.archive, this.promptSettings().archive),
         })
-      } else if (exactWebCorrection !== null) {
-        decision = exactWebCorrection
+      } else if (exactWebSelection !== null) {
+        decision = exactWebSelection
       } else {
         let input
         try {
@@ -695,7 +700,7 @@ export class ContextifyService extends TypertRemoteService {
           archive: candidate.archive,
         })
         const generic = validateRecommendation(withoutRepeatedDeclines(decision), validation)
-        const calibrated = recommendationMode === 'fast' && exactWebCorrection === null
+        const calibrated = recommendationMode === 'fast' && exactWebSelection === null
           && contextEdits.length > 0
           ? calibrateContextRecommendation({
             exclude: generic.selection.filter(item => item.action === 'exclude'),

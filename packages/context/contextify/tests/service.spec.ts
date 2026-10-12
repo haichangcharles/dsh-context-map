@@ -1999,6 +1999,20 @@ describe('ContextifyService native Session family', () => {
       expect(request).not.toContain('REVOKED-WEB-REPORT')
       expect(session.snapshotEvents().some(event => event.type === 'contextify/recommendation-reviewed'
         && event.data.uiOrigin === 'contextify-client')).toBe(true)
+      const excluded = ctx.contextify.get(agent)
+      const excludedPage = await ctx.contextify.familyPage(agent)
+      const restore = await ctx.contextify.recommend(agent, {
+        planRevision: excluded.plan.revision, graphRevision: excludedPage.revision,
+        activeSessionId: session.id,
+      }, 'Use https://research.test/revoked again for this answer.', 'fast', true)
+      expect(modelCalls).toBe(0)
+      expect(restore.selection).toMatchObject([{ nodeId: `${session.id}:${String(revokedSeq)}`,
+        action: 'include' }])
+      await ctx.contextify.setNodeModes(agent, { revision: excluded.plan.revision }, [
+        { node: { sessionId: session.id, seq: revokedSeq }, mode: 'natural' },
+      ], excludedPage.revision, 'contextify-client')
+      expect(JSON.stringify(compileContextify({ session, turn: 4, step: 1 }).messages))
+        .toContain('REVOKED-WEB-REPORT')
       const after = ctx.contextify.get(agent)
       const afterPage = await ctx.contextify.familyPage(agent)
       const spoof = await ctx.contextify.recommend(agent, {
