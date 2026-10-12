@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import SessionStore, { SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { contextPolicyObservationsFromFamily, deriveContextStewardProfile } from '../src/context-steward-profile.ts'
 import { createInitialContextPlan, nextPlan, redoPlan, undoPlan } from '../src/plan.ts'
 import type { ContextFamilyGraph, ContextFamilyInspection } from '../src/types.ts'
@@ -138,6 +139,78 @@ describe('Context Steward event-derived preferences', () => {
           inheritedEventCount: 0 }]]))
       expect(observations).toMatchObject([{ action: 'navigate', choice: 'accept',
         objective: 'Return to the literature review', targetSessionId: destination }])
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('projects explicit route choices into activity-local policy cells', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    try {
+      const session = ctx.sessions.create(SessionId('steward-activity-context'))
+      const destination = SessionId('steward-activity-destination')
+      for (let index = 0; index < 8; index += 1) {
+        session.append('contextify/route-choice', {
+          routeKey: `write-${String(index)}`, action: 'navigate', choice: 'accept',
+          base: { planRevision: 1, graphRevision: 'g', activeSessionId: session.id },
+          objective: 'Continue writing the paper introduction', targetSessionId: destination,
+          uiOrigin: 'contextify-client',
+        })
+        session.append('contextify/route-choice', {
+          routeKey: `plan-${String(index)}`, action: 'navigate', choice: 'reject',
+          base: { planRevision: 1, graphRevision: 'g', activeSessionId: session.id },
+          objective: 'Plan the website launch', targetSessionId: destination,
+          uiOrigin: 'contextify-client',
+        })
+      }
+      const graph: ContextFamilyGraph = {
+        rootSessionId: session.id, activeSessionId: session.id,
+        sessions: [{ id: session.id, seedLength: 0, depth: 0, tipNodeId: null }],
+        nodes: [], edges: [],
+      }
+      const observations = contextPolicyObservationsFromFamily(graph,
+        new Map([[session.id, { meta: session.header, events: session.snapshotEvents(),
+          inheritedEventCount: 0 }]]))
+      expect(observations.map(item => item.activity)).toEqual(
+        Array.from({ length: 8 }).flatMap(() => ['writing', 'planning']))
+      const writing = deriveContextStewardProfile(observations, { activity: 'writing', branchDepth: 0 })
+      const planning = deriveContextStewardProfile(observations, { activity: 'planning', branchDepth: 0 })
+      expect(writing.destination).toEqual({ acceptRate: 10 / 12, support: 8 })
+      expect(planning.destination).toEqual({ acceptRate: 2 / 12, support: 8 })
+      expect(writing.thresholds.destination).toBeLessThan(planning.thresholds.destination)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('uses the reviewed turn rather than the latest draft for branch-granularity memory', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    try {
+      const session = ctx.sessions.create(SessionId('steward-branch-activity'))
+      const reviewedInputSeq = session.append('user/message', createUserMessage({
+        content: [{ type: 'text', text: 'Brainstorm alternate approaches' }],
+        source: { kind: 'user' },
+      }), { surfaceOp: 'append' })
+      session.append('user/message', createUserMessage({
+        content: [{ type: 'text', text: 'Write the introduction' }],
+        source: { kind: 'user' },
+      }), { surfaceOp: 'append' })
+      session.append('contextify/branch-choice', {
+        suggestionId: 'reviewed-turn', choice: 'keep', turnEndSeq: reviewedInputSeq.seq,
+        uiOrigin: 'contextify-client',
+      })
+      const graph: ContextFamilyGraph = {
+        rootSessionId: session.id, activeSessionId: session.id,
+        sessions: [{ id: session.id, seedLength: 0, depth: 0, tipNodeId: null }],
+        nodes: [], edges: [],
+      }
+      const observations = contextPolicyObservationsFromFamily(graph,
+        new Map([[session.id, { meta: session.header, events: session.snapshotEvents(),
+          inheritedEventCount: 0 }]]))
+      expect(observations).toMatchObject([{ action: 'branch', choice: 'reject',
+        activity: 'brainstorming' }])
     } finally {
       await ctx.fiber.dispose()
     }

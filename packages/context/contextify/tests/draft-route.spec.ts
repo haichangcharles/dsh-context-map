@@ -62,4 +62,23 @@ describe('draft-bound native route advice', () => {
     expect(draftRouteAdvice({ graph, contents: {}, objective: 'New topic: website launch',
       base, profile: conservative })).toBeUndefined()
   })
+
+  it('uses the reviewed activity when deciding whether to offer a new Branch', () => {
+    const observations = [
+      ...Array.from({ length: 8 }, (_, at) => ({
+        action: 'branch' as const, choice: 'reject' as const,
+        origin: 'explicit-review' as const, activity: 'planning' as const, branchDepth: 1, at,
+      })),
+      ...Array.from({ length: 8 }, (_, index) => ({
+        action: 'branch' as const, choice: 'accept' as const,
+        origin: 'explicit-review' as const, activity: 'writing' as const, branchDepth: 1, at: index + 8,
+      })),
+    ]
+    const planning = deriveContextStewardProfile(observations, { activity: 'planning', branchDepth: 1 })
+    const writing = deriveContextStewardProfile(observations, { activity: 'writing', branchDepth: 1 })
+    expect(draftRouteAdvice({ graph, contents: {}, objective: 'New topic: plan a website launch',
+      base, profile: planning })).toBeUndefined()
+    expect(draftRouteAdvice({ graph, contents: {}, objective: 'New topic: write a cookbook about desserts',
+      base, profile: writing })).toMatchObject({ action: 'branch' })
+  })
 })

@@ -19,6 +19,7 @@ import {
 } from './recommendation.ts'
 import { buildFastRecommendationInput } from './fast-recommendation.ts'
 import { draftRouteAdvice } from './draft-route.ts'
+import { contextActivityFromObjective } from './context-activity.ts'
 import {
   contextPolicyObservationsFromFamily,
   deriveContextStewardProfile,
@@ -91,6 +92,7 @@ import {
 export * from './types.ts'
 export * from './settings.ts'
 export { contextPolicyObservationsFromFamily, deriveContextStewardProfile } from './context-steward-profile.ts'
+export { contextActivityFromObjective } from './context-activity.ts'
 export {
   childMessageAdmissible,
   guardDelegatedToolCalls,
@@ -455,7 +457,12 @@ export class ContextifyService extends TypertRemoteService {
     const { observations } = await this.loadProfilePolicyEvidence(family)
     const branchDepth = family.graph.sessions.find(session => session.id === agent.id)?.depth
     if (branchDepth === undefined) throw new Error('the active Session is missing from its family graph')
-    return deriveContextStewardProfile(observations, { branchDepth })
+    const latest = agent.session.snapshotEvents().findLast(event =>
+      event.type === 'user/message' && event.data.source.kind === 'user')
+    const activity = latest?.type === 'user/message'
+      ? contextActivityFromObjective(recommendationText(latest.data)) : undefined
+    return deriveContextStewardProfile(observations, { branchDepth,
+      ...(activity === undefined ? {} : { activity }) })
   }
 
   /**
@@ -669,12 +676,14 @@ export class ContextifyService extends TypertRemoteService {
           ? generic
           : validateRecommendation(withoutRepeatedDeclines(calibrated), validation)
         const branchDepth = family.graph.sessions.find(session => session.id === agent.id)?.depth
+        const activity = contextActivityFromObjective(goal)
         const route = recommendationMode === 'fast' && draftBound && objective?.trim() === goal
           && branchDepth !== undefined
           ? draftRouteAdvice({
             graph: family.graph, contents, objective: goal, base,
             profile: deriveContextStewardProfile(
-              profileEvidence?.observations ?? [], { branchDepth },
+              profileEvidence?.observations ?? [], { branchDepth,
+                ...(activity === undefined ? {} : { activity }) },
             ),
           }) : undefined
         const proposal: ContextRecommendationProposal = route === undefined

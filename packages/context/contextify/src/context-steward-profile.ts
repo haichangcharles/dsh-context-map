@@ -5,6 +5,7 @@ import type {
   ContextPolicyObservation, ContextPolicyRule, ContextStewardProfile,
 } from './types.ts'
 import { contextPlanFeedbackStates } from './plan.ts'
+import { contextActivityFromObjective } from './context-activity.ts'
 
 const ACTIONS: readonly ContextPolicyAction[] = ['include', 'navigate', 'branch', 'return', 'release']
 const SOURCE_KINDS: readonly NonNullable<ContextPolicyObservation['sourceKind']>[]
@@ -78,6 +79,10 @@ export function contextPolicyObservationsFromFamily(
     const owned = inspection.events.slice(inspection.inheritedEventCount)
     const { stateByPlanRevision, undoneStates } = contextPlanFeedbackStates(owned)
     for (const [index, event] of owned.entries()) {
+      const objective = event.type === 'contextify/recommendation-reviewed'
+        || event.type === 'contextify/route-choice'
+        ? event.data.objective : undefined
+      const activity = objective === undefined ? undefined : contextActivityFromObjective(objective)
       if (event.type === 'contextify/recommendation-reviewed'
         && event.data.uiOrigin === 'contextify-client') {
         const selection = event.data.selection
@@ -100,6 +105,7 @@ export function contextPolicyObservationsFromFamily(
               action: item.action === 'include' ? 'include' : 'release',
               choice: accepted.has(item.nodeId) ? 'accept' : 'reject',
               origin: 'explicit-review', branchDepth, at: event.time,
+              ...(activity === undefined ? {} : { activity }),
               ...(event.data.objective?.trim() ? { objective: event.data.objective } : {}),
               targetNodeId: item.nodeId, displayedIndex,
               ...(target === undefined ? {} : {
@@ -133,16 +139,26 @@ export function contextPolicyObservationsFromFamily(
             ...(changedState !== undefined && undoneStates.has(changedState) ? { undone: true } : {}) }) })
       } else if (event.type === 'contextify/branch-choice'
         && event.data.uiOrigin === 'contextify-client') {
+        // The reviewed suggestion points to a completed native Turn. Read the
+        // authored request from that Turn, never a later draft or sibling.
+        const turnInput = inspection.events.findLast(candidate =>
+          candidate.seq <= event.data.turnEndSeq
+          && candidate.type === 'user/message' && candidate.data.source.kind === 'user')
+        const turnActivity = turnInput?.type === 'user/message'
+          ? contextActivityFromObjective(turnInput.data.content.flatMap(block =>
+            block.type === 'text' ? [block.text] : []).join('\n')) : undefined
         observed.push({ sessionId: inspection.meta.id, seq: event.seq,
           observation: Object.freeze({ action: 'branch',
             choice: event.data.choice === 'move' ? 'accept' : 'reject',
-            origin: 'explicit-review', branchDepth, at: event.time, weight: 1 }) })
+            origin: 'explicit-review', branchDepth, at: event.time, weight: 1,
+            ...(turnActivity === undefined ? {} : { activity: turnActivity }) }) })
       } else if (event.type === 'contextify/route-choice'
         && event.data.uiOrigin === 'contextify-client') {
         observed.push({ sessionId: inspection.meta.id, seq: event.seq,
           observation: Object.freeze({ action: event.data.action,
             choice: event.data.choice, origin: 'explicit-review',
             branchDepth, at: event.time, weight: 1,
+            ...(activity === undefined ? {} : { activity }),
             ...(event.data.objective?.trim() ? { objective: event.data.objective } : {}),
             ...(event.data.targetSessionId === undefined ? {} : {
               targetSessionId: event.data.targetSessionId,

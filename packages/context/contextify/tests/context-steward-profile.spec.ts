@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { planContextRoute, type ScoredContextRouteCandidate } from '../src/context-route-policy.ts'
 import { deriveContextStewardProfile } from '../src/context-steward-profile.ts'
+import { contextActivityFromObjective } from '../src/context-activity.ts'
 import type { ContextPolicyObservation } from '../src/types.ts'
 
 const candidate: ScoredContextRouteCandidate = {
@@ -18,6 +19,15 @@ function history(choice: 'accept' | 'reject'): ContextPolicyObservation[] {
 }
 
 describe('Context Steward policy memory', () => {
+  it('only recognizes a task mode when the objective explicitly starts with it', () => {
+    expect(contextActivityFromObjective('Continue writing the paper introduction')).toBe('writing')
+    expect(contextActivityFromObjective('规划下个月的网站发布')).toBe('planning')
+    expect(contextActivityFromObjective('Brainstorm three alternatives')).toBe('brainstorming')
+    expect(contextActivityFromObjective('New topic: write the introduction')).toBe('writing')
+    expect(contextActivityFromObjective('Compare the two Web sources before writing')).toBeUndefined()
+    expect(contextActivityFromObjective('This source mentions a writing project')).toBeUndefined()
+  })
+
   it('backs off to the generic threshold for a cold user', () => {
     const profile = deriveContextStewardProfile([], { activity: 'writing', branchDepth: 1 })
     expect(profile.evidence).toEqual({ acceptRate: 0.5, support: 0 })
