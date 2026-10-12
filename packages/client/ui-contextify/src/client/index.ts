@@ -189,6 +189,13 @@ export function apply(ctx: ClientContext): void {
           redo: () => controller.redo(),
           recommend: (mode, objective) => controller.recommend(mode, objective),
           inspectPolicy: async () => valueOf(await remote.stewardProfile(sessionId)),
+          setWorkState: async (targetSessionId, state) => {
+            const revision = controller.getSnapshot().graphRevision
+            if (revision === undefined) throw new Error('The Context Map is not ready')
+            valueOf(await remote.setWorkState(sessionId, targetSessionId, state,
+              revision, 'contextify-client'))
+            await controller.refresh()
+          },
           cancelRecommendation: () => controller.cancelRecommendation(),
           applyRecommendations: declinedNodeIds => controller.applyRecommendations(declinedNodeIds),
           clearRecommendation: () => { controller.clearRecommendation() },

@@ -48,6 +48,16 @@ describe('context route policy', () => {
     expect(planContextRoute({ ...base, intent: 'unknown', candidates: [] }).action).toBe('continue')
   })
 
+  it('keeps completed branches available as evidence but not casual new-task destinations', () => {
+    const completed = { ...prior, workState: 'completed' as const }
+    expect(planContextRoute({ ...base, intent: 'new-task', candidates: [completed] }).action)
+      .toBe('branch')
+    expect(planContextRoute({ ...base, intent: 'resume', candidates: [completed] }).action)
+      .toBe('navigate')
+    expect(planContextRoute({ ...base, intent: 'reference', candidates: [completed] }).action)
+      .toBe('include')
+  })
+
   it('does not silently navigate when candidate destinations are tied', () => {
     expect(planContextRoute({ ...base, intent: 'resume', candidates: [prior, {
       ...prior, sessionId: SessionId('review'), destinationScore: 0.8,

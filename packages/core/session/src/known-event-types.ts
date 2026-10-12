@@ -41,6 +41,7 @@ export const KNOWN_SESSION_EVENT_TYPES: ReadonlySet<string> = new Set([
   'contextify/delegation-slice',
   'contextify/excerpt-choice',
   'contextify/manual-branch',
+  'contextify/work-state',
   'contextify/node-choice',
   'contextify/plan',
   'contextify/recommendation-dismissed',

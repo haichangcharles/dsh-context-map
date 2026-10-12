@@ -244,6 +244,27 @@ function canonicalSessionParents(
   return parents
 }
 
+/** Fold only owned lifecycle events; inherited copies are not new choices. */
+function workStates(
+  inspections: readonly ContextFamilyInspection[],
+  sessionIds: ReadonlySet<SessionId>,
+): ReadonlyMap<SessionId, {
+  readonly state: NonNullable<ContextFamilySession['workState']>
+  readonly at: number
+  readonly targetEventSeq?: number
+}> {
+  const choices = inspections.flatMap(inspection => inspection.events
+    .slice(inspection.inheritedEventCount)
+    .flatMap(event => event.type === 'contextify/work-state'
+      && event.data.uiOrigin === 'contextify-client'
+      && sessionIds.has(event.data.targetSessionId)
+      ? [{ target: event.data.targetSessionId, state: event.data.state,
+        at: event.time, owner: inspection.meta.id, seq: event.seq,
+        ...(event.data.targetEventSeq === undefined ? {} : { targetEventSeq: event.data.targetEventSeq }) }] : []))
+    .sort((a, b) => a.at - b.at || a.owner.localeCompare(b.owner) || a.seq - b.seq)
+  return new Map(choices.map(choice => [choice.target, choice]))
+}
+
 /**
  * Project one active Session's connected native fork family.
  * @param input - Active identity and immutable Session inspections.
@@ -260,6 +281,7 @@ export function projectSessionFamily(input: {
   const ownerCache = new Map<SessionId, Map<number, ContextMessageRef>>()
   const canonicalParents = canonicalSessionParents(input.sessions, byId, ownerCache)
   const ordered = orderedFamily(root, input.sessions, canonicalParents)
+  const explicitWorkStates = workStates(input.sessions, new Set(ordered.map(item => item.inspection.meta.id)))
   const nodes = new Map<string, MutableNode>()
   const edges = new Map<string, MutableEdge>()
   const sessions: ContextFamilySession[] = []
@@ -304,12 +326,22 @@ export function projectSessionFamily(input: {
       path.push(id)
     }
     const parentSessionId = canonicalParents.get(inspection.meta.id)
+    const explicitState = explicitWorkStates.get(inspection.meta.id)
+    const laterUserTurn = explicitState === undefined ? false : inspection.events
+      .slice(inspection.inheritedEventCount).some(event => event.type === 'user/message'
+        && event.data.source.kind === 'user'
+        && (explicitState.targetEventSeq === undefined
+          ? event.time > explicitState.at : event.seq > explicitState.targetEventSeq))
+    const workState = laterUserTurn ? 'open' : explicitState !== undefined
+      ? explicitState.state : inspection.meta.id === input.activeSessionId ? 'open' : 'parked'
     sessions.push(Object.freeze({
       id: inspection.meta.id,
       ...(parentSessionId === undefined ? {} : { parentSessionId }),
       seedLength: inspection.inheritedEventCount,
       depth,
       tipNodeId: path.at(-1) ?? null,
+      workState,
+      workStateSource: explicitState !== undefined && !laterUserTurn ? 'explicit' : 'derived',
     }))
   }
 

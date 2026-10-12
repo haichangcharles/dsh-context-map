@@ -24,6 +24,8 @@ kind: "package-reference"
 
 Family projector 从原生 root Session 遍历全部原生后代；标记为 `origin: subagent` 的 Session 属于执行细节而不是聊天分支，因此不会进入 Map。它按最早拥有消息的 Session 对复制前缀去重。它投影真实 user input、原生 `web_fetch`／`web_search` 结果、worker 回报，以及成功 `turn/end` 后最后一条含文本或图片的 assistant message。节点带有 `chat`、`web` 或 `worker` 来源类型；只有成功、纯文本且明确引用匹配工具调用的 Web 结果才保留原生 `web_fetch` 或 `web_search` 动作，以此标记可跨分支导入。Turn 运行期间 assistant 文本不会进入图；更早的 ReAct step、中间提问、失败或中断时的部分输出、纯 reasoning assistant event、tool call、非 Web tool result、context injection 和其他 runtime event 也都会被排除。聊天节点会解析到所在 completed `turn/end`，Branch 因而使用 Harness 原生 Session fork 接受的边界；证据节点不是分支支点。
 
+每个投影后的 Session 还有任务工作状态。Active 分支默认 `open`，inactive 分支默认 `parked`；只有经用户界面确认的 `contextify/work-state` 事件才能将其标为 `completed`。之后该分支上的新一轮用户消息会重新打开它。状态由仅追加的原生事件推导，并受到 family graph 修订号保护；它不会改变 Context Plan 或下一次编译的模型请求。路由器不会为一般新任务推荐已完成分支作为目的地，但允许明确 Resume 和将其证据 Include。
+
 持久计划包含三种选择模式：
 
 - **Natural**：消息属于当前 Session 的继承或本地历史时，保持默认输入。

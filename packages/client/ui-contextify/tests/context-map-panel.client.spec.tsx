@@ -164,6 +164,7 @@ function mount(
       release: { acceptRate: 0.5, support: 0 },
       thresholds: { evidence: 0.7, destination: 0.7 }, rules: [],
     })),
+    setWorkState: vi.fn(async () => {}),
     cancelRecommendation: vi.fn(async () => {}),
     presentRecommendation: vi.fn(async () => {}),
     applyRecommendations: vi.fn(async () => {}),
@@ -202,6 +203,21 @@ function mount(
 }
 
 describe('ContextMapPanel', () => {
+  it('exposes separate branch lifecycle actions without changing node selection', async () => {
+    const setWorkState = vi.fn(async () => {})
+    const { publishSnapshot } = mount(fixture(), { setWorkState })
+    const contextCount = screen.getByText(/in context/).textContent
+    fireEvent.click(screen.getByText('Branches (2) · task lifecycle'))
+    fireEvent.click(screen.getByRole('button', { name: 'Complete branch follow-up' }))
+    await waitFor(() => { expect(setWorkState).toHaveBeenCalledWith(child, 'completed') })
+    const updated = fixture()
+    act(() => { publishSnapshot({ ...updated, graph: { ...updated.graph!,
+      sessions: updated.graph!.sessions.map(session => session.id === child
+        ? { ...session, workState: 'completed', workStateSource: 'explicit' as const } : session),
+    } }) })
+    expect(await screen.findByRole('button', { name: 'Reopen branch follow-up' })).toBeTruthy()
+    expect(screen.getByText(/in context/).textContent).toBe(contextCount)
+  })
   it('loads inspectable Context preferences only when requested', async () => {
     const inspectPolicy = vi.fn(async () => ({
       evidence: { acceptRate: 0.8, support: 8 },

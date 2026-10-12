@@ -463,6 +463,32 @@ export class ContextifyService extends TypertRemoteService {
     }
   }
 
+  /** Record a reviewed task lifecycle choice without altering the Context Plan. */
+  @Remote('setWorkState')
+  async setWorkState(
+    agent: Agent,
+    targetSessionId: SessionId,
+    state: 'open' | 'parked' | 'completed',
+    expectedGraphRevision: string,
+    uiOrigin?: 'contextify-client',
+  ): Promise<void> {
+    this.assertLive(agent)
+    this.assertRecommendationIdle(agent)
+    if (uiOrigin !== 'contextify-client'
+      || (state !== 'open' && state !== 'parked' && state !== 'completed')) {
+      throw new ContextifyError('a reviewed work state is required', 'CONTEXTIFY_INVALID_TRANSITION')
+    }
+    const family = await this.loadFamily(agent.session)
+    if (family.revision !== expectedGraphRevision) {
+      throw new ContextifyError('the Context Map changed before the work-state choice', 'CONTEXTIFY_STALE_GRAPH')
+    }
+    const target = family.graph.sessions.find(session => session.id === targetSessionId)
+    if (target === undefined) throw new ContextifyError('the target branch is unavailable', 'CONTEXTIFY_INVALID_TRANSITION')
+    if (target.workState === state && target.workStateSource === 'explicit') return
+    const targetEventSeq = family.inspections.get(targetSessionId)?.events.at(-1)?.seq ?? -1
+    agent.session.append('contextify/work-state', { targetSessionId, state, targetEventSeq, uiOrigin })
+  }
+
   /**
    * Project confirmed Context-management choices across this DSH Profile's Sessions.
    * The returned policy changes proposal thresholds only; it cannot authorize mutation.

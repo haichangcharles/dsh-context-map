@@ -25,6 +25,32 @@ function appendUserTurn(session: Session, turn: number, text: string): number {
 }
 
 describe('projectSessionFamily', () => {
+  it('projects explicit task completion separately from the active path and inherited events', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const root = ctx.sessions.create(SessionId('work-state-root'))
+    appendUserTurn(root, 1, 'Plan the research')
+    const child = ctx.sessions.fork(root, root.snapshotEvents().at(-1)!.seq,
+      SessionId('work-state-child'))
+    appendUserTurn(child, 2, 'Draft the paper')
+    const before = projectSessionFamily({ activeSessionId: root.id,
+      sessions: [inspect(root), inspect(child)] })
+    expect(before.sessions.map(session => [session.id, session.workState])).toEqual([
+      [root.id, 'open'], [child.id, 'parked'],
+    ])
+    root.append('contextify/work-state', { targetSessionId: child.id,
+      state: 'completed', targetEventSeq: child.seq - 1, uiOrigin: 'contextify-client' })
+    const after = projectSessionFamily({ activeSessionId: root.id,
+      sessions: [inspect(root), inspect(child)] })
+    expect(after.sessions.find(session => session.id === child.id)).toMatchObject({
+      workState: 'completed', workStateSource: 'explicit',
+    })
+    expect(after.nodes.map(node => node.preview)).toEqual(before.nodes.map(node => node.preview))
+    appendUserTurn(child, 3, 'Resume the draft')
+    expect(projectSessionFamily({ activeSessionId: root.id,
+      sessions: [inspect(root), inspect(child)] }).sessions.find(session => session.id === child.id))
+      .toMatchObject({ workState: 'open', workStateSource: 'derived' })
+  })
   it('retains the native Web tool action on visible result nodes', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)

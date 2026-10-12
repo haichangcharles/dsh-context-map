@@ -23,6 +23,7 @@
   // cannot see both sides of the cordis Context merges).
   "exclude": [
     "tests/contextify-map.e2e.ts",
+    "tests/contextify-work-state.e2e.ts",
     "tests/contextify-explicit-web-correction.e2e.ts",
     "tests/contextify-draft-branch.e2e.ts",
     "tests/contextify-long-horizon.e2e.ts",

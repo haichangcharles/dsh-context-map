@@ -6,7 +6,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type {
-  ContextArchiveCandidate, ContextFamilyGraphNode, ContextMessageRef, ContextNodeMutation,
+  ContextArchiveCandidate, ContextFamilyGraphNode, ContextFamilySession, ContextMessageRef, ContextNodeMutation,
   ContextRecommendationMode, ContextRecommendationProposal, ContextRouteAdvice, ContextStewardProfile,
 } from '@deepseek-ai/dsh-contextify/types'
 import type { WorkspaceSnapshot as WorkspaceListState } from '@deepseek-ai/dsh-api-workspace-controller/client'
@@ -33,6 +33,7 @@ export interface ContextMapActions {
   redo: () => Promise<void>
   recommend: (mode?: ContextRecommendationMode, objective?: string) => Promise<void>
   inspectPolicy: () => Promise<ContextStewardProfile>
+  setWorkState: (sessionId: ContextFamilySession['id'], state: NonNullable<ContextFamilySession['workState']>) => Promise<void>
   cancelRecommendation: () => Promise<void>
   applyRecommendations: (declinedNodeIds?: readonly string[]) => Promise<void>
   clearRecommendation: () => void
@@ -394,6 +395,33 @@ export function ContextMapPanel({
           <button type="button" className={css.iconButton} aria-label="Close Context Map" onClick={mapActions.close}>×</button>
         </div>
       </header>
+      {graph !== undefined && graph.sessions.length > 1 && <details className={css.branchStates}>
+        <summary>{`Branches (${String(graph.sessions.length)}) · task lifecycle`}</summary>
+        <ul>
+          {graph.sessions.map((session) => {
+            const label = session.depth === 0 ? 'Mainline'
+              : records.find(node => node.owner.sessionId === session.id && node.role === 'user')
+                ?.preview.slice(0, 72) || `Branch ${String(session.id).slice(0, 8)}`
+            const state = session.workState ?? (session.id === graph.activeSessionId ? 'open' : 'parked')
+            const active = session.id === graph.activeSessionId
+            return <li key={session.id} data-work-session-id={session.id} data-work-state={state}>
+              <span className={css.branchStateLabel} title={label}>{label}</span>
+              <span className={css.branchStateMeta}>{active ? 'Active' : 'Inactive'} · {state}</span>
+              {state !== 'completed' && <button type="button" disabled={mutationPending}
+                aria-label={`Complete ${label}`} onClick={() => {
+                  runMutation(`session:${session.id}`, () => mapActions.setWorkState(session.id, 'completed'))
+                }}>Complete</button>}
+              {state === 'completed' || state === 'parked' ? <button type="button" disabled={mutationPending}
+                aria-label={`Reopen ${label}`} onClick={() => {
+                  runMutation(`session:${session.id}`, () => mapActions.setWorkState(session.id, 'open'))
+                }}>Reopen</button> : !active && <button type="button" disabled={mutationPending}
+                aria-label={`Park ${label}`} onClick={() => {
+                  runMutation(`session:${session.id}`, () => mapActions.setWorkState(session.id, 'parked'))
+                }}>Park</button>}
+            </li>
+          })}
+        </ul>
+      </details>}
       {policyOpen && <section className={css.policyPanel} aria-label="Learned Context preferences">
         <div className={css.policyHeading}>
           <strong>What the Agent learned</strong>

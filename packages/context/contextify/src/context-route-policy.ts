@@ -19,6 +19,7 @@ export interface ContextRouteCandidate {
   readonly offPathNodeIds: readonly string[]
   /** Retrieval score only; semantic utility must be decided separately. */
   readonly lexicalScore: number
+  readonly workState?: ContextFamilyGraph['sessions'][number]['workState']
 }
 
 /** Independent destination, evidence, and correction scores for one branch. */
@@ -91,6 +92,7 @@ export function buildContextRouteCandidates(input: {
       offPathNodeIds: Object.freeze(owned.filter(node => !node.sessionIds.includes(graph.activeSessionId))
         .map(node => node.id)),
       lexicalScore: jaccardOverlap(objective, `${label}\n${text}`),
+      ...(session.workState === undefined ? {} : { workState: session.workState }),
     })
   }).sort((left, right) => right.lexicalScore - left.lexicalScore
     || left.sessionId.localeCompare(right.sessionId))
@@ -143,7 +145,9 @@ export function planContextRoute(input: {
   const safe = [...input.candidates]
     .filter(candidate => candidate.sessionId !== input.activeSessionId
       && candidate.supersededScore < 0.5 && candidate.ownedNodeIds.length > 0)
-  const destinations = [...safe].sort((a, b) => b.destinationScore - a.destinationScore)
+  const destinations = safe.filter(candidate => input.intent === 'resume'
+    || candidate.workState !== 'completed')
+    .sort((a, b) => b.destinationScore - a.destinationScore)
   const evidence = [...safe].sort((a, b) => b.evidenceScore - a.evidenceScore)
   const bestDestination = destinations[0]
   const bestEvidence = evidence[0]

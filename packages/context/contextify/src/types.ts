@@ -144,6 +144,9 @@ export interface ContextFamilySession {
   readonly seedLength: number
   readonly depth: number
   readonly tipNodeId: string | null
+  /** Task lifecycle is separate from current prompt inclusion and Session ancestry. */
+  readonly workState?: 'open' | 'parked' | 'completed'
+  readonly workStateSource?: 'derived' | 'explicit'
 }
 
 /** One canonical visible message shared by every Session that inherited it. */
@@ -407,6 +410,14 @@ declare module '@deepseek-ai/dsh-session/types' {
     'contextify/manual-branch': {
       readonly childSessionId: SessionId
       /** Client-declared action source; this is not authenticated human identity. */
+      readonly uiOrigin?: 'contextify-client'
+    }
+    /** User-reviewed task lifecycle overlay; never alters Context Plan selection. */
+    'contextify/work-state': {
+      readonly targetSessionId: SessionId
+      readonly state: 'open' | 'parked' | 'completed'
+      /** Target Session cursor when the choice was made; later human turns reopen it. */
+      readonly targetEventSeq?: number
       readonly uiOrigin?: 'contextify-client'
     }
     /** Successful explicit node-mode change with its Remote invocation source. */

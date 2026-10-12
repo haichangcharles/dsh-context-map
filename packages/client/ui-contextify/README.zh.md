@@ -30,6 +30,8 @@ kind: "package-reference"
 
 Composer 在草稿非空时显示“检查草稿所需的 Context”。点击后，客户端将尚未发送的草稿作为目标交给同一个有界 Fast Contextify 审阅，并打开 Context Map 供用户检查建议。点击前不会发起模型调用；审阅不会发送草稿，也不会修改 Context Plan。若分析过程中草稿变化，客户端会丢弃基于旧草稿的建议。明确返回、继续旧分支或另起话题的草稿还可能出现独立的路由卡；接受后，客户端会先把未变更的草稿和附件转入目标原生 Session，再切换过去；选择 Stay 会记录明确的路由拒绝。
 
+**Branches** 折叠列表把每个原生 Session 的任务状态与 Active／Inactive 位置分开显示。Complete、Park 和 Reopen 是经用户操作确认的选择：它们追加原生工作状态事件并刷新 graph。完成分支不会排除其中的消息或删除证据；对于一般的新任务，路由器不会默认导航到它，但用户明确要求 Resume 时仍可返回。之后若用户在已完成的分支写入新一轮消息，graph 投影会重新标为 open。
+
 当 completed Q&A 高置信度地偏离主题，或更适合与当前路径并列时，最终 output 旁会出现紧凑的非模态卡片。`Keep here` 放弃本次建议；`Move to new branch` 执行可重试的原生搬迁并打开新 Session。下一轮尚未修改的草稿及附件会在切换前转移到 child composer；若搬迁期间草稿变化，当前 Session 保持选中。源 card 会保留为结构性的 Archive placeholder，因此不会切断原 graph 支点。
 
 Profile Settings 提供 Contextify Prompt Dashboard，分别配置 Context、Archive 与 Branch。随包提供的 prompt 默认灰色只读；Additional instructions 是正常编辑入口。替换默认基线必须显式确认解锁，恢复基线不会丢弃追加规则。

@@ -2164,6 +2164,34 @@ describe('ContextifyService native Session family', () => {
     expect(profile.evidence.support).toBe(0)
   })
 
+  it('records branch lifecycle with a graph revision without changing prompt selection', async () => {
+    const { ctx, start } = await harness()
+    try {
+      const root = ctx.sessions.create(SessionId('lifecycle-main'))
+      const { agent } = start(root)
+      const prefix = appendClosedTurn(root, 1, 'Plan a report', 'First plan ready.')
+      const child = ctx.sessions.fork(root, SessionSeq(prefix.boundary), SessionId('lifecycle-draft'))
+      appendClosedTurn(child, 2, 'Draft the report', 'Draft ready.')
+      const before = await ctx.contextify.familyPage(agent)
+      const planRevision = ctx.contextify.get(agent).plan.revision
+      const compiledBefore = JSON.stringify(compileContextify({ session: root, turn: 2, step: 1 }).messages)
+      await ctx.contextify.setWorkState(agent, child.id, 'completed', before.revision, 'contextify-client')
+      const after = await ctx.contextify.familyPage(agent)
+      expect(after.sessions.find(session => session.id === child.id)).toMatchObject({
+        workState: 'completed', workStateSource: 'explicit',
+      })
+      expect(after.revision).not.toBe(before.revision)
+      expect(ctx.contextify.get(agent).plan.revision).toBe(planRevision)
+      expect(JSON.stringify(compileContextify({ session: root, turn: 2, step: 1 }).messages))
+        .toBe(compiledBefore)
+      await expect(ctx.contextify.setWorkState(agent, child.id, 'open', before.revision,
+        'contextify-client')).rejects.toMatchObject({ code: 'CONTEXTIFY_STALE_GRAPH' })
+      await ctx.contextify.setWorkState(agent, child.id, 'open', after.revision, 'contextify-client')
+      expect((await ctx.contextify.familyPage(agent)).sessions.find(session => session.id === child.id)
+        ?.workState).toBe('open')
+    } finally { await ctx.fiber.dispose() }
+  })
+
   it('attaches a review-only draft route to Fast advice without another model call', async () => {
     const { ctx, start } = await harness()
     try {
