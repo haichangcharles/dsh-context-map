@@ -7,6 +7,7 @@ import {
   FAST_RECOMMENDATION_EXAMPLE_CHARS,
   FAST_RECOMMENDATION_MAX_NODES,
   FAST_RECOMMENDATION_OFF_PATH_LIMIT,
+  FAST_RECOMMENDATION_OFF_PATH_WEB_FLOOR,
   FAST_RECOMMENDATION_PLAN_EXAMPLES,
   FAST_RECOMMENDATION_PREFERENCE_EXAMPLES,
 } from '../src/fast-recommendation.ts'
@@ -98,6 +99,27 @@ describe('Fast Context recommendation routing', () => {
       reason: 'off-path-candidate', sourceKind: 'web', webAction: 'web_fetch',
     })
     expect(input.nodes.some(item => item.id === unbound.id)).toBe(false)
+  })
+
+  it('keeps a bounded Web source slate when similar old chat turns fill the off-path budget', () => {
+    const base = fixture(60)
+    const web = Array.from({ length: 6 }, (_, index) => ({
+      ...node(`old-web-${String(index)}`, 'assistant', `archived source ${String(index)}`,
+        [sibling], 100 + index),
+      role: 'tool' as const, sourceKind: 'web' as const, webAction: 'web_fetch' as const,
+    }))
+    const graph = { ...base, nodes: [...base.nodes, ...web] }
+    const input = buildFastRecommendationInput({
+      graph, contents: {}, objective: 'unrelated branch material',
+      effectiveIncludedNodeIds: base.nodes.filter(item => item.sessionIds.includes(active))
+        .map(item => item.id),
+      explicitIncludedNodeIds: [], explicitExcludedNodeIds: [],
+    })
+    const offPath = input.nodes.filter(item => item.reason === 'off-path-candidate')
+    expect(offPath).toHaveLength(FAST_RECOMMENDATION_OFF_PATH_LIMIT)
+    expect(offPath.filter(item => item.sourceKind === 'web'))
+      .toHaveLength(FAST_RECOMMENDATION_OFF_PATH_WEB_FLOOR)
+    expect(offPath.some(item => item.sourceKind !== 'web')).toBe(true)
   })
 
   it('keeps recent active context, branch pivots, explicit overrides, and relevant off-path nodes', () => {

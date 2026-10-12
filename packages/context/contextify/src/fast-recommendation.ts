@@ -9,6 +9,8 @@ import { lexicalTokens } from './lexical-tokens.ts'
 export const FAST_RECOMMENDATION_MAX_NODES = 32
 /** Maximum automatically ranked nodes outside the active path. */
 export const FAST_RECOMMENDATION_OFF_PATH_LIMIT = 12
+/** Reserve a few eligible Web observations when chat turns compete for the same off-path budget. */
+export const FAST_RECOMMENDATION_OFF_PATH_WEB_FLOOR = 4
 /** Maximum older active-path messages surfaced for long-conversation review. */
 export const FAST_RECOMMENDATION_DISTANT_ACTIVE_LIMIT = 8
 /** First messages after an active-path branch pivot kept visible on branch return. */
@@ -285,6 +287,22 @@ export function buildFastRecommendationInput(request: FastRecommendationRequest)
     FAST_RECOMMENDATION_MAX_NODES - selected.size)
   const offPathSelected = new Set<string>()
   const representedBranches = new Set<string>()
+  const web = offPath.filter(candidate => candidate.node.sourceKind === 'web')
+  const webFloor = Math.min(FAST_RECOMMENDATION_OFF_PATH_WEB_FLOOR, offPathLimit, web.length)
+  // Web observations are often the exact evidence needed on a later branch
+  // return, while nearby questions and answers can dominate lexical ranking.
+  // Reserve a bounded source slate before general graph-branch coverage.
+  for (const candidate of web) {
+    if (offPathSelected.size >= webFloor) break
+    const branchId = candidate.node.sessionIds.at(-1) ?? candidate.node.owner.sessionId
+    if (representedBranches.has(branchId)) continue
+    representedBranches.add(branchId)
+    offPathSelected.add(candidate.node.id)
+  }
+  for (const candidate of web) {
+    if (offPathSelected.size >= webFloor) break
+    offPathSelected.add(candidate.node.id)
+  }
   const coverageFloor = Math.max(0.05, (offPath[0]?.score ?? 0) * 0.4)
   // Reserve one competitive source from each off-path branch before filling by
   // score. A long, lexically repetitive branch must not hide another relevant
