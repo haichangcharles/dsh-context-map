@@ -44,7 +44,7 @@ import {
 } from './branch-review.ts'
 import {
   branchFeedbackFromFamily, personalBranchSuggestionFromKeep, personalBranchSuppressionFromMove,
-  personalBranchThreshold,
+  personalBranchThreshold, type PersonalBranchFeedback,
 } from './personal-branch-policy.ts'
 import {
   CONTEXTIFY_SETTINGS_NAMESPACE,
@@ -293,6 +293,7 @@ export class ContextifyService extends TypertRemoteService {
     readonly revision: string
     readonly observations: readonly ContextPolicyObservation[]
     readonly edits: readonly { readonly at: number; readonly edit: PersonalContextEdit }[]
+    readonly branchFeedback: readonly PersonalBranchFeedback[]
   }>()
   private promptSettings: () => ContextifyPromptSettings = () => CONTEXTIFY_DEFAULT_SETTINGS
   private deepRecommendation = runDeepRecommendation
@@ -964,6 +965,14 @@ export class ContextifyService extends TypertRemoteService {
         : recommendationNodeText(inspection, node.owner.seq, message, node.webAction)]
     }))
     const packet = buildBranchReviewInput({ graph: family.graph, candidateNodeId: candidateNode.id, contents })
+    // Project earlier UI decisions while the isolated classifier runs. A
+    // historical Profile read failure must not disable same-family review.
+    const branchFeedback = this.loadProfilePolicyEvidence(family)
+      .then(evidence => evidence.branchFeedback)
+      .catch((cause: unknown) => {
+        this.ctx.logger.warn(`Contextify Profile Branch feedback unavailable: ${String(cause)}`)
+        return branchFeedbackFromFamily(family.graph, family.inspections)
+      })
     const branchPrompt = effectivePrompt(CONTEXTIFY_DEFAULT_PROMPTS.branch, this.promptSettings().branch)
     const userText = [
       `Branch review packet JSON:\n${JSON.stringify(packet)}`,
@@ -1000,7 +1009,8 @@ export class ContextifyService extends TypertRemoteService {
       .join('\n'))
     const baseThreshold = branchSuggestionThreshold(packet.branchDepth, packet.activeBranchCount)
     const query = { candidateInput: packet.candidateInput, branchDepth: packet.branchDepth }
-    const history = branchFeedbackFromFamily(family.graph, family.inspections)
+    const history = await branchFeedback
+    signal.throwIfAborted()
     return Object.freeze({
       decision,
       threshold: personalBranchThreshold(baseThreshold, query, history),
@@ -1817,6 +1827,7 @@ export class ContextifyService extends TypertRemoteService {
   private async loadProfilePolicyEvidence(currentFamily: LoadedFamily): Promise<{
     readonly observations: readonly ContextPolicyObservation[]
     readonly edits: readonly PersonalContextEdit[]
+    readonly branchFeedback: readonly PersonalBranchFeedback[]
   }> {
     const known = new Map<SessionId, {
       readonly meta: ContextFamilyInspection['meta']
@@ -1856,6 +1867,7 @@ export class ContextifyService extends TypertRemoteService {
     }
     const all: ContextPolicyObservation[] = []
     const allEdits: { readonly at: number; readonly edit: PersonalContextEdit }[] = []
+    const allBranchFeedback: PersonalBranchFeedback[] = []
     for (const [root, ids] of groups) {
       ids.sort()
       const fingerprints = ids.map(id => known.get(id)?.revision)
@@ -1865,6 +1877,7 @@ export class ContextifyService extends TypertRemoteService {
       if (cached?.revision === revision) {
         all.push(...cached.observations)
         allEdits.push(...cached.edits)
+        allBranchFeedback.push(...cached.branchFeedback)
         continue
       }
       try {
@@ -1888,16 +1901,22 @@ export class ContextifyService extends TypertRemoteService {
                 || event.type === 'contextify/manual-branch')
               && event.data.uiOrigin === 'contextify-client'))
           if (!hasReviewEvidence) {
-            if (cacheable) this.profilePolicyCache.set(root, { revision, observations: [], edits: [] })
+            if (cacheable) this.profilePolicyCache.set(root, {
+              revision, observations: [], edits: [], branchFeedback: [],
+            })
             continue
           }
           graph = projectSessionFamily({ activeSessionId: root, sessions: [...loaded.values()] })
         }
         const observations = contextPolicyObservationsFromFamily(graph, inspections)
         const edits = contextEditEvidenceFromFamily(graph, inspections)
-        if (cacheable) this.profilePolicyCache.set(root, { revision, observations, edits })
+        const branchFeedback = branchFeedbackFromFamily(graph, inspections)
+        if (cacheable) this.profilePolicyCache.set(root, {
+          revision, observations, edits, branchFeedback,
+        })
         all.push(...observations)
         allEdits.push(...edits)
+        allBranchFeedback.push(...branchFeedback)
       } catch (cause) {
         // One inaccessible historical family must not block a live Context review.
         this.profilePolicyCache.delete(root)
@@ -1908,6 +1927,9 @@ export class ContextifyService extends TypertRemoteService {
       observations: Object.freeze(all.sort((left, right) => left.at - right.at)),
       edits: Object.freeze(allEdits.sort((left, right) => left.at - right.at)
         .slice(-32).map(item => item.edit)),
+      branchFeedback: Object.freeze(allBranchFeedback.sort((left, right) => (left.at ?? 0) - (right.at ?? 0)
+        || String(left.sessionId ?? '').localeCompare(String(right.sessionId ?? ''))
+        || (left.seq ?? 0) - (right.seq ?? 0)).slice(-32)),
     })
   }
 

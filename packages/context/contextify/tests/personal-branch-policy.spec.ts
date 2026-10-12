@@ -130,10 +130,13 @@ describe('personal Branch suggestion calibration', () => {
         [childId, { meta: { ...root.header, id: childId, parentSession: root.id },
           events, inheritedEventCount: events.length }],
       ])
-      expect(branchFeedbackFromFamily(graph, inspections)).toEqual([{
+      const feedback = branchFeedbackFromFamily(graph, inspections)
+      expect(feedback).toMatchObject([{
         candidateInput: suggestion.inputPreview, branchDepth: 2,
         confidence: 0.9, choice: 'keep', uiOrigin: 'contextify-client',
+        sessionId: root.id, seq: 1,
       }])
+      expect(feedback[0]?.at).toBeGreaterThan(0)
     } finally {
       await ctx.fiber.dispose()
     }

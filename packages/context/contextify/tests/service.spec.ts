@@ -143,6 +143,17 @@ abstract class OffReasoningAdapter extends LlmAdapter {
   }
 }
 
+function branchDecisionAdapter(text: string): LlmAdapter {
+  return new class extends OffReasoningAdapter {
+    override async * stream(): AsyncIterable<StreamChunk> {
+      yield { type: 'block-start', index: 0, blockType: 'text' }
+      yield { type: 'text-delta', index: 0, text }
+      yield { type: 'block-end', index: 0, block: { type: 'text', text } }
+      yield { type: 'finish', reason: { kind: 'stop' } }
+    }
+  }()
+}
+
 describe('ContextifyService native Session family', () => {
   it('learns one positive Branch preference from a successful manual Context Map fork', async () => {
     const { ctx, start } = await harness()
@@ -567,6 +578,89 @@ describe('ContextifyService native Session family', () => {
     })
   })
 
+  it('uses a reviewed Keep from another Session family for a new project Branch suggestion', async () => {
+    const { ctx, start } = await harness()
+    try {
+      const earlier = ctx.sessions.create(SessionId('branch-style-earlier-project'))
+      const prior = appendClosedTurn(earlier, 1, 'compare warranty rules in a new region',
+        'private earlier project answer')
+      const suggestion = {
+        id: 'cross-family-prior-suggestion', sourceSessionId: earlier.id, turn: 1,
+        boundaryBefore: 0, boundaryAfter: prior.boundary,
+        input: { sessionId: earlier.id, seq: prior.userSeq },
+        output: { sessionId: earlier.id, seq: prior.boundary - 1 },
+        inputPreview: 'compare warranty rules in a new region', outputPreview: 'private earlier project answer',
+        confidence: 0.9, reason: 'parallel topic', planRevision: 0, graphRevision: 'prior',
+      }
+      earlier.append('contextify/branch-review', { suggestion, turnEndSeq: prior.boundary })
+      earlier.append('contextify/branch-choice', {
+        suggestionId: suggestion.id, choice: 'keep', turnEndSeq: prior.boundary,
+        uiOrigin: 'contextify-client',
+      })
+      const current = ctx.sessions.create(SessionId('branch-style-new-project'))
+      start(current, { provider: 'mock', model: 'mock' })
+      let modelRequest: GenerateOptions | undefined
+      ctx.llm.registerAdapter(['mock'], new class extends OffReasoningAdapter {
+        override async * stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+          modelRequest = options
+          const text = '{"action":"suggest_branch","confidence":0.82,"reason":"New region"}'
+          yield { type: 'block-start', index: 0, blockType: 'text' }
+          yield { type: 'text-delta', index: 0, text }
+          yield { type: 'block-end', index: 0, block: { type: 'text', text } }
+          yield { type: 'finish', reason: { kind: 'stop' } }
+        }
+      }())
+      const service = ctx.contextify as unknown as { promptSettings: () => ContextifyPromptSettings }
+      service.promptSettings = () => ({ ...CONTEXTIFY_DEFAULT_SETTINGS, automaticBranchReview: true })
+      const next = appendClosedTurn(current, 1, 'compare a new warranty region', 'new answer')
+
+      await vi.waitFor(() => {
+        const review = current.snapshotEvents().find(event => event.type === 'contextify/branch-review'
+          && event.data.turnEndSeq === next.boundary)
+        expect(review?.type === 'contextify/branch-review' && review.data.suggestion).toBe(null)
+      })
+      expect(JSON.stringify(modelRequest?.messages)).not.toContain('private earlier project answer')
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it('uses reviewed Moves from another Session family to surface a weak generic Keep', async () => {
+    const { ctx, start } = await harness()
+    try {
+      const earlier = ctx.sessions.create(SessionId('branch-style-fine-earlier-project'))
+      for (let turn = 1; turn <= 4; turn += 1) {
+        const prior = appendClosedTurn(earlier, turn,
+          'compare warranty rules in a new region', 'prior answer')
+        const suggestion = {
+          id: `cross-family-move-${String(turn)}`, sourceSessionId: earlier.id, turn,
+          boundaryBefore: prior.userSeq - 2, boundaryAfter: prior.boundary,
+          input: { sessionId: earlier.id, seq: prior.userSeq },
+          output: { sessionId: earlier.id, seq: prior.boundary - 1 },
+          inputPreview: 'compare warranty rules in a new region', outputPreview: 'prior answer',
+          confidence: 0.9, reason: 'parallel topic', planRevision: 0, graphRevision: 'prior',
+        }
+        earlier.append('contextify/branch-review', { suggestion, turnEndSeq: prior.boundary })
+        earlier.append('contextify/branch-choice', {
+          suggestionId: suggestion.id, choice: 'move', turnEndSeq: prior.boundary,
+          uiOrigin: 'contextify-client',
+        })
+      }
+      const current = ctx.sessions.create(SessionId('branch-style-fine-new-project'))
+      start(current, { provider: 'mock', model: 'mock' })
+      ctx.llm.registerAdapter(['mock'], branchDecisionAdapter(
+        '{"action":"keep","confidence":0.55,"reason":"Probably one topic"}'))
+      const service = ctx.contextify as unknown as { promptSettings: () => ContextifyPromptSettings }
+      service.promptSettings = () => ({ ...CONTEXTIFY_DEFAULT_SETTINGS, automaticBranchReview: true })
+      const next = appendClosedTurn(current, 1, 'compare a new warranty region', 'new answer')
+
+      await vi.waitFor(() => {
+        const review = current.snapshotEvents().find(event => event.type === 'contextify/branch-review'
+          && event.data.turnEndSeq === next.boundary)
+        const suggestion = review?.type === 'contextify/branch-review' ? review.data.suggestion : null
+        expect(suggestion?.reason).toContain('earlier')
+      })
+    } finally { await ctx.fiber.dispose() }
+  })
+
   it('surfaces a reviewable Branch card after similar direct Moves despite a weak generic Keep', async () => {
     const { ctx, start } = await harness()
     const session = ctx.sessions.create(SessionId('personal-branch-keep-override'))
@@ -588,15 +682,8 @@ describe('ContextifyService native Session family', () => {
         uiOrigin: 'contextify-client',
       })
     }
-    ctx.llm.registerAdapter(['mock'], new class extends OffReasoningAdapter {
-      override async * stream(): AsyncIterable<StreamChunk> {
-        const text = '{"action":"keep","confidence":0.55,"reason":"Probably one topic"}'
-        yield { type: 'block-start', index: 0, blockType: 'text' }
-        yield { type: 'text-delta', index: 0, text }
-        yield { type: 'block-end', index: 0, block: { type: 'text', text } }
-        yield { type: 'finish', reason: { kind: 'stop' } }
-      }
-    }())
+    ctx.llm.registerAdapter(['mock'], branchDecisionAdapter(
+      '{"action":"keep","confidence":0.55,"reason":"Probably one topic"}'))
     const service = ctx.contextify as unknown as { promptSettings: () => ContextifyPromptSettings }
     service.promptSettings = () => ({ ...CONTEXTIFY_DEFAULT_SETTINGS, automaticBranchReview: true })
     const next = appendClosedTurn(session, 5, 'compare a new warranty region', 'new answer')

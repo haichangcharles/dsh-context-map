@@ -10,6 +10,10 @@ export interface PersonalBranchFeedback {
   readonly confidence: number
   readonly choice: 'keep' | 'move'
   readonly uiOrigin?: 'contextify-client'
+  /** Native event order for merging independent Session families in one Profile. */
+  readonly at?: number
+  readonly sessionId?: SessionId
+  readonly seq?: number
 }
 
 /** New Branch candidate to compare with earlier responses. */
@@ -49,6 +53,9 @@ export function branchFeedbackFromFamily(
           confidence: suggestion.confidence,
           choice: event.data.choice,
           uiOrigin: event.data.uiOrigin,
+          at: event.time,
+          sessionId: inspection.meta.id,
+          seq: event.seq,
         },
       })
     }
