@@ -199,7 +199,7 @@ describe('ui-contextify browser plugin', () => {
     })
     expect(b.moveDraft.mock.invocationCallOrder[0]).toBeLessThan(b.open.mock.invocationCallOrder[0]!)
     expect(b.calls.filter(call => call.method === 'recordManualBranch')).toMatchObject([{
-      args: [source, child, 'contextify-client'],
+      args: [source, child, 'contextify-client', 'Use the previous Web evidence'],
     }])
   })
 
@@ -208,6 +208,7 @@ describe('ui-contextify browser plugin', () => {
     b.moveDraft.mockReturnValueOnce(false)
     await expect(b.panel.mapActions.branch(b.record)).rejects.toThrow(/draft changed/)
     expect(b.open).not.toHaveBeenCalled()
+    expect(b.calls.some(call => call.method === 'recordManualBranch')).toBe(false)
   })
 
   it('accepts a reviewed draft route only at the same graph and editor revision', async () => {

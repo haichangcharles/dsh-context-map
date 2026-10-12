@@ -1,2 +1,2 @@
 - textbox "Message or run a task, / commands, @ files or sessions":
-  - paragraph: Carry this unsent draft into the new branch
+  - paragraph: Write an introduction in the new branch

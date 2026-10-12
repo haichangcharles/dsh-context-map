@@ -264,7 +264,7 @@ export function apply(ctx: ClientContext): void {
               throw new Error('The draft changed or the new branch cannot receive it')
             }
             try {
-              valueOf(await remote.recordManualBranch(sessionId, childId, 'contextify-client'))
+              valueOf(await remote.recordManualBranch(sessionId, childId, 'contextify-client', draft))
             } finally {
               ctx.sessions.open(childId)
             }

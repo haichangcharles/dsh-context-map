@@ -162,10 +162,18 @@ describe('ContextifyService native Session family', () => {
       const turn = appendClosedTurn(source, 1, 'Plan a long report', 'Start with the outline')
       const child = ctx.sessions.fork(source, SessionSeq(turn.boundary), SessionId('manual-branch-child'))
       const { agent } = start(source)
-      await ctx.contextify.recordManualBranch(agent, child.id, 'contextify-client')
-      await ctx.contextify.recordManualBranch(agent, child.id, 'contextify-client')
-      expect(source.snapshotEvents().filter(event => event.type === 'contextify/manual-branch')).toHaveLength(1)
+      await ctx.contextify.recordManualBranch(agent, child.id, 'contextify-client',
+        'Write the report introduction')
+      await ctx.contextify.recordManualBranch(agent, child.id, 'contextify-client',
+        'Write the report introduction')
+      expect(source.snapshotEvents().filter(event => event.type === 'contextify/manual-branch'))
+        .toMatchObject([{ data: { objective: 'Write the report introduction' } }])
       expect((await ctx.contextify.stewardProfile(agent)).branch).toEqual({ acceptRate: 0.6, support: 1 })
+      const second = ctx.sessions.fork(source, SessionSeq(turn.boundary), SessionId('manual-branch-second'))
+      await ctx.contextify.recordManualBranch(agent, second.id, 'contextify-client', '🧪'.repeat(4_001))
+      const bounded = source.snapshotEvents().findLast(event => event.type === 'contextify/manual-branch')
+      expect(bounded?.data.childSessionId).toBe(second.id)
+      expect(Array.from(bounded?.data.objective ?? '')).toHaveLength(4_000)
       await expect(ctx.contextify.recordManualBranch(agent, SessionId('missing-child'),
         'contextify-client')).rejects.toThrow(/unavailable/)
     } finally { await ctx.fiber.dispose() }

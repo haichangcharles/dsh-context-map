@@ -215,4 +215,36 @@ describe('Context Steward event-derived preferences', () => {
       await ctx.fiber.dispose()
     }
   })
+
+  it('conditions a confirmed manual Branch on its transferred draft without guessing from later turns', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    try {
+      const session = ctx.sessions.create(SessionId('steward-manual-branch'))
+      const child = SessionId('steward-manual-child')
+      session.append('contextify/manual-branch', {
+        childSessionId: child, objective: 'Write the paper introduction', uiOrigin: 'contextify-client',
+      })
+      session.append('user/message', createUserMessage({
+        content: [{ type: 'text', text: 'Plan the next experiment' }], source: { kind: 'user' },
+      }), { surfaceOp: 'append' })
+      session.append('contextify/manual-branch', { childSessionId: SessionId('legacy-child'),
+        uiOrigin: 'contextify-client' })
+      const graph: ContextFamilyGraph = {
+        rootSessionId: session.id, activeSessionId: session.id,
+        sessions: [{ id: session.id, seedLength: 0, depth: 0, tipNodeId: null }],
+        nodes: [], edges: [],
+      }
+      const observations = contextPolicyObservationsFromFamily(graph,
+        new Map([[session.id, { meta: session.header, events: session.snapshotEvents(),
+          inheritedEventCount: 0 }]]))
+      expect(observations).toMatchObject([
+        { action: 'branch', choice: 'accept', activity: 'writing',
+          objective: 'Write the paper introduction', targetSessionId: child },
+        { action: 'branch', choice: 'accept', targetSessionId: 'legacy-child' },
+      ])
+      expect(observations[1]?.activity).toBeUndefined()
+      expect(observations[1]?.objective).toBeUndefined()
+    } finally { await ctx.fiber.dispose() }
+  })
 })

@@ -409,6 +409,8 @@ declare module '@deepseek-ai/dsh-session/types' {
     /** Confirmed manual fork from Context Map, after native draft transfer. */
     'contextify/manual-branch': {
       readonly childSessionId: SessionId
+      /** Bounded unsent draft that motivated this confirmed fork, when present. */
+      readonly objective?: string
       /** Client-declared action source; this is not authenticated human identity. */
       readonly uiOrigin?: 'contextify-client'
     }

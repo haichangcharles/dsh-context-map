@@ -883,12 +883,14 @@ export class ContextifyService extends TypertRemoteService {
    * @param agent - Live Agent whose family contains the fork.
    * @param childSessionId - Native child created by the manual fork.
    * @param uiOrigin - Marks a Client action without claiming authenticated identity.
+   * @param objective - Draft that was transferred into the child after the fork.
    */
   @Remote('recordManualBranch')
   async recordManualBranch(
     agent: Agent,
     childSessionId: SessionId,
     uiOrigin?: 'contextify-client',
+    objective?: string,
   ): Promise<void> {
     this.assertLive(agent)
     this.assertRecommendationIdle(agent)
@@ -905,8 +907,10 @@ export class ContextifyService extends TypertRemoteService {
       || !family.graph.sessions.some(session => session.id === child.header.parentSession)) {
       throw new ContextifyError('the manual Branch child is outside this family', 'CONTEXTIFY_CROSS_FAMILY')
     }
+    const reviewedObjective = objective === undefined ? '' : boundedObjective(objective)
     agent.session.append('contextify/manual-branch', {
       childSessionId,
+      ...(reviewedObjective === '' ? {} : { objective: reviewedObjective }),
       ...(uiOrigin === 'contextify-client' ? { uiOrigin } : {}),
     })
   }

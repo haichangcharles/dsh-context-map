@@ -189,10 +189,16 @@ export function contextPolicyObservationsFromFamily(
             }) }) })
       } else if (event.type === 'contextify/manual-branch'
         && event.data.uiOrigin === 'contextify-client') {
+        const manualObjective = event.data.objective?.trim()
+        const manualActivity = manualObjective === undefined
+          ? undefined : contextActivityFromObjective(manualObjective)
         observed.push({ sessionId: inspection.meta.id, seq: event.seq,
           observation: Object.freeze({ action: 'branch', choice: 'accept',
             origin: 'manual-action', branchDepth, at: event.time, weight: 1,
-            targetSessionId: event.data.childSessionId }) })
+            targetSessionId: event.data.childSessionId,
+            ...(manualObjective === undefined || manualObjective === '' ? {}
+              : { objective: manualObjective }),
+            ...(manualActivity === undefined ? {} : { activity: manualActivity }) }) })
       }
     }
   }

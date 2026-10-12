@@ -10,7 +10,7 @@ Long-running conversations require repeated Include, Exclude, and Branch decisio
 
 ## Decision
 
-Contextify projects confirmed Context-management events across native Session families in the same DSH Profile into a compact policy memory. Owned events count once despite inherited prefixes. A reviewed multi-item sheet contributes one total observation; direct changed node selections, confirmed Branch Keep/Move and route-card choices, and successful manual Context Map forks contribute explicit observations. Undo removes the associated Plan choice from the current projection. Passive presentation and unmarked Remote calls do not train the policy. Changed families are rebuilt from the event logs; unchanged families reuse cached projections.
+Contextify projects confirmed Context-management events across native Session families in the same DSH Profile into a compact policy memory. Owned events count once despite inherited prefixes. A reviewed multi-item sheet contributes one total observation; direct changed node selections, confirmed Branch Keep/Move and route-card choices, and successful manual Context Map forks contribute explicit observations. A manual fork records the bounded draft after its transfer succeeds; an activity cue in that draft conditions the Branch observation, while an empty or legacy draft remains unclassified. Undo removes the associated Plan choice from the current projection. Passive presentation and unmarked Remote calls do not train the policy. Changed families are rebuilt from the event logs; unchanged families reuse cached projections.
 
 The projection uses a smoothed action estimate and backs off to the Profile-wide rate when an activity, source-kind, or nearby branch-depth cell has fewer than four effective observations. Repeated action choices become typed favor/avoid rules only after four effective observations. The native event log remains the evidence record; the summary carries support and never becomes permission to mutate a Session or Context Plan. A `stewardProfile` Remote exposes the projection for inspection. Navigate and Return gain evidence only from explicit route-card choices.
 
@@ -26,6 +26,8 @@ This adapts the observation/reflection/retrieval pattern of [Generative Agents](
 
 **Use one global preference for all source types.** Rejected because Web evidence, chat history, and worker reports can elicit different choices.
 
+**Infer a manual Branch's purpose from the next sent turn.** Rejected because later messages can differ from the transferred draft and would leak future evidence into a chronological policy replay.
+
 ## Consequences
 
-The Host can inspect repeated confirmed preferences across Sessions without a model call, and review thresholds can adapt conservatively. Sparse or unobserved actions retain their prior. A live explicit pre-send route card and Navigate/Return feedback now exist. Separate-family Persona2Web replay checks the engineering transfer path, but does not establish a gain over simple conditional tables, downstream Web success, or unbiased offline bandit estimates.
+The Host can inspect repeated confirmed preferences across Sessions without a model call, and review thresholds can adapt conservatively. Sparse or unobserved actions retain their prior. A live explicit pre-send route card and Navigate/Return feedback exist. Recording a manual Branch's unsent objective adds sensitive draft text to the native Session log, bounded to 4,000 characters like other Context recommendations; the user can inspect the resulting action rule. Separate-family Persona2Web replay checks the engineering transfer path, but does not establish a gain over simple conditional tables, downstream Web success, or unbiased offline bandit estimates.

@@ -13,7 +13,7 @@ import { connectFreshWorkspace, newEnglishPage, saveFailureShot, writeComposerDr
 const REPLAY = fileURLToPath(new URL('../../../snapshots/web/lifecycle-chrome/session.v3.jsonl', import.meta.url))
 const EXPECTED = fileURLToPath(new URL('./snapshots/contextify-draft-branch/composer.expected.md', import.meta.url))
 const PROMPT = 'Reply with the single word LIGHTHOUSE and stop.'
-const DRAFT = 'Carry this unsent draft into the new branch'
+const DRAFT = 'Write an introduction in the new branch'
 const MODE = webSnapshotMode()
 
 describe.skipIf(MODE === 'record')('web e2e: draft-safe Context Map branch', () => {
@@ -55,8 +55,8 @@ describe.skipIf(MODE === 'record')('web e2e: draft-safe Context Map branch', () 
       .toBeDefined()
     const source = scaffold.ctx.sessions.get(sourceId)
     if (source === undefined) throw new Error('source Session disappeared after manual Branch')
-    await expect.poll(() => source.snapshotEvents().filter(event => event.type === 'contextify/manual-branch'),
-      { timeout: 10_000 }).toHaveLength(1)
+    await expect.poll(() => source.snapshotEvents().filter(event => event.type === 'contextify/manual-branch')
+      .map(event => event.data.objective), { timeout: 10_000 }).toEqual([DRAFT])
     await expect.poll(() => input.innerText(), { timeout: 10_000 }).toBe(DRAFT)
     const aria = await captureStableAria(page, '[data-composer-input]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(EXPECTED, aria, MODE)
