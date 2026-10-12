@@ -15,7 +15,8 @@ describe('draft Context review', () => {
     const review = vi.fn(async () => {})
     const openMap = vi.fn()
     const discard = vi.fn()
-    const input = { draft: 'Use the earlier Web evidence', draftRev: 4, phase: 'plain' as const }
+    const input = { draft: 'Use the earlier Web evidence', draftRev: 4,
+      phase: 'plain' as const, attachmentIds: [], occurrences: [], queue: [] }
     const { rerender } = render(<DraftContextReview input={input} review={review}
       openMap={openMap} discard={discard} t={t as never} />)
     expect(review).not.toHaveBeenCalled()
@@ -34,7 +35,8 @@ describe('draft Context review', () => {
     const review = vi.fn(() => new Promise<void>((done) => { resolve = done }))
     const openMap = vi.fn()
     const discard = vi.fn()
-    const input = { draft: 'Continue the old plan', draftRev: 1, phase: 'plain' as const }
+    const input = { draft: 'Continue the old plan', draftRev: 1,
+      phase: 'plain' as const, attachmentIds: [], occurrences: [], queue: [] }
     const { rerender } = render(<DraftContextReview input={input} review={review}
       openMap={openMap} discard={discard} t={t as never} />)
     fireEvent.click(screen.getByRole('button', { name: 'Review context for draft' }))

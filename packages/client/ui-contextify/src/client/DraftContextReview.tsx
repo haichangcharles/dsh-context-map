@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { InputZone } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import './steward-locales.ts'
 import css from './DraftContextReview.module.css'
 
 /** Actions supplied by the shared Contextify controller and right panel. */

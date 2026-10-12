@@ -242,7 +242,7 @@ describe('ui-contextify browser plugin', () => {
     const b = await bench()
     b.draftState.draft = 'Continue the new line of thought'
     b.draftState.draftRev = 11
-    const actions = (b.turnTail?.inject as (id: SessionId) => BranchSuggestionTailInjected)(source)
+    const actions = (b.turnTail?.inject as unknown as (id: SessionId) => BranchSuggestionTailInjected)(source)
     await actions.moveBranchSuggestion('suggestion-1')
     expect(b.calls.filter(call => call.method === 'acceptBranchSuggestion')).toHaveLength(1)
     expect(b.moveDraft).toHaveBeenCalledWith(source, child, {
@@ -255,7 +255,7 @@ describe('ui-contextify browser plugin', () => {
   it('leaves the current Session selected if the draft changes during Agent branch relocation', async () => {
     const b = await bench()
     b.moveDraft.mockReturnValueOnce(false)
-    const actions = (b.turnTail?.inject as (id: SessionId) => BranchSuggestionTailInjected)(source)
+    const actions = (b.turnTail?.inject as unknown as (id: SessionId) => BranchSuggestionTailInjected)(source)
     await expect(actions.moveBranchSuggestion('suggestion-1')).rejects.toThrow(/draft changed/)
     expect(b.open).not.toHaveBeenCalled()
   })
@@ -263,7 +263,7 @@ describe('ui-contextify browser plugin', () => {
   it('reviews an unsent draft through the shared DSH Contextify Remote without mutation', async () => {
     const b = await bench()
     expect(b.draftReview?.options).toMatchObject({ id: 'contextify-draft-review' })
-    const actions = (b.draftReview?.inject as (id: SessionId) => DraftContextReviewInjected)(source)
+    const actions = (b.draftReview?.inject as unknown as (id: SessionId) => DraftContextReviewInjected)(source)
     await actions.review('Bring the prior Web evidence into this draft')
     expect(b.calls.filter(call => call.method === 'recommend')).toEqual([{
       method: 'recommend',
