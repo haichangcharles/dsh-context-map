@@ -26,6 +26,8 @@ This complements the graph-identity and layout-cache decisions in [Context Stewa
 
 The common unbranched conversation requires linear traversal rather than general ranking. Arbitrary record order and renderer measurements remain supported. No node, preview, edge, refresh, or browser assertion is removed. The hosted budget remains authoritative; local profiling identifies computation costs but cannot establish hosted acceptance.
 
+[Helper invariants](../simplification/2026-10-14-context-map-helper-invariants.md) retain public malformed-input checks while deriving guaranteed internal coordinates and chain successors directly.
+
 ## Testing
 
 The [layout tests](../../../../packages/client/ui-contextify/tests/layout.client.spec.ts) compare exact coordinates with an independent Dagre oracle for shuffled input, unequal card dimensions and fractional renderer measurements in both directions. A 480-message chain retains all nodes without invoking general optimization. Branch, join, cycle, missing-endpoint and duplicate-edge cases retain Dagre. The combined layout, measurement and Map-panel suites pass 68 tests. The [original browser benchmark](../../../../benchmarks/long-session-browser/long-session.bench.ts) retains all three samples, the 240-turn workload and every existing endpoint budget.

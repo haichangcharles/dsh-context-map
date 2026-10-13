@@ -213,9 +213,9 @@ describe('CI workflow', () => {
       expect(install!.run).not.toContain('$cloneFlag')
     }
 
-    // Configured larger Windows pools retain four partitions; ordinary hosted CI uses one.
+    // Configured larger Windows pools retain four partitions; ordinary hosted CI uses two.
     expect(windowsCoverage.name).toBe('windows node 24 / coverage')
-    expect(windowsCoverage.env).toMatchObject({ DSH_COVERAGE_PARTITIONS: "${{ (vars.DSH_CI_WINDOWS_RUNNER != '' || vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted') && '4' || '1' }}" })
+    expect(windowsCoverage.env).toMatchObject({ DSH_COVERAGE_PARTITIONS: "${{ (vars.DSH_CI_WINDOWS_RUNNER != '' || vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted') && '4' || '2' }}" })
     const coverageSteps = windowsCoverage.steps as unknown[]
     const coverageCommands = coverageSteps.filter((step): step is Record<string, unknown> & { run: string } => (
       isRecord(step) && typeof step.run === 'string'

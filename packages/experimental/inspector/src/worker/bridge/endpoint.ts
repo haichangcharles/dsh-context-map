@@ -286,8 +286,17 @@ function listen(server: Server, port: number, host: string): Promise<AddressInfo
   })
 }
 
-function isAddressInUse(error: unknown): boolean {
-  return error instanceof Error && (error as NodeJS.ErrnoException).code === 'EADDRINUSE'
+/**
+ * Recognize native bind conflicts without treating POSIX permissions as collisions.
+ * @param error - Native listen failure to classify.
+ * @param platform - Operating system whose socket errors apply.
+ * @returns Whether the operating system reports a retryable bind collision.
+ */
+export function isAddressInUse(error: unknown, platform: NodeJS.Platform = process.platform): boolean {
+  if (!(error instanceof Error)) return false
+  const code = (error as NodeJS.ErrnoException).code
+  // Winsock exclusive-address conflicts can report WSAEACCES instead of WSAEADDRINUSE.
+  return code === 'EADDRINUSE' || (platform === 'win32' && code === 'EACCES')
 }
 
 function rawText(data: RawData): string {

@@ -420,7 +420,8 @@ export class ClientSessions implements ISessions {
    *   and whether to increment an inherited durable title before resolving.
    *   A fractional anchor floors to a real event seq: the frozen nodes of an
    *   interrupted turn carry flow-ordering seqs between two events, and the
-   *   wire takes integers only.
+   *   wire takes integers only. Exclusive before-Turn boundaries use the same
+   *   normalization before the Host applies their distinct cut semantics.
    * @returns the child session id.
    * @throws {SessionForkError} with the source id.
    * @throws {Error} when a requested child-title rename fails after creation.
@@ -436,7 +437,7 @@ export class ClientSessions implements ISessions {
       : undefined
     const result = await this.manager.fork({
       sessionId: opts.sessionId,
-      ...(opts.beforeSeq === undefined ? {} : { beforeSeq: SessionSeq(opts.beforeSeq) }),
+      ...(opts.beforeSeq === undefined ? {} : { beforeSeq: SessionSeq(Math.floor(opts.beforeSeq)) }),
       // Flooring lands inside the anchor's own turn (every turn opens with a
       // turn/start), so the host's first-turn/end-at-or-after cut still ends
       // on that turn — never clipped back to the previous one.

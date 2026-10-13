@@ -14,6 +14,8 @@ Fork 能成功构建，却可能因为没有上游账户凭证或组织运行器
 
 覆盖率协调器要求至少两个分区。托管运行器使用两个分区与两个 worker 的预算；已配置大型池保留四个分区。首轮 Linux、Windows CI 在执行测试前暴露了错误的单分区默认值。配置回归测试现在把各运行器表达式的结果交给真实协调器解析器检查，覆盖托管、自定义池与 failover 配置。覆盖率阈值与解析器的最小值要求保持不变。
 
+首次完整 Linux 插桩运行还发现遗漏了插桩测试超时配置：一个构建两次真实 TypeScript program 的 fixture 耗时 5.28 秒，超过默认五秒测试上限。Linux 现在采用 Windows 与 master CI 已配置的同一 90 秒插桩测试预算，不改变子进程取消期限或 Web benchmark 预算。严格工作流预期和已发布工具目录同步到实际双分区设置，以及须经确认的 `request_context_branch` 工具；全部目录与 schema 断言保留。
+
 [Preview CI](../../../../.github/workflows/build-preview-cloudflare.yml)为每个 PR 构建并保留产物。Cloudflare 上传、受保护镜像验证和 URL 评论必须同时满足受信任的同仓库 PR，以及完整的部署和 Access 凭证。未配置仓库报告仅产物模式；部分部署配置会明确失败。仅产物运行不会被宣称为托管 preview。
 
 [Issue lifecycle](../../../../.github/workflows/issue-lifecycle.yml)和[Issue policy](../../../../.github/workflows/issue-policy.yml)始终测试可信的策略实现。真实 Project 操作必须满足配置中的组织/仓库与触发仓库一致，以及完整的 GitHub App 配置。App token 针对当前仓库，不针对硬编码的上游安装。未配置的 fork 明确报告没有执行看板策略或修改；适用但不完整的配置会失败。现有人类 PR 和 changes-requested 检查条件仍受强制执行。

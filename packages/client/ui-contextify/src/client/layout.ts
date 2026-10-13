@@ -43,15 +43,16 @@ function dagreLayout(
   dagre.layout(graph)
   const horizontal = direction === 'LR'
   return records.map((record) => {
-    const point = graph.node(record.id) as { x: number; y: number } | undefined
+    // Every record is inserted before a successful layout assigns coordinates.
+    const point = graph.node(record.id) as { x: number; y: number }
     const size = sizeFor(record.id, sizes)
     return {
       id: record.id,
       type: 'contextMessage',
       data: { record },
       position: {
-        x: (point?.x ?? 0) - size.width / 2,
-        y: (point?.y ?? 0) - size.height / 2,
+        x: point.x - size.width / 2,
+        y: point.y - size.height / 2,
       },
       targetPosition: horizontal ? Position.Left : Position.Top,
       sourcePosition: horizontal ? Position.Right : Position.Bottom,
@@ -72,19 +73,21 @@ function chainLayout(
 ): Array<Node<ContextMapLayoutData>> | undefined {
   if (records.length === 0) return edges.length === 0 ? [] : undefined
   if (edges.length !== records.length - 1) return undefined
-  const byId = new Map(records.map((record, index) => [record.id, { record, index }]))
+  const indexedRecords = records.map((record, index) => ({ record, index }))
+  const byId = new Map(indexedRecords.map(item => [item.record.id, item]))
   if (byId.size !== records.length) return undefined
-  const successors = new Map<string, string>()
+  const successors = new Map<string, (typeof indexedRecords)[number]>()
   const incoming = new Set<string>()
   for (const edge of edges) {
-    if (!byId.has(edge.source) || !byId.has(edge.target)
+    const target = byId.get(edge.target)
+    if (!byId.has(edge.source) || target === undefined
       || successors.has(edge.source) || incoming.has(edge.target)) return undefined
-    successors.set(edge.source, edge.target)
+    successors.set(edge.source, target)
     incoming.add(edge.target)
   }
-  const roots = records.filter(record => !incoming.has(record.id))
-  const root = roots[0]
-  if (roots.length !== 1 || root === undefined) return undefined
+  // N-1 distinct targets leave one root; at most one predecessor prevents a
+  // cycle reachable from it. A disconnected cycle fails the final count.
+  const root = indexedRecords.reduce((selected, item) => incoming.has(item.record.id) ? selected : item)
   const horizontal = direction === 'LR'
   let crossExtent = 0
   for (const record of records) {
@@ -93,26 +96,25 @@ function chainLayout(
       || size.width <= 0 || size.height <= 0) return undefined
     crossExtent = Math.max(crossExtent, horizontal ? size.height : size.width)
   }
-  const visited = new Set<string>()
   const nodes: Array<Node<ContextMapLayoutData>> = []
-  let cursor: string | undefined = root.id
+  let cursor: (typeof indexedRecords)[number] | undefined = root
+  let visitedCount = 0
   let rankStart = 0
   while (cursor !== undefined) {
-    const item = byId.get(cursor)
-    if (item === undefined || visited.has(cursor)) return undefined
-    visited.add(cursor)
-    const size = sizeFor(cursor, sizes)
+    const { record, index } = cursor
+    visitedCount += 1
+    const size = sizeFor(record.id, sizes)
     const crossStart = (crossExtent - (horizontal ? size.height : size.width)) / 2
-    nodes[item.index] = {
-      id: cursor, type: 'contextMessage', data: { record: item.record },
+    nodes[index] = {
+      id: record.id, type: 'contextMessage', data: { record },
       position: horizontal ? { x: rankStart, y: crossStart } : { x: crossStart, y: rankStart },
       targetPosition: horizontal ? Position.Left : Position.Top,
       sourcePosition: horizontal ? Position.Right : Position.Bottom,
     }
     rankStart += (horizontal ? size.width : size.height) + CONTEXT_MAP_RANK_GAP
-    cursor = successors.get(cursor)
+    cursor = successors.get(record.id)
   }
-  return visited.size === records.length ? nodes : undefined
+  return visitedCount === records.length ? nodes : undefined
 }
 
 function mindMapLayout(
@@ -133,28 +135,26 @@ function mindMapLayout(
   const positions = new Map<string, { x: number; y: number; side: -1 | 1 }>()
   let leftLane = 0
   let rightLane = 0
-  const visited = new Set<string>()
-  const walk = (id: string, depth: number, side: -1 | 1, lane: number): void => {
-    if (visited.has(id)) return
-    visited.add(id)
-    positions.set(id, {
+  const walk = (id: string, depth: number, side: -1 | 1, lane: number): { x: number; y: number; side: -1 | 1 } => {
+    const known = positions.get(id)
+    if (known !== undefined) return known
+    const point = {
       x: depth === 0 ? 0 : side * depth * 310,
       y: depth === 0 ? lane * 170 : lane * 154,
       side,
-    })
+    }
+    positions.set(id, point)
     const descendants = children.get(id) ?? []
     descendants.forEach((child, index) => {
       const childSide = depth === 0 ? (index % 2 === 0 ? 1 : -1) : side
       const childLane = childSide === 1 ? rightLane++ : leftLane++
       walk(child, depth + 1, childSide, childLane)
     })
+    return point
   }
   roots.forEach((root, index) => { walk(root.id, 0, 1, index) })
-  records.forEach((record, index) => {
-    if (!visited.has(record.id)) walk(record.id, 0, 1, roots.length + index)
-  })
-  return records.map((record) => {
-    const point = positions.get(record.id) ?? { x: 0, y: 0, side: 1 as const }
+  return records.map((record, index) => {
+    const point = walk(record.id, 0, 1, roots.length + index)
     return {
       id: record.id,
       type: 'contextMessage',

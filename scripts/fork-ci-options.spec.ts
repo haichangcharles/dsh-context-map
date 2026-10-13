@@ -96,6 +96,7 @@ describe('portable CI runner and optional integrations', () => {
     for (const name of ['windows-build', 'windows-coverage', 'windows-native-tests', 'windows-observational']) {
       expect(expression(jobs[name]!['runs-on']!, vars)).toBe('windows-2025')
     }
+    expect(jobs['node-24-coverage']!.env!.DSH_COVERAGE_TEST_TIMEOUT_MS).toBe('90000')
     expect(expression(jobs['node-24-coverage']!.env!.DSH_COVERAGE_MAX_WORKERS!, vars)).toBe('2')
     expect(expression(jobs['node-24-coverage']!.env!.DSH_COVERAGE_PARTITIONS!, vars)).toBe('2')
     expect(expression(jobs['node-24-consumers']!.env!.DSH_WEB_SNAPSHOT_WORKERS!, vars)).toBe('2')

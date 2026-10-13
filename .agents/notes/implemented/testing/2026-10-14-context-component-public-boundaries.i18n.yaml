@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/testing/2026-10-14-context-component-public-boundaries.md
+2026-10-14-context-component-public-boundaries.md: b6b6fa4008bd3696790363b9af3f35c72b6ffe6d
+2026-10-14-context-component-public-boundaries.zh.md: 487dfdb17c8479cf2225f0414b3a4ce63946e7ec

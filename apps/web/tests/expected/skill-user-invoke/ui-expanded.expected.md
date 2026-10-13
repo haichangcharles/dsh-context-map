@@ -39,6 +39,10 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for USER_INVOKE_REPLY acknowledged; following the injected skill." [disabled]: Auto
+- button "include context for USER_INVOKE_REPLY acknowledged; following the injected skill.": Use
+- button "exclude context for USER_INVOKE_REPLY acknowledged; following the injected skill.": Skip
+- button "Locate USER_INVOKE_REPLY acknowledged; following the injected skill. in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - button "Ran for {{duration}}":

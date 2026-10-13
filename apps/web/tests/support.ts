@@ -72,6 +72,22 @@ export async function restoreFullWidthChat(page: Page): Promise<void> {
 }
 
 /**
+ * Wait for every expected completed Chat message's four native Context actions.
+ * Host turn completion can precede the next graph publication. This explicit
+ * fixture count prevents capturing a first publication containing only users.
+ * @param page - Completed native Chat page.
+ * @param messageCount - Ordinary user/assistant messages expected by the fixture.
+ * @param language - Fixture UI language.
+ */
+export async function waitForMessageContextControls(page: Page, messageCount: number, language: 'en' | 'zh' = 'en'): Promise<void> {
+  await page.waitForFunction(({ count, language }) => {
+    const selector = language === 'zh' ? 'span[aria-label$=" 的 Context"]' : 'span[aria-label^="Context for "]'
+    const actions = Array.from(document.querySelectorAll(selector))
+    return actions.length === count && actions.every(element => element.querySelectorAll('button').length === 4)
+  }, { count: messageCount, language }, { timeout: 15_000 })
+}
+
+/**
  * Expand every currently eligible Turn-process group so a Tool-focused
  * scenario can exercise the original row contract beneath product-default
  * compact Chat presentation.

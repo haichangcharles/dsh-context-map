@@ -53,10 +53,8 @@ export function projectUnarchivedContextFamily(
   const nodes: ContextFamilyGraphNode[] = graph.nodes.flatMap((node) => {
     const sessionIds = node.sessionIds.filter(id => visibleIds.has(id))
     if (sessionIds.length === 0) return []
-    const inheritedOwner = sessionIds.includes(graph.activeSessionId)
-      ? graph.activeSessionId
-      : sessionIds[0]
-    if (inheritedOwner === undefined) return []
+    // Filtering creates a dense nonempty list; prefer the active alias.
+    const inheritedOwner = sessionIds.reduce((selected, id) => id === graph.activeSessionId ? id : selected)
     const ownerSessionId = visibleIds.has(node.owner.sessionId)
       ? node.owner.sessionId
       : inheritedOwner

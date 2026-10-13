@@ -26,6 +26,8 @@ Status: implemented
 
 常见的无分支对话需要线性遍历，不再需要通用排序。任意记录顺序和渲染器实测尺寸仍受支持。没有移除节点、预览、边、刷新或浏览器断言。托管环境预算仍是验收依据；本地性能分析能定位计算成本，但不能证明托管环境验收通过。
 
+[辅助模块不变式](../simplification/2026-10-14-context-map-helper-invariants.zh.md) 保留公开异常输入检查，同时直接推导内部已保证的坐标和链后继。
+
 ## Testing
 
 [布局测试](../../../../packages/client/ui-contextify/tests/layout.client.spec.ts) 在两个方向上，将打乱输入顺序、不同卡片尺寸和小数实测尺寸的坐标与独立 Dagre 基准精确比较。480 条消息的链保留全部节点，且不调用通用优化。分支、汇合、环、缺失端点和重复边场景保留 Dagre。布局、尺寸测量和 Map 面板套件共 68 个测试通过。[原始浏览器 benchmark](../../../../benchmarks/long-session-browser/long-session.bench.ts) 保留全部三次采样、240 轮负载和所有现有端点预算。

@@ -93,6 +93,12 @@ export interface ContextifyControllerSnapshot {
 
 const REFRESH_MS = 1_500
 
+/** Require a loaded controller value, preserving an actual transport failure. */
+function requireLoaded<T>(value: T | undefined, message?: string): T {
+  if (value === undefined) throw new Error(message)
+  return value
+}
+
 /** Apply-owned Contextify state machine for one active native Session. */
 export class ContextifyController {
   private snapshot: ContextifyControllerSnapshot = Object.freeze({
@@ -130,7 +136,8 @@ export class ContextifyController {
     if (this.refreshPromise !== undefined) return this.refreshPromise
     if (this.snapshot.pending) return Promise.resolve()
     const task = this.load().finally(() => {
-      if (this.refreshPromise === task) this.refreshPromise = undefined
+      // One deduplicated task is the sole publisher until this finally settles.
+      this.refreshPromise = undefined
     })
     this.refreshPromise = task
     return task
@@ -190,7 +197,8 @@ export class ContextifyController {
     if (this.snapshot.view === undefined || this.snapshot.graph === undefined) await this.refresh()
     const { view, graph, graphRevision } = this.snapshot
     if (view === undefined || graph === undefined || graphRevision === undefined) {
-      throw new Error(this.snapshot.error ?? 'Context Map is unavailable')
+      // A failed initial load always publishes its error; loaded graphs are retained.
+      throw new Error(this.snapshot.error)
     }
     const base: ContextRecommendationBase = Object.freeze({
       planRevision: view.plan.revision,
@@ -275,8 +283,7 @@ export class ContextifyController {
     const recommendation = this.snapshot.recommendation
     if (recommendation.phase === 'stale') throw new Error('Context recommendation is stale')
     if (recommendation.phase !== 'ready') throw new Error('No Context recommendation is ready')
-    const graph = this.snapshot.graph
-    if (graph === undefined) throw new Error('Context Map is unavailable')
+    const graph = requireLoaded(this.snapshot.graph, 'Context Map is unavailable')
     const declined = new Set(declinedNodeIds)
     if (declined.size !== declinedNodeIds.length
       || declinedNodeIds.some(id => !recommendation.proposal.selection.some(item => item.nodeId === id))) {
@@ -446,8 +453,7 @@ export class ContextifyController {
     if (this.snapshot.pending) throw new Error('Context Map mutation is already pending')
     if (this.refreshPromise !== undefined) await this.refreshPromise
     if (this.snapshot.view === undefined) await this.refresh()
-    const view = this.snapshot.view
-    if (view === undefined) throw new Error(this.snapshot.error ?? 'Context Plan is unavailable')
+    const view = requireLoaded(this.snapshot.view, this.snapshot.error)
     this.publish({ ...this.snapshot, pending: true })
     try {
       const next = await operation({ revision: view.plan.revision })

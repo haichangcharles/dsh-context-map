@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceSnapshot as WorkspaceListState } from '@deepseek-ai/dsh-api-workspace-controller/client'
-import type { ContextFamilyGraphNode } from '@deepseek-ai/dsh-contextify/types'
+import type { ContextFamilyGraphNode, ContextStewardProfile, ContextPolicyObservation } from '@deepseek-ai/dsh-contextify/types'
 import type { ReactFlowInstance, ReactFlowProps } from '@xyflow/react'
 import {
   ContextMapPanel, type ContextMapActions,
@@ -22,6 +22,7 @@ import { CONTEXT_MAP_RANK_GAP } from '../src/client/layout.ts'
 
 const flowHarness = vi.hoisted(() => ({
   fitView: vi.fn(async () => true),
+  props: undefined as ReactFlowProps | undefined,
   onNodesChange: undefined as ReactFlowProps['onNodesChange'],
   nodes: [] as NonNullable<ReactFlowProps['nodes']>,
 }))
@@ -32,6 +33,7 @@ vi.mock('@xyflow/react', async (importOriginal) => {
   return {
     ...actual,
     ReactFlow: (props: ReactFlowProps) => {
+      flowHarness.props = props
       flowHarness.onNodesChange = props.onNodesChange
       flowHarness.nodes = props.nodes ?? []
       return React.createElement(actual.ReactFlow, {
@@ -52,6 +54,7 @@ class ResizeObserverStub {
 
 beforeEach(() => {
   flowHarness.fitView.mockClear()
+  flowHarness.props = undefined
   flowHarness.onNodesChange = undefined
   flowHarness.nodes = []
   vi.stubGlobal('ResizeObserver', ResizeObserverStub)
@@ -1331,4 +1334,336 @@ describe('ContextifyController', () => {
     controller.focus(undefined)
     expect(controller.getSnapshot().focusedNodeId).toBeUndefined()
   })
+})
+
+
+describe('Context Map recovery and explicit evidence boundaries', () => {
+  function coldProfile(): ContextStewardProfile {
+    const empty = { acceptRate: 0.5, support: 0 }
+    return { evidence: empty, destination: empty, branch: empty, return: empty, release: empty,
+      thresholds: { evidence: 0.7, destination: 0.7 }, rules: [] }
+  }
+
+  it.each([new Error('profile is offline'), 'profile is offline'])('retries a failed read-only preference load without mutating context (%#)', async (cause) => {
+    const inspectPolicy = vi.fn().mockRejectedValueOnce(cause).mockResolvedValue(coldProfile())
+    const h = mount(fixture(), { inspectPolicy })
+    fireEvent.click(screen.getByRole('button', { name: 'Context preferences' }))
+    expect((await screen.findByRole('alert')).textContent).toContain('profile is offline')
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByText('No confirmed Context choices yet.')).toBeTruthy()
+    expect(inspectPolicy).toHaveBeenCalledTimes(2)
+    expect(h.mapActions.setNodeMode).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Context preferences' }))
+    expect(screen.queryByRole('region', { name: 'Learned Context preferences' })).toBeNull()
+  })
+
+  it('ignores a rejected preference request after the pane was closed', async () => {
+    let reject!: (reason: unknown) => void
+    const pending = new Promise<ContextStewardProfile>((_resolve, fail) => { reject = fail })
+    mount(fixture(), { inspectPolicy: vi.fn(() => pending) })
+    fireEvent.click(screen.getByRole('button', { name: 'Context preferences' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close Context preferences' }))
+    await act(async () => { reject(new Error('old offline response')) })
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('shows undone and legacy evidence honestly and resets only the derived profile', async () => {
+    const profile: ContextStewardProfile = { ...coldProfile(),
+      destination: { acceptRate: 0.8, support: 2 }, release: { acceptRate: 0.2, support: 3 },
+      rules: [{ action: 'release', activity: 'writing', tendency: 'avoid', support: 3, acceptRate: 0.2 }] }
+    const evidence: ContextPolicyObservation[] = [
+      { action: 'include', choice: 'reject', origin: 'explicit-review', branchDepth: 0, at: 0,
+        objective: 'Keep current facts', targetNodeId: 'unavailable-old-source', targetSessionId: root, undone: true },
+      { action: 'release', choice: 'accept', origin: 'manual-action', branchDepth: 1, at: 1,
+        sourceSessionId: child, sourceEventSeq: 93, targetNodeId: 'root:2', displayedIndex: 0, weight: 0.5 },
+    ]
+    const inspectPolicy = vi.fn().mockResolvedValueOnce(profile).mockResolvedValue(coldProfile())
+    const policyEvidence = vi.fn().mockResolvedValueOnce(evidence).mockResolvedValue([])
+    const h = mount(fixture(), { inspectPolicy, policyEvidence })
+    fireEvent.click(screen.getByRole('button', { name: 'Context preferences' }))
+    await waitFor(() => { expect(screen.getAllByText(/3 effective reviews/).length).toBeGreaterThan(0) })
+    fireEvent.click(screen.getByText('Recent explicit choices'))
+    expect(screen.getByText(/unavailable-old-source/)).toBeTruthy()
+    expect(screen.getByText(/child-session:93/)).toBeTruthy()
+    expect(screen.getByText(/old draft/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Reset learned preferences' }))
+    await waitFor(() => { expect(h.mapActions.resetPolicy).toHaveBeenCalledTimes(1) })
+    expect(await screen.findByText('No confirmed Context choices yet.')).toBeTruthy()
+    expect(h.mapActions.reset).not.toHaveBeenCalled()
+    expect(h.mapActions.setNodeModes).not.toHaveBeenCalled()
+  })
+
+  it.each(['Error', 'string'])('rolls back an optimistic checkbox on a failed source mutation (%s)', async (kind) => {
+    const h = mount(fixture(), { setNodeMode: vi.fn(async () => { throw kind === 'Error' ? new Error('revision changed') : 'revision changed' }) })
+    const card = await screen.findByLabelText('User message: root requirement')
+    const field = within(card).getByLabelText('Include root requirement in context')
+    fireEvent.click(field)
+    expect((await screen.findByRole('alert')).textContent).toContain('revision changed')
+    await waitFor(() => { expect((field as HTMLInputElement).checked).toBe(true) })
+    expect(h.mapActions.setNodeMode).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps an excerpt dialog open when nothing is selected, and lets the user cancel safely', async () => {
+    const h = mount(fixture(), { getNodeText: vi.fn(async () => 'Full original source') })
+    fireEvent.contextMenu(await screen.findByLabelText('User message: branch follow-up'), { clientX: 160, clientY: 180 })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Keep text excerpt…' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Keep text excerpt' })
+    const field = within(dialog).getByRole('textbox', { name: 'Original text for excerpt' }) as HTMLTextAreaElement
+    field.setSelectionRange(0, 0)
+    fireEvent.pointerDown(dialog)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Keep selected text' }))
+    expect(screen.getByRole('alert').textContent).toContain('Select text to keep first')
+    expect(h.mapActions.focusNodeExcerpt).not.toHaveBeenCalled()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close text excerpt' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('reports a synchronous Locate error and asynchronous Branch error instead of losing the menu action', async () => {
+    const h = mount(fixture(), { locate: vi.fn(() => { throw new Error('source unavailable') }),
+      branch: vi.fn(async () => { throw 'branch unavailable' }) })
+    const card = await screen.findByLabelText('User message: branch follow-up')
+    fireEvent.contextMenu(card, { clientX: 160, clientY: 180 })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Locate in Chat' }))
+    expect(screen.getByRole('alert').textContent).toContain('source unavailable')
+    fireEvent.contextMenu(card, { clientX: 160, clientY: 180 })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Branch from Here' }))
+    await waitFor(() => { expect(screen.getByRole('alert').textContent).toContain('branch unavailable') })
+    expect(h.mapActions.branch).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+  it('renders initial loading and an empty recovered graph without enabling model review', async () => {
+    const h = mount({ phase: 'loading', pending: false, recommendation: { phase: 'idle' } })
+    expect(screen.getAllByText(/Loading/).length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: 'Recommend' })).toHaveProperty('disabled', true)
+    const ready = fixture()
+    act(() => { h.publishSnapshot({ ...ready, graph: { ...ready.graph!, nodes: [], edges: [], sessions: [] } }) })
+    expect(screen.getByText('No message nodes yet.')).toBeTruthy()
+  })
+
+  it('renders included overrides and sparse route preferences with unknown historical nodes', async () => {
+    const current = fixture()
+    const profile: ContextStewardProfile = { ...coldProfile(),
+      branch: { support: 1, acceptRate: 0.7 },
+      rules: [{ action: 'include', sourceKind: 'chat', tendency: 'avoid', support: 1, acceptRate: 0.1 }] }
+    mount({ ...current, view: { ...current.view!, plan: { ...current.view!.plan,
+      included: [{ nodeId: 'root:1', snapshotSeq: 1, position: 0 }] } } }, {
+      inspectPolicy: vi.fn(async () => profile),
+      policyEvidence: vi.fn(async (): Promise<readonly ContextPolicyObservation[]> => [{ action: 'branch', choice: 'reject', origin: 'manual-action',
+        branchDepth: 0, at: 0, targetNodeId: 'old-missing' }]),
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Context preferences' }))
+    expect(await screen.findByText(/Often declined/)).toBeTruthy()
+    expect(screen.queryByText('No confirmed route choices yet')).toBeNull()
+    expect(screen.getByText(/old-missing/)).toBeTruthy()
+  })
+
+  it('keeps a low support profile provisional and closes preferences via the header toggle', async () => {
+    mount(fixture(), { inspectPolicy: vi.fn(async () => ({ ...coldProfile(), evidence: { support: 1, acceptRate: 0.7 } })) })
+    fireEvent.click(screen.getByRole('button', { name: 'Context preferences' }))
+    expect(await screen.findByText(/More confirmed choices/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Context preferences' }))
+    expect(screen.queryByRole('region', { name: 'Learned Context preferences' })).toBeNull()
+  })
+
+  it('uses the public canvas callbacks to dismiss menus and select a measured card', async () => {
+    const h = mount()
+    const card = await screen.findByLabelText('User message: branch follow-up')
+    fireEvent.contextMenu(card, { clientX: 160, clientY: 180 })
+    fireEvent.keyDown(window, { key: 'ArrowDown' })
+    expect(screen.getByRole('menu')).toBeTruthy()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByRole('menu')).toBeNull()
+    fireEvent.contextMenu(card)
+    act(() => { flowHarness.props?.onPaneClick?.(new MouseEvent('click') as unknown as React.MouseEvent) })
+    expect(screen.queryByRole('menu')).toBeNull()
+    fireEvent.contextMenu(card)
+    act(() => { flowHarness.props?.onMoveStart?.(new MouseEvent('pointerdown'), { x: 0, y: 0, zoom: 1 }) })
+    expect(screen.queryByRole('menu')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Selection mode' }))
+    const target = flowHarness.nodes.find(value => value.id === 'child:8')
+    if (target === undefined) throw new Error('Expected branch card in public canvas')
+    act(() => { flowHarness.props?.onNodeClick?.({} as React.MouseEvent, target) })
+    expect(h.store.getSnapshot().selectedNodeIds).toContain('child:8')
+    act(() => { flowHarness.onNodesChange?.([{ type: 'select', id: 'child:8', selected: false }]) })
+    expect(h.store.getSnapshot().selectedNodeIds).not.toContain('child:8')
+  })
+
+  it('commits only settled drag positions and cancels a relayout on unmount', async () => {
+    const h = mount()
+    await screen.findByLabelText('User message: branch follow-up')
+    act(() => { flowHarness.onNodesChange?.([{ type: 'position', id: 'child:8', position: { x: 8, y: 9 }, dragging: true },
+      { type: 'position', id: 'root:1' }]) })
+    expect(h.store.getSnapshot().positionOverrides['child:8']).toBeUndefined()
+    expect(flowHarness.nodes.find(value => value.id === 'child:8')?.position).toEqual({ x: 8, y: 9 })
+    act(() => { flowHarness.onNodesChange?.([{ type: 'position', id: 'child:8', position: { x: 11, y: 12 }, dragging: false }]) })
+    expect(h.store.getSnapshot().positionOverrides['child:8']).toEqual({ x: 11, y: 12 })
+    flowHarness.fitView.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: 'Re-layout' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Re-layout' }))
+    h.view.unmount()
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(flowHarness.fitView).not.toHaveBeenCalled()
+  })
+
+  it('ignores unrelated pointers and cancels a real marquee without changing selection', async () => {
+    const h = mount()
+    const card = await screen.findByLabelText('User message: branch follow-up')
+    fireEvent.click(screen.getByRole('button', { name: 'Selection mode' }))
+    const canvas = h.view.container.querySelector<HTMLElement>('[data-context-map-canvas]')!
+    fireEvent.pointerMove(canvas, { pointerId: 2 })
+    fireEvent.pointerUp(canvas, { pointerId: 2 })
+    fireEvent.pointerDown(card, { pointerId: 1, shiftKey: true })
+    expect(screen.queryByTestId('context-map-marquee')).toBeNull()
+    fireEvent.pointerDown(canvas, { pointerId: 1, shiftKey: true, clientX: 0, clientY: 0 })
+    fireEvent.pointerMove(canvas, { pointerId: 2, clientX: 90, clientY: 90 })
+    fireEvent.pointerUp(canvas, { pointerId: 2 })
+    expect(screen.getByTestId('context-map-marquee')).toBeTruthy()
+    act(() => {
+      // React may replay a queued continuous move after the discrete cancel.
+      fireEvent.pointerCancel(canvas, { pointerId: 1 })
+      fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 90, clientY: 90 })
+    })
+    expect(screen.queryByTestId('context-map-marquee')).toBeNull()
+    expect(h.store.getSnapshot().selectedNodeIds).toEqual([])
+  })
+
+  it.each(['local', 'fast', 'deep'] as const)('lets the controller own a failed %s review without duplicating an alert', async (mode) => {
+    const h = mount(fixture(), { recommend: vi.fn(async () => { throw new Error('controller owns this error') }) })
+    fireEvent.click(screen.getByRole('button', { name: 'Recommendation mode' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: mode === 'local' ? 'Local review' : mode === 'fast' ? 'Fast review' : 'Deep tree review' }))
+    await act(async () => {})
+    expect(h.mapActions.recommend).toHaveBeenCalledWith(mode)
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('dispatches Redo and contains a rejected cancel without a duplicated review error', async () => {
+    const current = fixture()
+    const h = mount({ ...current, view: { ...current.view!, canRedo: true },
+      recommendation: { phase: 'running', mode: 'deep' } }, {
+      cancelRecommendation: vi.fn(async () => { throw new Error('already cancelled') }),
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }))
+    await waitFor(() => { expect(h.mapActions.redo).toHaveBeenCalledOnce() })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel Deep review' }))
+    await act(async () => {})
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('includes selected messages as one transaction and clears only canvas selection', async () => {
+    const h = mount()
+    fireEvent.click(screen.getByRole('button', { name: 'Selection mode' }))
+    act(() => { h.store.actions.setNodeSelected('root:1', true) })
+    fireEvent.click(screen.getByRole('button', { name: 'Include in context' }))
+    await waitFor(() => { expect(h.mapActions.setNodeModes).toHaveBeenCalledWith([{ node: { sessionId: root, seq: 1 }, mode: 'natural' }]) })
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    expect(h.store.getSnapshot().selectedNodeIds).toEqual([])
+    expect(h.mapActions.reset).not.toHaveBeenCalled()
+  })
+
+  it('closes a replacement original and falls back to the full preview when its stored original is empty', async () => {
+    const current = fixture()
+    const records = current.graph!.nodes.map(record => record.id === 'root:2' ? {
+      ...record, replacement: { kind: 'placeholder' as const, preview: '', original: '', reason: 'Archived',
+        role: 'assistant' as const, originalAvailable: true as const },
+    } : record)
+    const h = mount({ ...current, graph: { ...current.graph!, nodes: records } })
+    fireEvent.contextMenu(await screen.findByLabelText('Assistant empty placeholder'), { clientX: 160, clientY: 180 })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Show original' }))
+    expect(screen.getByRole('dialog', { name: 'Original message' }).textContent).toContain('old draft')
+    fireEvent.click(screen.getByRole('button', { name: 'Close original message' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    act(() => { h.publishSnapshot({ ...current, graph: { ...current.graph!, nodes: records.map(record => ({ ...record, preview: '' })) } }) })
+    fireEvent.contextMenu(await screen.findByLabelText('Assistant empty placeholder'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Show original' }))
+    expect(screen.getByRole('dialog', { name: 'Original message' }).textContent).toContain('(empty message)')
+  })
+
+  it('shows recovered snapshot errors and treats an unknown session label as a depth-zero branch', async () => {
+    const current = fixture()
+    const h = mount({ ...current, error: 'Inspection failed', graph: { ...current.graph!, sessions: [],
+      nodes: [{ ...current.graph!.nodes[0]!, preview: '' }] } })
+    expect(screen.getByRole('alert').textContent).toContain('Inspection failed')
+    expect(await screen.findByText('Branch Session · depth 0')).toBeTruthy()
+    const input = screen.getByRole('textbox', { name: 'Search Context Map' })
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    fireEvent.change(input, { target: { value: 'nothing' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Next search result' }))
+    expect(screen.getByText('0 / 0')).toBeTruthy()
+    act(() => { h.publishSnapshot({ ...current, graph: { ...current.graph!,
+      sessions: current.graph!.sessions.map(value => ({ ...value, depth: 1 })),
+      nodes: current.graph!.nodes.map(value => ({ ...value, preview: '' })) } }) })
+    expect(screen.getAllByText(/Branch root-ses|Branch child-se/).length).toBeGreaterThan(0)
+  })
+
+  it.each([new Error('review unavailable'), 'review unavailable'])('reports a recommendation action failure through the panel (%#)', async (cause) => {
+    const current = fixture()
+    const proposal = { mode: 'local' as const, base: { planRevision: 3, graphRevision: 'family-20', activeSessionId: child },
+      currentNodeIds: ['root:1', 'root:2', 'child:8'], proposedNodeIds: ['root:2', 'child:8'],
+      addedNodeIds: [], removedNodeIds: ['root:1'], selection: [{ nodeId: 'root:1', action: 'exclude' as const, reason: 'Old', confidence: 'high' as const }], archive: [] }
+    mount({ ...current, recommendation: { phase: 'ready', proposal } }, {
+      applyRecommendations: vi.fn(async () => { throw cause }),
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply proposed context' }))
+    expect((await screen.findByRole('alert')).textContent).toContain('review unavailable')
+  })
+
+  it('preserves read-only imported worker cards even if the canvas sends a delayed activation', async () => {
+    const current = fixture()
+    const worker = { ...node('worker:1', 1, 'assistant', 'Worker report', sid('worker')), sourceKind: 'worker' as const,
+      sessionIds: [root], activeEventSeq: null }
+    const h = mount({ ...current, graph: { ...current.graph!, nodes: [...current.graph!.nodes, worker] } })
+    await screen.findByLabelText('Worker message: Worker report')
+    fireEvent.click(screen.getByRole('button', { name: 'Selection mode' }))
+    const target = flowHarness.nodes.find(value => value.id === worker.id)
+    if (target === undefined) throw new Error('Expected imported public canvas card')
+    const data = target.data as import('../src/client/ContextMapNode.tsx').ContextMapNodeData
+    act(() => { data.onActivate(worker); data.onIncludedChange(worker, true); data.onContextMenu(worker, { x: 0, y: 0 }) })
+    expect(h.store.getSnapshot().selectedNodeIds).toEqual([])
+    expect(h.mapActions.setNodeMode).not.toHaveBeenCalled()
+    expect(screen.queryByRole('menu')).toBeNull()
+    act(() => { h.publishSnapshot({ ...current, pending: true }) })
+    const busyTarget = flowHarness.nodes.find(value => value.id === 'child:8')
+    if (busyTarget === undefined) throw new Error('Expected active public canvas card')
+    const busyData = busyTarget.data as import('../src/client/ContextMapNode.tsx').ContextMapNodeData
+    act(() => { busyData.onIncludedChange(busyData.record, false) })
+    expect(h.mapActions.setNodeMode).not.toHaveBeenCalled()
+  })
+
+  it('shows bounded Fast progress and acknowledges a direct Local request failure only through controller state', async () => {
+    const current = fixture()
+    const h = mount(current, { recommend: vi.fn(async () => { throw new Error('remote rejected') }) })
+    fireEvent.click(screen.getByRole('button', { name: 'Recommend' }))
+    await act(async () => {})
+    expect(screen.queryByRole('alert')).toBeNull()
+    act(() => { h.publishSnapshot({ ...current, recommendation: { phase: 'running', mode: 'fast' } }) })
+    expect(screen.getByRole('button', { name: 'Reviewing…' })).toHaveProperty('disabled', true)
+  })
+
+  it('clears a searched destination on explicit focus, then allows the focus to be cleared', async () => {
+    const current = fixture()
+    const h = mount(current)
+    const input = screen.getByRole('textbox', { name: 'Search Context Map' })
+    fireEvent.change(input, { target: { value: 'root' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Previous search result' }))
+    expect(screen.getByText('1 / 1')).toBeTruthy()
+    act(() => { h.publishSnapshot({ ...current, focusedNodeId: 'child:8', focusRevision: 1 }) })
+    expect(input).toHaveProperty('value', '')
+    act(() => { h.publishSnapshot({ ...current, focusRevision: 2 }) })
+    expect(input).toHaveProperty('value', '')
+    fireEvent.click(screen.getByRole('button', { name: 'Selection mode' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Selection mode' }))
+    expect(screen.getByRole('button', { name: 'Selection mode' }).getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('ignores a menu callback from a canvas that has already unmounted', async () => {
+    const h = mount()
+    await screen.findByLabelText('User message: branch follow-up')
+    const target = flowHarness.nodes.find(value => value.id === 'child:8')
+    if (target === undefined) throw new Error('Expected rendered canvas node')
+    const data = target.data as import('../src/client/ContextMapNode.tsx').ContextMapNodeData
+    h.view.unmount()
+    expect(() => { data.onContextMenu(data.record, { x: 10, y: 10 }) }).not.toThrow()
+    expect(h.mapActions.setNodeMode).not.toHaveBeenCalled()
+  })
+
 })

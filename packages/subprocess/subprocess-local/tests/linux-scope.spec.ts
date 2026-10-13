@@ -205,7 +205,7 @@ describe('Linux scope establishment and quiescence', () => {
     expect(spawnSync).toHaveBeenCalledWith('/bin/systemctl', expect.arrayContaining([
       'kill', '--kill-whom=all', '--signal=SIGTERM',
     ]), expect.anything())
-    const direct = expect(result.direct).rejects.toThrow('before its bootstrap consumed')
+    const direct = expect(result.direct).resolves.toEqual({ exitCode: null, signal: 'SIGTERM' })
     child.exit(null, 'SIGTERM')
     await direct
     await expect(waiting).resolves.toBeUndefined()
@@ -342,6 +342,30 @@ describe('Linux scope establishment and quiescence', () => {
     child.exit(127, null)
     await expect(result.direct).rejects.toThrow('before its bootstrap consumed')
     await expect(result.owner.waitForExit()).resolves.toBeUndefined()
+    result.owner.cleanup?.()
+  })
+
+  it.each(['SIGTERM', 'SIGKILL'] as const)('settles explicit %s before bootstrap consumption as cancellation, preserving the signal', async (signal) => {
+    const { child, result, requestPath } = launch(async () => missingUnit())
+    result.owner.signal(signal)
+    // A launcher may translate termination into an exit code rather than a
+    // Node signal. No target has consumed the request in this race.
+    child.exit(signal === 'SIGTERM' ? 143 : 137, null)
+    await expect(result.direct).resolves.toEqual({ exitCode: null, signal })
+    await expect(result.owner.waitForExit()).resolves.toBeUndefined()
+    expect(existsSync(requestPath)).toBe(true)
+    result.owner.cleanup?.()
+    expect(existsSync(requestPath)).toBe(false)
+  })
+
+  it('preserves a reported startup error even when a cancellation races with it', async () => {
+    const { child, result, requestPath } = launch(async () => missingUnit())
+    writeLinuxStartupError(linuxLaunchFilesFromLocator(requestPath), {
+      type: 'error', error: { name: 'Error', message: 'spawn tool ENOENT', code: 'ENOENT' },
+    })
+    result.owner.signal('SIGTERM')
+    child.exit(127, null)
+    await expect(result.direct).rejects.toMatchObject({ code: 'ENOENT' })
     result.owner.cleanup?.()
   })
 
@@ -570,6 +594,24 @@ describe('Linux PTY bootstrap reuse', () => {
     })
     expect(() => scope.resolveOutcome({ exitCode: 127, signal: null })).toThrow('bad cwd')
     scope.cleanup()
+  })
+
+  it('settles an explicitly cancelled PTY bootstrap before request consumption', async () => {
+    const scope = prepareLinuxTerminalScope(terminalSpec, { TARGET: 'yes' }, {
+      runnerInvocation: ['/usr/bin/node', '/runner.js'],
+      spawnSync: vi.fn(() => ({ status: 0 })) as never,
+      systemctlQuery: async () => missingUnit(),
+    })
+    const requestPath = scope.env[SUBPROCESS_RUNNER_ENV]
+    if (requestPath === undefined) throw new Error('missing PTY request')
+    directories.push(linuxLaunchFilesFromLocator(requestPath).directory)
+    let running = true
+    const owner = scope.bindOwner({ running: () => running, signal: () => { running = false } })
+    owner.signal('SIGTERM')
+    expect(scope.resolveOutcome({ exitCode: 143, signal: null })).toEqual({ exitCode: null, signal: 'SIGTERM' })
+    await expect(owner.waitForExit()).resolves.toBeUndefined()
+    scope.cleanup()
+    expect(existsSync(requestPath)).toBe(false)
   })
 
   it('uses default owner dependencies and rejects an unconsumed request', () => {

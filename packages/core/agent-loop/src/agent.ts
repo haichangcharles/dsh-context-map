@@ -382,7 +382,7 @@ export class ReactLoopAgent implements Agent {
         }
       }
       firstAttempt = false
-      const request = this.buildRequest(config, preparedCall, assembly.tools, startsRequestSeries, signal)
+      const request = this.buildRequest(config, preparedCall, assembly.tools, startsRequestSeries, signal, turn, step)
       const live = new AssistantStreamAttempt(
         this.session.id,
         ++this.assistantAttemptCounter,
@@ -562,6 +562,8 @@ export class ReactLoopAgent implements Agent {
     tools: GenerateOptions['tools'] & object,
     startsRequestSeries: boolean,
     signal: AbortSignal,
+    turn: number,
+    step: number,
   ): GenerateOptions {
     const { session } = this
     const surfaceGeneration = session.surface.replaceGeneration
@@ -572,8 +574,9 @@ export class ReactLoopAgent implements Agent {
     const descriptor = compiler?.descriptor(session)
     const compilation = descriptor?.id === 'surface' && descriptor.version === 1 ? undefined : compiler?.compile({
       session,
-      turn: this.phase.kind === 'running' ? this.phase.turn : 0,
-      step: this.phase.kind === 'running' ? this.phase.step : 0,
+      // Coordinates belong to the admitted step, captured before async route preparation.
+      turn,
+      step,
     })
     const header = canonicalHeader({
       config,

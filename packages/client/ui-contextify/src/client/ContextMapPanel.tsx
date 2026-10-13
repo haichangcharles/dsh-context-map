@@ -182,12 +182,12 @@ export function ContextMapPanel({
   const proposal = snapshot.recommendation.phase === 'ready' || snapshot.recommendation.phase === 'stale'
     ? snapshot.recommendation.proposal
     : undefined
-  const learnedProfile = policyState.phase === 'ready' ? policyState.profile : undefined
-  const reviewedSupport = learnedProfile === undefined ? 0
-    : Math.max(learnedProfile.evidence.support + learnedProfile.destination.support
-      + learnedProfile.branch.support + learnedProfile.return.support + learnedProfile.release.support,
-    policyState.phase === 'ready' ? policyState.evidence.filter(item => item.undone !== true)
-      .reduce((sum, item) => sum + (item.weight ?? 1), 0) : 0)
+  // A profile and its evidence become visible atomically in the ready state.
+  const reviewedSupport = policyState.phase !== 'ready' ? 0
+    : Math.max(policyState.profile.evidence.support + policyState.profile.destination.support
+      + policyState.profile.branch.support + policyState.profile.return.support + policyState.profile.release.support,
+    policyState.evidence.filter(item => item.undone !== true)
+      .reduce((sum, item) => sum + (item.weight ?? 1), 0))
   const loadPolicy = (): void => {
     const request = ++policyRequest.current
     setPolicyState({ phase: 'loading' })
@@ -230,14 +230,6 @@ export function ContextMapPanel({
         }
       })
   }, [pendingNodeId, snapshot.pending])
-
-  const setEffectiveMode = useCallback((record: ContextFamilyGraphNode, included: boolean): void => {
-    if (graph === undefined) return
-    const active = record.sessionIds.includes(graph.activeSessionId)
-    if (!canEditNode(record, active)) return
-    const mode = effectiveContextMode(active, included)
-    runMutation(record.id, () => mapActions.setNodeMode(record.owner, mode), mode)
-  }, [graph, mapActions, runMutation])
 
   useEffect(() => {
     if (snapshot.graph === undefined) return
@@ -296,6 +288,14 @@ export function ContextMapPanel({
 
   const flowNodes = useMemo(() => {
     if (graph === undefined) return []
+    // Only a mounted graph publishes these node callbacks, so they retain its
+    // concrete identity even while a later snapshot is loading or unavailable.
+    const setEffectiveMode = (record: ContextFamilyGraphNode, included: boolean): void => {
+      const active = record.sessionIds.includes(graph.activeSessionId)
+      if (!canEditNode(record, active)) return
+      const mode = effectiveContextMode(active, included)
+      runMutation(record.id, () => mapActions.setNodeMode(record.owner, mode), mode)
+    }
     const searchMatches = new Set(searchResultIds)
     const selected = new Set(selectedNodeIds)
     const sessions = new Map(graph.sessions.map(session => [session.id, session]))
@@ -349,7 +349,7 @@ export function ContextMapPanel({
   }, [
     actions, activeSearchId, graph, positionedNodes, interactionMode, mutationPending, optimisticModes,
     measuredSizes, positionOverrides, recommendationByNode, searchResultIds, selectedNodeIds,
-    setEffectiveMode, snapshot, transientPositions, t, nodeCopyIdentity,
+    mapActions, runMutation, snapshot, transientPositions, t, nodeCopyIdentity,
   ])
 
   const flowEdges = useMemo((): Edge[] => (graph?.edges ?? []).map(edge => ({
@@ -379,13 +379,12 @@ export function ContextMapPanel({
     }
   }
   const selectedRecords = records.filter(record => selectedNodeIds.includes(record.id))
-  const batch = (desired: boolean | 'natural'): void => {
-    if (graph === undefined) return
+  const batch = (selectedGraph: NonNullable<typeof graph>, desired: boolean | 'natural'): void => {
     const mutations = selectedRecords.map(record => ({
       node: record.owner,
       mode: desired === 'natural'
         ? 'natural' as const
-        : effectiveContextMode(record.sessionIds.includes(graph.activeSessionId), desired),
+        : effectiveContextMode(record.sessionIds.includes(selectedGraph.activeSessionId), desired),
     }))
     runMutation('__batch__', () => mapActions.setNodeModes(mutations))
   }
@@ -394,15 +393,14 @@ export function ContextMapPanel({
     setSearchFocusRevision(revision => revision + 1)
     setResultIndex(index => (index + delta + searchResultIds.length) % searchResultIds.length)
   }
-  const relayout = (): void => {
+  const relayout = (currentInstance: ReactFlowInstance): void => {
     setTransientPositions({})
     actions.clearPositions()
     setMenu(null)
-    if (instance === null) return
     if (relayoutTimer.current !== undefined) window.clearTimeout(relayoutTimer.current)
     relayoutTimer.current = window.setTimeout(() => {
       relayoutTimer.current = undefined
-      void instance.fitView({ duration: 220 })
+      void currentInstance.fitView({ duration: 220 })
     }, 0)
   }
   const marqueeRect = marquee === null ? null : {
@@ -557,7 +555,7 @@ export function ContextMapPanel({
         <button
           type="button"
           disabled={instance === null || records.length === 0}
-          onClick={relayout}
+          onClick={instance === null ? undefined : () => { relayout(instance) }}
         >{t('copy.reLayout')}</button>
         <div className={css.recommendationActions}>
           <button
@@ -664,7 +662,8 @@ export function ContextMapPanel({
             width: Math.abs(event.clientX - bounds.left - marquee.start.x),
             height: Math.abs(event.clientY - bounds.top - marquee.start.y),
           }
-          for (const card of event.currentTarget.querySelectorAll<HTMLElement>('[data-context-node-id]')) {
+          // This synchronous selector guarantees the attribute throughout this read-only loop.
+          for (const card of event.currentTarget.querySelectorAll<HTMLElement & { dataset: DOMStringMap & { contextNodeId: string } }>('[data-context-node-id]')) {
             const rect = card.getBoundingClientRect()
             if (!intersects(finished, {
               x: rect.left - bounds.left,
@@ -673,7 +672,7 @@ export function ContextMapPanel({
               height: rect.height,
             })) continue
             const id = card.dataset.contextNodeId
-            if (id !== undefined) actions.setNodeSelected(id, !selectedNodeIds.includes(id))
+            actions.setNodeSelected(id, !selectedNodeIds.includes(id))
           }
           event.currentTarget.releasePointerCapture(event.pointerId)
           setMarquee(null)
@@ -805,12 +804,12 @@ export function ContextMapPanel({
           }}>{t('copy.keepSelectedText')}</button>
         </div>}
       </div>
-      {interactionMode === 'selection' && selectedRecords.length > 0 && (
+      {interactionMode === 'selection' && graph !== undefined && selectedRecords.length > 0 && (
         <div className={css.selectionBar} aria-label={t('copy.selectedMessageActions')}>
           <strong>{t('format.selected', { count: selectedRecords.length })}</strong>
-          <button type="button" disabled={mutationPending} onClick={() => { batch(true) }}>{t('copy.includeInContext2')}</button>
-          <button type="button" disabled={mutationPending} onClick={() => { batch(false) }}>{t('copy.excludeFromContext')}</button>
-          <button type="button" disabled={mutationPending} onClick={() => { batch('natural') }}>{t('copy.restoreAutomatic')}</button>
+          <button type="button" disabled={mutationPending} onClick={() => { batch(graph, true) }}>{t('copy.includeInContext2')}</button>
+          <button type="button" disabled={mutationPending} onClick={() => { batch(graph, false) }}>{t('copy.excludeFromContext')}</button>
+          <button type="button" disabled={mutationPending} onClick={() => { batch(graph, 'natural') }}>{t('copy.restoreAutomatic')}</button>
           <button type="button" onClick={() => { actions.clearSelection() }}>{t('copy.clear')}</button>
         </div>
       )}
