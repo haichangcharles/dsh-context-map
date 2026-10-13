@@ -463,7 +463,13 @@ export class ContextifyService extends TypertRemoteService {
     }
   }
 
-  /** Record a reviewed task lifecycle choice without altering the Context Plan. */
+  /** Record a reviewed task lifecycle choice without altering the Context Plan.
+   * @param agent - Live Agent whose Session owns the choice.
+   * @param targetSessionId - Native family Session whose work state changes.
+   * @param state - Explicitly reviewed task lifecycle state.
+   * @param expectedGraphRevision - Family revision shown when the choice was made.
+   * @param uiOrigin - Client-declared action source, not authenticated identity.
+   */
   @Remote('setWorkState')
   async setWorkState(
     agent: Agent,
@@ -944,9 +950,12 @@ export class ContextifyService extends TypertRemoteService {
     if (pending.base.activeSessionId === agent.id
       && pending.base.planRevision === currentContextPlan(agent.session).revision
       && pending.base.graphRevision === family.revision) {
+      const reviewedObjective = this.recommendationObjectives.get(pending)
       agent.session.append('contextify/recommendation-dismissed', {
         mode: pending.mode,
         base: pending.base,
+        ...(explicitDeclines.length === 0 || reviewedObjective === undefined
+          ? {} : { objective: reviewedObjective }),
         selection: pending.selection.map(({ nodeId, action }) => ({ nodeId, action })),
         archiveNodeIds: pending.archive.map(({ nodeId }) => nodeId),
         ...(explicitDeclines.length > 0 ? { declinedNodeIds: [...explicitDeclines] } : {}),
@@ -1960,6 +1969,7 @@ export class ContextifyService extends TypertRemoteService {
           const hasReviewEvidence = [...loaded.values()].some(inspection =>
             inspection.events.slice(inspection.inheritedEventCount).some(event =>
               (event.type === 'contextify/recommendation-reviewed'
+                || event.type === 'contextify/recommendation-dismissed'
                 || event.type === 'contextify/node-choice'
                 || event.type === 'contextify/branch-choice'
                 || event.type === 'contextify/route-choice'

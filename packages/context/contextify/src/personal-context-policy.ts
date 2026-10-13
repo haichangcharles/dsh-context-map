@@ -4,6 +4,7 @@ import type { ContextRecommendationDecision } from './recommendation.ts'
 import type { ContextFamilyGraph, ContextFamilyInspection } from './types.ts'
 import { jaccardOverlap } from './lexical-tokens.ts'
 import { contextPlanFeedbackStates } from './plan.ts'
+import { contextReviewFeedback } from './context-review-feedback.ts'
 
 /** One explicit UI choice paired with its reviewed objective when recorded. */
 export interface PersonalContextEdit {
@@ -309,19 +310,13 @@ export function declinedContextActionsForObjective(
   const declined = new Set<string>()
   // One Session history includes its inherited prefix, but not sibling reviews.
   for (const event of inspection?.events ?? []) {
-    if (event.type !== 'contextify/recommendation-reviewed'
+    if ((event.type !== 'contextify/recommendation-reviewed'
+      && event.type !== 'contextify/recommendation-dismissed')
       || event.data.uiOrigin !== 'contextify-client'
       || event.data.objective?.trim().replace(/\s+/g, ' ').toLocaleLowerCase() !== normalized) continue
-    const accepted = new Set(event.data.acceptedNodeIds)
-    const rejected = new Set(event.data.declinedNodeIds)
-    if (accepted.size !== event.data.acceptedNodeIds.length
-      || rejected.size !== event.data.declinedNodeIds.length
-      || accepted.size + rejected.size !== event.data.selection.length
-      || new Set(event.data.selection.map(item => item.nodeId)).size !== event.data.selection.length
-      || event.data.selection.some(item => accepted.has(item.nodeId) === rejected.has(item.nodeId))) continue
-    for (const item of event.data.selection) {
+    for (const item of contextReviewFeedback(event)) {
       const key = `${item.action}:${item.nodeId}`
-      if (accepted.has(item.nodeId)) declined.delete(key)
+      if (item.choice === 'accept') declined.delete(key)
       else declined.add(key)
     }
   }

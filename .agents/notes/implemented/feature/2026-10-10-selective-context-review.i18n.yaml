@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-10-selective-context-review.md
-2026-10-10-selective-context-review.md: 6f8704d2ac67e108bfb48893143b9b5458a9d3ac
-2026-10-10-selective-context-review.zh.md: 7e95119b98eb0d95860109dd69c9c5d917cca658
+2026-10-10-selective-context-review.md: c8c0a3466ccc8b86980b01f9cd63705b39645a8d
+2026-10-10-selective-context-review.zh.md: 80a507e0079c264b378d2dfea04a1a1291754b12

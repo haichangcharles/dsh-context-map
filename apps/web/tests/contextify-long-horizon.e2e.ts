@@ -203,6 +203,39 @@ it('keeps a returned topic active across 30 chat turns and removes a corrected c
         { origin: 'recommendation', uiOrigin: 'contextify-client' },
       ])
     expect(root.session.snapshotEvents().some(event => JSON.stringify(event).includes(STALE))).toBe(true)
+
+    // An explicit Keep survives sheet closure, without labeling unchosen items
+    // or changing either the native Context Plan or the unsent draft.
+    await map.getByText('34 / 66 in context', { exact: true }).waitFor({ timeout: 10_000 })
+    const draft = 'Write the laptop comparison with the corrected screen size.'
+    const composer = page.locator('[data-composer-input]').first()
+    const planRevision = scaffold.ctx.contextify.get(active).plan.revision
+    const support = (await scaffold.ctx.contextify.stewardProfile(active)).release.support
+    await writeComposerDraft(page, composer, draft)
+    await page.getByRole('button', { name: 'Review context for draft', exact: true }).click()
+    try { await review.waitFor({ timeout: 10_000 }) } catch (cause) {
+      const alerts = await page.getByRole('alert').allTextContents()
+      throw new Error(`Draft Keep review did not open: ${JSON.stringify(alerts)}`, { cause })
+    }
+    await review.getByRole('button', { name: 'Keep current context for ' + CURRENT_SCREEN }).click()
+    await review.getByRole('button', { name: 'Close recommendation review' }).click()
+    await expect.poll(() => active.session.snapshotEvents().findLast(event =>
+      event.type === 'contextify/recommendation-dismissed')?.data,
+    { timeout: 10_000 }).toMatchObject({ objective: draft, declinedNodeIds: [currentNodeId] })
+    expect(scaffold.ctx.contextify.get(active).plan.revision).toBe(planRevision)
+    expect((await scaffold.ctx.contextify.stewardProfile(active)).release.support).toBe(support + 1)
+    expect(await composer.innerText()).toBe(draft)
+
+    await page.getByRole('button', { name: 'Review context for draft', exact: true }).click()
+    await review.waitFor({ timeout: 10_000 })
+    await review.getByText('The proposed context matches the current version.', { exact: true }).waitFor()
+    expect(await review.getByRole('button', { name: 'Keep current context for ' + CURRENT_SCREEN }).count())
+      .toBe(0)
+    await review.getByRole('button', { name: 'Close recommendation review' }).click()
+    await send(draft)
+    const afterDismissal = requests.findLast(request => request.sessionId === active.session.id)?.body
+    expect(afterDismissal).toContain(CURRENT_SCREEN)
+    expect(afterDismissal).not.toContain(OLD_SCREEN)
   } finally {
     try { await browser?.close() } finally { await scaffold.close() }
   }

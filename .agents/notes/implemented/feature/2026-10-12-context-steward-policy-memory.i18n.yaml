@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-12-context-steward-policy-memory.md
-2026-10-12-context-steward-policy-memory.md: 5e22e44faddc0d27cfb3c5e98d806f75c8f76f8c
-2026-10-12-context-steward-policy-memory.zh.md: 70fb32173f3aaae85e0f2f33e1c3d64b1a49665d
+2026-10-12-context-steward-policy-memory.md: d6464f26ee36e0eb34eff30cdfc1b766adaeccb9
+2026-10-12-context-steward-policy-memory.zh.md: f9127e16da17a62b6a6da5305245c4e1eab4afb8

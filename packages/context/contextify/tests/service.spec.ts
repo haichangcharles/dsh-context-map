@@ -179,6 +179,28 @@ describe('ContextifyService native Session family', () => {
     } finally { await ctx.fiber.dispose() }
   })
 
+  it('loads explicit dismissal feedback from an otherwise unreviewed historical family', async () => {
+    const { ctx, start, stored } = await harness()
+    const archivalCtx = new Context()
+    await archivalCtx.plugin(SessionStore)
+    try {
+      const archived = archivalCtx.sessions.create(SessionId('policy-dismissal-only'))
+      appendClosedTurn(archived, 1, 'Write an introduction', 'Draft')
+      archived.append('contextify/recommendation-dismissed', {
+        mode: 'fast', base: { activeSessionId: archived.id, graphRevision: 'g', planRevision: 0 },
+        selection: [{ nodeId: 'old-page', action: 'include' }], archiveNodeIds: [],
+        declinedNodeIds: ['old-page'], uiOrigin: 'contextify-client',
+      })
+      stored.set(archived.id, { inspection: { meta: archived.header,
+        inheritedEventCount: archived.inheritedEventCount, events: archived.snapshotEvents() },
+      revision: 'dismissed-v1' })
+      const current = ctx.sessions.create(SessionId('policy-dismissal-current'))
+      appendClosedTurn(current, 1, 'Write another introduction', 'Draft')
+      const { agent } = start(current)
+      expect((await ctx.contextify.stewardProfile(agent)).evidence).toEqual({ acceptRate: 0.4, support: 1 })
+    } finally { await archivalCtx.fiber.dispose() }
+  })
+
   it('carries confirmed Context policy across unrelated Sessions in one Profile', async () => {
     const { ctx, start, stored } = await harness()
     try {
@@ -978,6 +1000,40 @@ describe('ContextifyService native Session family', () => {
         mutations: [{ nodeId: `${session.id}:${String(turn.userSeq)}`, mode: 'exclude' }],
         proposal: { selection: [{ nodeId: `${session.id}:${String(turn.userSeq)}`,
           action: 'exclude' }] } })
+  })
+
+  it('retains dismissed item feedback and stops repeating only the explicitly declined change', async () => {
+    const { ctx, start } = await harness()
+    const session = ctx.sessions.create(SessionId('dismissed-item-repeat'))
+    const active = start(session, { provider: 'mock', model: 'mock' })
+    const first = appendClosedTurn(session, 1, 'old requirement', 'first answer')
+    const second = appendClosedTurn(session, 2, 'other requirement', 'second answer')
+    const firstId = `${session.id}:${String(first.userSeq)}`
+    const secondId = `${session.id}:${String(second.userSeq)}`
+    ctx.llm.registerAdapter(['mock'], new class extends OffReasoningAdapter {
+      override async * stream(): AsyncIterable<StreamChunk> {
+        const text = JSON.stringify({ exclude: [firstId, secondId].map(nodeId => ({
+          nodeId, reason: 'May be obsolete',
+        })), include: [], archive: [] })
+        yield { type: 'block-start', index: 0, blockType: 'text' }
+        yield { type: 'text-delta', index: 0, text }
+        yield { type: 'block-end', index: 0, block: { type: 'text', text } }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+      }
+    }())
+    const objective = 'Write the comparison with current requirements'
+    const before = ctx.contextify.get(active.agent)
+    const graph = await ctx.contextify.familyPage(active.agent, undefined, 100)
+    const proposal = await ctx.contextify.recommend(active.agent, {
+      planRevision: before.plan.revision, graphRevision: graph.revision, activeSessionId: session.id,
+    }, objective, 'fast', true)
+    await ctx.contextify.dismissRecommendation(active.agent, proposal, 'contextify-client', [firstId])
+    expect(session.snapshotEvents().findLast(event => event.type === 'contextify/recommendation-dismissed')?.data)
+      .toMatchObject({ objective, declinedNodeIds: [firstId] })
+    expect(ctx.contextify.get(active.agent).plan.revision).toBe(before.plan.revision)
+    expect((await ctx.contextify.stewardProfile(active.agent)).release.support).toBe(0.5)
+    const next = await ctx.contextify.recommend(active.agent, proposal.base, objective, 'fast', true)
+    expect(next.selection.map(item => item.nodeId)).toEqual([secondId])
   })
 
   it('does not learn a negative choice when a reviewed proposal became stale', async () => {

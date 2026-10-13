@@ -1,6 +1,7 @@
 /** Conservative, training-free handling of a user's exact Web-source correction. */
 import type { ContextRecommendationDecision } from './recommendation.ts'
 
+/** A graph-eligible Web observation with a native-call URL and current selection state. */
 export interface VerifiedWebSource {
   readonly nodeId: string
   /** URL read from the bound web_fetch tool call, never from page text. */
@@ -60,6 +61,9 @@ function singleSelectionCommand(objective: string): boolean {
  * Offer one reversible Exclude only for an unambiguous user command and a
  * uniquely bound, currently selected Web result. Ambiguity falls back to the
  * ordinary DSH reviewer rather than silently editing the Context Plan.
+ * @param objective - Explicit user source-selection command.
+ * @param sources - Web results whose URLs are bound to native fetch calls.
+ * @returns One review-only Exclude, or null when the command or source is ambiguous.
  */
 export function explicitWebSourceExclusion(
   objective: string,
@@ -81,7 +85,11 @@ export function explicitWebSourceExclusion(
   })
 }
 
-/** Offer a reviewed Include of one exact, previously fetched Web source. */
+/** Offer a reviewed Include of one exact, previously fetched Web source.
+ * @param objective - Explicit user source-selection command.
+ * @param sources - Web results whose URLs are bound to native fetch calls.
+ * @returns One review-only Include, or null when the command or source is ineligible.
+ */
 export function explicitWebSourceInclusion(
   objective: string,
   sources: readonly VerifiedWebSource[],

@@ -6,6 +6,7 @@ import type {
 } from './types.ts'
 import { contextPlanFeedbackStates } from './plan.ts'
 import { contextActivityFromObjective } from './context-activity.ts'
+import { contextReviewFeedback } from './context-review-feedback.ts'
 
 const ACTIONS: readonly ContextPolicyAction[] = ['include', 'navigate', 'branch', 'return', 'release']
 const SOURCE_KINDS: readonly NonNullable<ContextPolicyObservation['sourceKind']>[]
@@ -104,39 +105,34 @@ export function contextPolicyObservationsFromFamily(
     const { stateByPlanRevision, undoneStates } = contextPlanFeedbackStates(owned)
     for (const [index, event] of owned.entries()) {
       const objective = event.type === 'contextify/recommendation-reviewed'
+        || event.type === 'contextify/recommendation-dismissed'
         || event.type === 'contextify/route-choice'
         ? event.data.objective : undefined
       const activity = objective === undefined ? undefined : contextActivityFromObjective(objective)
-      if (event.type === 'contextify/recommendation-reviewed'
+      if ((event.type === 'contextify/recommendation-reviewed'
+        || event.type === 'contextify/recommendation-dismissed')
         && event.data.uiOrigin === 'contextify-client') {
-        const selection = event.data.selection
-        const accepted = new Set(event.data.acceptedNodeIds)
-        const declined = new Set(event.data.declinedNodeIds)
-        if (selection.length === 0 || accepted.size !== event.data.acceptedNodeIds.length
-          || declined.size !== event.data.declinedNodeIds.length
-          || accepted.size + declined.size !== selection.length
-          || new Set(selection.map(item => item.nodeId)).size !== selection.length
-          || selection.some(item => accepted.has(item.nodeId) === declined.has(item.nodeId))) continue
         const preceding = owned[index - 1]
-        const reviewedState = preceding?.type === 'contextify/node-choice'
+        const reviewedState = event.type === 'contextify/recommendation-reviewed'
+          && preceding?.type === 'contextify/node-choice'
           && preceding.data.origin === 'recommendation'
           ? stateByPlanRevision.get(preceding.data.afterPlanRevision) : undefined
-        for (const [displayedIndex, item] of selection.entries()) {
+        for (const item of contextReviewFeedback(event)) {
           const sourceKind = sourceKinds.get(item.nodeId)
           const target = nodes.get(item.nodeId)
           observed.push({ sessionId: inspection.meta.id, seq: event.seq,
             observation: Object.freeze({
               action: item.action === 'include' ? 'include' : 'release',
-              choice: accepted.has(item.nodeId) ? 'accept' : 'reject',
+              choice: item.choice,
               origin: 'explicit-review', branchDepth, at: event.time,
               ...(activity === undefined ? {} : { activity }),
               ...(event.data.objective?.trim() ? { objective: event.data.objective } : {}),
-              targetNodeId: item.nodeId, displayedIndex,
+              targetNodeId: item.nodeId, displayedIndex: item.displayedIndex,
               ...(target === undefined ? {} : {
                 onActiveBranch: target.sessionIds.includes(inspection.meta.id),
               }),
               ...(sourceKind === undefined ? {} : { sourceKind }),
-              weight: 1 / selection.length,
+              weight: item.weight,
               ...(reviewedState !== undefined && undoneStates.has(reviewedState)
                 ? { undone: true } : {}),
             }) })

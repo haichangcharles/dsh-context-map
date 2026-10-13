@@ -5,6 +5,8 @@ import type { ContextPolicyObservation } from './types.ts'
  * It is a routing feature, not a claim about the user's stable identity. When
  * an objective only mentions an activity in passing, we leave it unclassified
  * and let the policy back off to global evidence.
+ * @param objective - Current reviewed draft or authored Turn input.
+ * @returns An explicit task activity cue, or undefined for ambiguous wording.
  */
 export function contextActivityFromObjective(
   objective: string,

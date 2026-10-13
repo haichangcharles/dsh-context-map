@@ -651,6 +651,35 @@ describe('personal Context candidate routing', () => {
     }
   })
 
+  it('remembers dismissed item declines for the same objective without inventing style edits', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    try {
+      const root = ctx.sessions.create(SessionId('context-dismissed-repeat'))
+      const objective = 'Write the introduction'
+      const base = { activeSessionId: root.id, planRevision: 1, graphRevision: 'g' }
+      const data = { mode: 'fast' as const, base, objective,
+        selection: [{ nodeId: 'page', action: 'include' as const },
+          { nodeId: 'chat', action: 'exclude' as const }], archiveNodeIds: [] }
+      root.append('contextify/recommendation-dismissed', {
+        ...data, declinedNodeIds: ['page'], uiOrigin: 'contextify-client',
+      })
+      root.append('contextify/recommendation-dismissed', { ...data, uiOrigin: 'contextify-client' })
+      const inspection = () => ({ meta: root.header, events: root.snapshotEvents(), inheritedEventCount: 0 })
+      expect([...declinedContextActionsForObjective(inspection(), ' write  THE introduction ')])
+        .toEqual(['include:page'])
+      expect([...declinedContextActionsForObjective(inspection(), 'Plan a different task')]).toEqual([])
+      const graph: ContextFamilyGraph = { rootSessionId: root.id, activeSessionId: root.id,
+        sessions: [{ id: root.id, depth: 0, seedLength: 0, tipNodeId: null }], nodes: [], edges: [] }
+      expect(contextEditEvidenceFromFamily(graph, new Map([[root.id, inspection()]]))).toEqual([])
+      root.append('contextify/recommendation-reviewed', {
+        mode: 'fast', base, objective, selection: [{ nodeId: 'page', action: 'include' }],
+        acceptedNodeIds: ['page'], declinedNodeIds: [], uiOrigin: 'contextify-client',
+      })
+      expect([...declinedContextActionsForObjective(inspection(), objective)]).toEqual([])
+    } finally { await ctx.fiber.dispose() }
+  })
+
   it('extracts an accepted two-node Context delta once, not a no-op or partial batch', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)

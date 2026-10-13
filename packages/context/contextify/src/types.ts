@@ -463,6 +463,8 @@ declare module '@deepseek-ai/dsh-session/types' {
     'contextify/recommendation-dismissed': {
       readonly mode: ContextRecommendationMode
       readonly base: ContextRecommendationBase
+      /** Bounded reviewed objective, present only when items were explicitly declined. */
+      readonly objective?: string
       readonly selection: readonly {
         readonly nodeId: string
         readonly action: 'include' | 'exclude'

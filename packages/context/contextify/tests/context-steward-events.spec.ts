@@ -7,6 +7,55 @@ import { createInitialContextPlan, nextPlan, redoPlan, undoPlan } from '../src/p
 import type { ContextFamilyGraph, ContextFamilyInspection } from '../src/types.ts'
 
 describe('Context Steward event-derived preferences', () => {
+  it('learns only explicit item declines on dismissal, with one sheet weight and no inherited duplicates', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    try {
+      const root = ctx.sessions.create(SessionId('steward-dismissed-items'))
+      const childId = SessionId('steward-dismissed-child')
+      const data = {
+        mode: 'fast' as const,
+        base: { planRevision: 1, graphRevision: 'g', activeSessionId: root.id },
+        objective: 'Write the introduction using earlier Web evidence',
+        selection: [{ nodeId: 'page', action: 'include' as const },
+          { nodeId: 'old-chat', action: 'exclude' as const }], archiveNodeIds: [],
+      }
+      root.append('contextify/recommendation-dismissed', {
+        ...data, declinedNodeIds: ['page'], uiOrigin: 'contextify-client',
+      })
+      root.append('contextify/recommendation-dismissed', { ...data, uiOrigin: 'contextify-client' })
+      root.append('contextify/recommendation-dismissed', { ...data, declinedNodeIds: ['old-chat'] })
+      root.append('contextify/recommendation-dismissed', {
+        ...data, declinedNodeIds: ['page', 'page'], uiOrigin: 'contextify-client',
+      })
+      root.append('contextify/recommendation-dismissed', {
+        ...data, declinedNodeIds: ['foreign'], uiOrigin: 'contextify-client',
+      })
+      const events = root.snapshotEvents()
+      const graph: ContextFamilyGraph = {
+        rootSessionId: root.id, activeSessionId: root.id,
+        sessions: [{ id: root.id, seedLength: 0, depth: 0, tipNodeId: null },
+          { id: childId, parentSessionId: root.id, seedLength: events.length, depth: 1, tipNodeId: null }],
+        nodes: [{ id: 'page', owner: { sessionId: root.id, seq: SessionSeq(0) },
+          role: 'tool', sourceKind: 'web', preview: 'prior Web page', time: 0,
+          branchAtSeq: null, sessionIds: [root.id], activeEventSeq: null }], edges: [],
+      }
+      const inspections = new Map<ReturnType<typeof SessionId>, ContextFamilyInspection>([
+        [root.id, { meta: root.header, events, inheritedEventCount: 0 }],
+        [childId, { meta: { ...root.header, id: childId, parentSession: root.id },
+          events, inheritedEventCount: events.length }],
+      ])
+      const observations = contextPolicyObservationsFromFamily(graph, inspections)
+      expect(observations).toHaveLength(1)
+      expect(observations[0]).toMatchObject({ action: 'include', choice: 'reject',
+        origin: 'explicit-review', sourceKind: 'web', activity: 'writing', weight: 0.5,
+        objective: data.objective, targetNodeId: 'page', displayedIndex: 0 })
+      const profile = deriveContextStewardProfile(observations, { branchDepth: 0 })
+      expect(profile.evidence.support).toBe(0.5)
+      expect(profile.release.support).toBe(0)
+    } finally { await ctx.fiber.dispose() }
+  })
+
   it('counts a reviewed batch once, ignores passive or non-client events, and avoids inherited duplicates', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)
