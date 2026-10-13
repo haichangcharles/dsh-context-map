@@ -53,7 +53,7 @@
 .policyPanel ul { margin: 7px 0; padding-left: 18px; }
 .policyPanel li { margin: 5px 0; }
 .policyPanel li strong { margin-right: 6px; }
-.policyPanel li span { color: var(--dsw-alias-fg-secondary); }
+.policyPanel li span { display: block; overflow-wrap: anywhere; color: var(--dsw-alias-fg-secondary); }
 .policyStats { color: var(--dsw-alias-fg-secondary); }
 .policyHeading { display: flex; align-items: center; justify-content: space-between; }
 .policyHeadingActions { display: flex; align-items: center; gap: 6px; }

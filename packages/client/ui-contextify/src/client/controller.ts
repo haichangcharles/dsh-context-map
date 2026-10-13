@@ -173,11 +173,11 @@ export class ContextifyController {
 
   /**
    * Run an isolated, review-only Context recommendation against the current revision.
-   * @param mode - Manually selected bounded Fast or full-tree Deep review.
+   * @param mode - Manually selected Local, bounded Fast, or full-tree Deep review.
    * @param objective - Optional review objective forwarded to the isolated Agent.
    * @param draftBound - Whether the review must remain bound to the current unsent draft.
    */
-  async recommend(mode: ContextRecommendationMode = 'fast', objective?: string,
+  async recommend(mode: ContextRecommendationMode = 'local', objective?: string,
     draftBound = false): Promise<void> {
     if (this.snapshot.recommendation.phase === 'running') {
       throw new Error('Context recommendation is already running')

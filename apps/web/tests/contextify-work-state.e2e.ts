@@ -3,11 +3,11 @@ import type { Browser } from 'playwright'
 import { chromium } from 'playwright'
 import { expect, it } from 'vitest'
 import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
-import { SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-workspace'
 import type {} from '@deepseek-ai/dsh-session-title'
 import { launchWebScaffold } from './scaffold.ts'
-import { connectFreshWorkspace } from './support.ts'
+import { connectFreshWorkspace, writeComposerDraft } from './support.ts'
 
 it('completes and reopens a branch without changing the selected request context', async () => {
   const scaffold = await launchWebScaffold()
@@ -29,8 +29,9 @@ it('completes and reopens a branch without changing the selected request context
       }),
     }, { surfaceOp: 'append' })
     const boundary = agent.session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
-    const child = scaffold.ctx.sessions.fork(agent.session, SessionSeq(boundary.seq),
-      SessionId('work-state-announcement'))
+    const forked = await scaffold.ctx.sessionController.fork({ sessionId: agent.id, atSeq: boundary.seq })
+    const child = scaffold.ctx.sessions.get(forked.sessionId)
+    if (child === undefined) throw new Error('native Session Controller fork did not create a child')
     child.append('turn/start', { turn: 2 })
     child.append('user/message', createUserMessage({
       content: [{ type: 'text', text: 'Draft the announcement.' }], source: { kind: 'user' },
@@ -49,7 +50,7 @@ it('completes and reopens a branch without changing the selected request context
 
     const map = page.getByRole('region', { name: 'Context Map' })
     await map.getByText('Branches (2) · task lifecycle').click()
-    const childRow = map.locator('[data-work-session-id="work-state-announcement"]')
+    const childRow = map.locator(`[data-work-session-id="${child.id}"]`)
     const compiled = JSON.stringify(scaffold.ctx.contextCompiler.compile({
       session: agent.session, turn: 2, step: 1,
     }).messages)
@@ -70,6 +71,36 @@ it('completes and reopens a branch without changing the selected request context
     expect(JSON.stringify(scaffold.ctx.contextCompiler.compile({
       session: agent.session, turn: 2, step: 1,
     }).messages)).toBe(compiled)
+
+    const composer = page.locator('[data-composer-input]').first()
+    await writeComposerDraft(page, composer, 'Park this task until the announcement is ready')
+    await page.getByRole('button', { name: 'Review context for draft', exact: true }).click()
+    const review = map.getByRole('dialog', { name: 'Context recommendation review' })
+    await review.waitFor({ timeout: 10_000 })
+    await review.getByRole('button', { name: 'Park branch', exact: true }).click()
+    await expect.poll(async () => (await scaffold.ctx.contextify.familyPage(agent)).sessions
+      .find(session => session.id === agent.id)?.workState).toBe('parked')
+    expect(scaffold.ctx.contextify.get(agent).plan.revision).toBe(planRevision)
+    await review.getByRole('button', { name: 'Close recommendation review' }).click()
+    await writeComposerDraft(page, composer, 'Write the announcement in its own branch')
+    await childRow.getByRole('button', { name: 'Move draft here: Draft the announcement.', exact: true }).click()
+    await expect.poll(() => agent.session.snapshotEvents().filter(event => event.type === 'contextify/manual-route')
+      .map(event => event.data.objective), { timeout: 10_000 })
+      .toEqual(['Write the announcement in its own branch'])
+    await expect.poll(() => composer.innerText(), { timeout: 10_000 }).toBe('Write the announcement in its own branch')
+    try { await expect.poll(() => childRow.textContent({ timeout: 1_000 }), { timeout: 8_000 }).toContain('Active · open') }
+    catch (cause) { throw new Error(`Destination activation failed: agent=${String(scaffold.ctx.agents.get(child.id) !== undefined)}; map=${JSON.stringify(await map.allTextContents())}; alerts=${JSON.stringify(await page.getByRole('alert').allTextContents())}`, { cause }) }
+    await map.getByRole('button', { name: 'Context preferences', exact: true }).click()
+    const preferences = map.getByRole('region', { name: 'Learned Context preferences' })
+    try { await preferences.getByText('Recent explicit choices', { exact: true }).waitFor({ timeout: 10_000 }) }
+    catch (cause) { throw new Error(`Preference inspector failed: ${JSON.stringify(await preferences.allTextContents())}; alerts=${JSON.stringify(await map.getByRole('alert').allTextContents())}`, { cause }) }
+    await preferences.getByRole('button', { name: 'Reset learned preferences', exact: true }).click()
+    const emptyEvidence = preferences.getByText('No recorded explicit choices yet.', { exact: true })
+    await emptyEvidence.waitFor({ state: 'attached', timeout: 10_000 })
+    await preferences.getByText('Recent explicit choices', { exact: true }).click()
+    await emptyEvidence.waitFor({ timeout: 10_000 })
+    expect(scaffold.ctx.contextify.get(agent).plan.revision).toBe(planRevision)
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'contextify/manual-route')).toHaveLength(1)
   } finally {
     try { await browser?.close() } finally { await scaffold.close() }
   }

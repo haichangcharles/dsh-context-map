@@ -990,12 +990,43 @@ Durable Context Plan mutations and native Session-family graph reads.
  */
 @Remote('stewardProfile') async stewardProfile(agent: Agent): Promise<ContextStewardProfile>
 
+/** Inspect recent explicit policy evidence without mutating the Profile.
+ * @param agent - Live Agent selecting the Profile and native Session family.
+ * @returns At most forty current observations with owned Session event references.
+ */
+@Remote('policyEvidence') async policyEvidence(agent: Agent): Promise<readonly ContextPolicyObservation[]>
+
+/** Reset learned preferences at exact owned event cursors, retaining logs and Plans.
+ * @param agent - Live idle Agent whose Session records the Profile reset.
+ * @param uiOrigin - Explicit Client reset action source.
+ */
+@Remote('resetPolicy') async resetPolicy(agent: Agent, uiOrigin?: 'contextify-client'): Promise<void>
+
+/** Review one exact pending task lifecycle proposal independently of Context selection.
+ * @param agent - Live idle Agent owning the reviewed proposal.
+ * @param proposal - Exact currently pending recommendation.
+ * @param sessionId - Proposed native task branch.
+ * @param choice - Explicit acceptance or rejection.
+ * @param uiOrigin - Client action source.
+ */
+@Remote('reviewWorkState') async reviewWorkState(agent: Agent, proposal: ContextRecommendationProposal, sessionId: SessionId, choice: 'accept' | 'reject', uiOrigin?: 'contextify-client'): Promise<void>
+
+/** Record a successful explicit draft transfer to a native family branch.
+ * @param agent - Live source Agent whose draft was transferred.
+ * @param targetSessionId - Native destination in the same family.
+ * @param actionId - Unique Client transfer identifier used for idempotence.
+ * @param expectedGraphRevision - Frozen family revision preceding transfer.
+ * @param uiOrigin - Explicit Client action source; passive Locate does not call this method.
+ * @param objective - Transferred draft text.
+ */
+@Remote('recordManualRoute') async recordManualRoute(agent: Agent, targetSessionId: SessionId, actionId: string, expectedGraphRevision: string, uiOrigin?: 'contextify-client', objective?: string): Promise<void>
+
 /**
- * Analyze one exact graph snapshot in manually selected Fast or Deep mode.
+ * Analyze one exact graph snapshot in manually selected Local, Fast, or Deep mode.
  * @param agent - Live idle Agent whose route and native Session family are reviewed.
  * @param base - Expected plan revision, graph watermark, and active Session identity.
  * @param objective - Optional review objective; the latest user input is the fallback.
- * @param mode - Fast bounded classifier (default) or isolated full-tree Harness child.
+ * @param mode - Local policy (default), bounded Fast classifier, or full-tree Harness child.
  * @param draftBound - True only when the Client reviewed its current unsent composer draft.
  * @returns An ephemeral, validated proposal that has not mutated the Context Plan.
  */

@@ -1,13 +1,14 @@
 /** Explicit, draft-bound Context review entry above the chat composer. */
 import { useEffect, useRef, useState } from 'react'
+import type { ContextRecommendationMode } from '@deepseek-ai/dsh-contextify/types'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { InputZone } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import './steward-locales.ts'
+import './locales.ts'
 import css from './DraftContextReview.module.css'
 
 /** Actions supplied by the shared Contextify controller and right panel. */
 export interface DraftContextReviewInjected {
-  readonly review: (objective: string) => Promise<void>
+  readonly review: (objective: string, mode?: ContextRecommendationMode) => Promise<void>
   readonly discard: () => void
   readonly openMap: () => void
 }
@@ -22,6 +23,7 @@ export type DraftContextReviewProps = Pick<InputZone, 'input'>
  * @returns A draft-scoped button or nothing when the composer is empty.
  */
 export function DraftContextReview({ input, review, discard, openMap, t }: DraftContextReviewProps) {
+  const [menuOpen, setMenuOpen] = useState(false)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef(input)
@@ -34,14 +36,15 @@ export function DraftContextReview({ input, review, discard, openMap, t }: Draft
   }, [])
   const objective = input.draft.trim()
   if (objective.length === 0 || input.phase !== 'plain') return null
-  const run = async () => {
+  const run = async (mode: ContextRecommendationMode = 'local') => {
     if (pendingRef.current) return
+    setMenuOpen(false)
     pendingRef.current = true
     setPending(true)
     setError(null)
     const draftRevision = input.draftRev
     try {
-      await review(objective)
+      await review(objective, mode)
       if (!mounted.current) return
       if (inputRef.current.draftRev !== draftRevision
         || inputRef.current.draft.trim() !== objective) {
@@ -58,6 +61,15 @@ export function DraftContextReview({ input, review, discard, openMap, t }: Draft
     <button className={css.action} type="button" disabled={pending} onClick={() => { void run() }}>
       {t(pending ? 'action.reviewingDraft' : 'action.reviewDraft')}
     </button>
+    <button className={css.action} type="button" disabled={pending} aria-label={t('action.draftReviewMode')}
+      aria-expanded={menuOpen} onClick={() => { setMenuOpen(open => !open) }}>▾</button>
+    {menuOpen && <div className={css.menu} role="menu" aria-label={t('action.draftReviewMode')}
+      data-opaque-surface="true" onKeyDown={(event) => { if (event.key === 'Escape') setMenuOpen(false) }}>
+      {(['local', 'fast', 'deep'] as const).map(mode => <button className={css.action} key={mode}
+        type="button" role="menuitem" disabled={pending} onClick={() => { void run(mode) }}>
+        {t(mode === 'local' ? 'action.localDraft' : mode === 'fast' ? 'action.fastDraft' : 'action.deepDraft')}
+      </button>)}
+    </div>}
     {error !== null && <span className={css.error} role="alert">{error}</span>}
   </div>
 }

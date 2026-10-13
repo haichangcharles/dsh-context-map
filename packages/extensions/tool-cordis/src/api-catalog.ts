@@ -789,9 +789,30 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'A compact, inspectable policy with support counts per action.',
       },
       {
+        signature: '@Remote(\'policyEvidence\') async policyEvidence(agent: Agent): Promise<readonly ContextPolicyObservation[]>',
+        description: 'Inspect recent explicit policy evidence without mutating the Profile.',
+        parameters: [{ name: 'agent', description: 'Live Agent selecting the Profile and native Session family.' }],
+        returns: 'At most forty current observations with owned Session event references.',
+      },
+      {
+        signature: '@Remote(\'resetPolicy\') async resetPolicy(agent: Agent, uiOrigin?: \'contextify-client\'): Promise<void>',
+        description: 'Reset learned preferences at exact owned event cursors, retaining logs and Plans.',
+        parameters: [{ name: 'agent', description: 'Live idle Agent whose Session records the Profile reset.' }, { name: 'uiOrigin', description: 'Explicit Client reset action source.' }],
+      },
+      {
+        signature: '@Remote(\'reviewWorkState\') async reviewWorkState(agent: Agent, proposal: ContextRecommendationProposal, sessionId: SessionId, choice: \'accept\' | \'reject\', uiOrigin?: \'contextify-client\'): Promise<void>',
+        description: 'Review one exact pending task lifecycle proposal independently of Context selection.',
+        parameters: [{ name: 'agent', description: 'Live idle Agent owning the reviewed proposal.' }, { name: 'proposal', description: 'Exact currently pending recommendation.' }, { name: 'sessionId', description: 'Proposed native task branch.' }, { name: 'choice', description: 'Explicit acceptance or rejection.' }, { name: 'uiOrigin', description: 'Client action source.' }],
+      },
+      {
+        signature: '@Remote(\'recordManualRoute\') async recordManualRoute(agent: Agent, targetSessionId: SessionId, actionId: string, expectedGraphRevision: string, uiOrigin?: \'contextify-client\', objective?: string): Promise<void>',
+        description: 'Record a successful explicit draft transfer to a native family branch.',
+        parameters: [{ name: 'agent', description: 'Live source Agent whose draft was transferred.' }, { name: 'targetSessionId', description: 'Native destination in the same family.' }, { name: 'actionId', description: 'Unique Client transfer identifier used for idempotence.' }, { name: 'expectedGraphRevision', description: 'Frozen family revision preceding transfer.' }, { name: 'uiOrigin', description: 'Explicit Client action source; passive Locate does not call this method.' }, { name: 'objective', description: 'Transferred draft text.' }],
+      },
+      {
         signature: '@Remote(\'recommend\') async recommend( agent: Agent, base: ContextRecommendationBase, objective?: string, mode?: ContextRecommendationMode, draftBound?: boolean, ): Promise<ContextRecommendationProposal>',
-        description: 'Analyze one exact graph snapshot in manually selected Fast or Deep mode.',
-        parameters: [{ name: 'agent', description: 'Live idle Agent whose route and native Session family are reviewed.' }, { name: 'base', description: 'Expected plan revision, graph watermark, and active Session identity.' }, { name: 'objective', description: 'Optional review objective; the latest user input is the fallback.' }, { name: 'mode', description: 'Fast bounded classifier (default) or isolated full-tree Harness child.' }, { name: 'draftBound', description: 'True only when the Client reviewed its current unsent composer draft.' }],
+        description: 'Analyze one exact graph snapshot in manually selected Local, Fast, or Deep mode.',
+        parameters: [{ name: 'agent', description: 'Live idle Agent whose route and native Session family are reviewed.' }, { name: 'base', description: 'Expected plan revision, graph watermark, and active Session identity.' }, { name: 'objective', description: 'Optional review objective; the latest user input is the fallback.' }, { name: 'mode', description: 'Local policy (default), bounded Fast classifier, or full-tree Harness child.' }, { name: 'draftBound', description: 'True only when the Client reviewed its current unsent composer draft.' }],
         returns: 'An ephemeral, validated proposal that has not mutated the Context Plan.',
       },
       {
@@ -4186,7 +4207,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContextPolicyAction',
-    declaration: 'export type ContextPolicyAction = \'include\' | \'navigate\' | \'branch\' | \'return\' | \'release\';',
+    declaration: 'export type ContextPolicyAction = \'include\' | \'navigate\' | \'branch\' | \'return\' | \'release\' | \'park\' | \'complete\' | \'reopen\';',
   },
   {
     name: 'ContextPolicyEstimate',
@@ -4194,7 +4215,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContextPolicyObservation',
-    declaration: 'export interface ContextPolicyObservation {\n    readonly action: ContextPolicyAction;\n    readonly choice: \'accept\' | \'reject\';\n    readonly origin: \'explicit-review\' | \'manual-action\';\n    readonly objective?: string;\n    readonly targetNodeId?: string;\n    readonly targetSessionId?: SessionId;\n    readonly displayedIndex?: number;\n    readonly onActiveBranch?: boolean;\n    readonly activity?: \'planning\' | \'writing\' | \'brainstorming\' | \'other\';\n    readonly sourceKind?: \'chat\' | \'web\' | \'worker\';\n    readonly branchDepth: number;\n    readonly at: number;\n    readonly weight?: number;\n    readonly undone?: boolean;\n}',
+    declaration: 'export interface ContextPolicyObservation {\n    readonly sourceSessionId?: SessionId;\n    readonly sourceEventSeq?: number;\n    readonly action: ContextPolicyAction;\n    readonly choice: \'accept\' | \'reject\';\n    readonly origin: \'explicit-review\' | \'manual-action\';\n    readonly objective?: string;\n    readonly targetNodeId?: string;\n    readonly targetSessionId?: SessionId;\n    readonly displayedIndex?: number;\n    readonly onActiveBranch?: boolean;\n    readonly activity?: \'planning\' | \'writing\' | \'brainstorming\' | \'other\';\n    readonly sourceKind?: \'chat\' | \'web\' | \'worker\';\n    readonly branchDepth: number;\n    readonly at: number;\n    readonly weight?: number;\n    readonly undone?: boolean;\n}',
   },
   {
     name: 'ContextPolicyRule',
@@ -4206,11 +4227,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContextRecommendationMode',
-    declaration: 'export type ContextRecommendationMode = \'fast\' | \'deep\';',
+    declaration: 'export type ContextRecommendationMode = \'local\' | \'fast\' | \'deep\';',
   },
   {
     name: 'ContextRecommendationProposal',
-    declaration: 'export interface ContextRecommendationProposal {\n    readonly mode: ContextRecommendationMode;\n    readonly base: ContextRecommendationBase;\n    readonly currentNodeIds: readonly string[];\n    readonly proposedNodeIds: readonly string[];\n    readonly addedNodeIds: readonly string[];\n    readonly removedNodeIds: readonly string[];\n    readonly selection: readonly ContextSelectionRecommendation[];\n    readonly archive: readonly ContextArchiveCandidate[];\n    readonly route?: ContextRouteAdvice;\n}',
+    declaration: 'export interface ContextRecommendationProposal {\n    readonly mode: ContextRecommendationMode;\n    readonly base: ContextRecommendationBase;\n    readonly currentNodeIds: readonly string[];\n    readonly proposedNodeIds: readonly string[];\n    readonly addedNodeIds: readonly string[];\n    readonly removedNodeIds: readonly string[];\n    readonly selection: readonly ContextSelectionRecommendation[];\n    readonly archive: readonly ContextArchiveCandidate[];\n    readonly route?: ContextRouteAdvice;\n    readonly workStates?: readonly ContextWorkStateAdvice[];\n}',
   },
   {
     name: 'ContextReplacementNode',
@@ -4239,6 +4260,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ContextStewardProfile',
     declaration: 'export interface ContextStewardProfile {\n    readonly evidence: ContextPolicyEstimate;\n    readonly destination: ContextPolicyEstimate;\n    readonly branch: ContextPolicyEstimate;\n    readonly return: ContextPolicyEstimate;\n    readonly release: ContextPolicyEstimate;\n    readonly thresholds: {\n        readonly evidence: number;\n        readonly destination: number;\n    };\n    readonly rules: readonly ContextPolicyRule[];\n}',
+  },
+  {
+    name: 'ContextWorkStateAdvice',
+    declaration: 'export interface ContextWorkStateAdvice {\n    readonly sessionId: SessionId;\n    readonly state: \'open\' | \'parked\' | \'completed\';\n    readonly reason: string;\n}',
   },
   {
     name: 'ContinuableCreateRequest',

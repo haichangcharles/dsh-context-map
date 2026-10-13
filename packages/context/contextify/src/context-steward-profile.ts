@@ -8,7 +8,7 @@ import { contextPlanFeedbackStates } from './plan.ts'
 import { contextActivityFromObjective } from './context-activity.ts'
 import { contextReviewFeedback } from './context-review-feedback.ts'
 
-const ACTIONS: readonly ContextPolicyAction[] = ['include', 'navigate', 'branch', 'return', 'release']
+const ACTIONS: readonly ContextPolicyAction[] = ['include', 'navigate', 'branch', 'return', 'release', 'park', 'complete', 'reopen']
 const SOURCE_KINDS: readonly NonNullable<ContextPolicyObservation['sourceKind']>[]
   = ['chat', 'web', 'worker']
 const ACTIVITIES: readonly NonNullable<ContextPolicyObservation['activity']>[]
@@ -183,6 +183,20 @@ export function contextPolicyObservationsFromFamily(
             ...(event.data.targetSessionId === undefined ? {} : {
               targetSessionId: event.data.targetSessionId,
             }) }) })
+      } else if ((event.type === 'contextify/manual-route'
+        || event.type === 'contextify/work-state-choice')
+        && event.data.uiOrigin === 'contextify-client') {
+        const action: ContextPolicyAction = event.type === 'contextify/manual-route'
+          ? event.data.action : event.data.state === 'open' ? 'reopen'
+            : event.data.state === 'parked' ? 'park' : 'complete'
+        const choiceActivity = contextActivityFromObjective(event.data.objective)
+        observed.push({ sessionId: inspection.meta.id, seq: event.seq,
+          observation: Object.freeze({ action,
+            choice: event.type === 'contextify/manual-route' ? 'accept' : event.data.choice,
+            origin: event.type === 'contextify/manual-route' ? 'manual-action' : 'explicit-review',
+            branchDepth, at: event.time, weight: 1,
+            objective: event.data.objective, targetSessionId: event.data.targetSessionId,
+            ...(choiceActivity === undefined ? {} : { activity: choiceActivity }) }) })
       } else if (event.type === 'contextify/manual-branch'
         && event.data.uiOrigin === 'contextify-client') {
         const manualObjective = event.data.objective?.trim()
@@ -200,7 +214,8 @@ export function contextPolicyObservationsFromFamily(
   }
   return Object.freeze(observed.sort((left, right) => left.observation.at - right.observation.at
     || left.sessionId.localeCompare(right.sessionId) || left.seq - right.seq)
-    .map(item => item.observation))
+    .map(item => Object.freeze({ ...item.observation,
+      sourceSessionId: item.sessionId, sourceEventSeq: item.seq })))
 }
 
 function threshold(base: number, value: ContextPolicyEstimate): number {

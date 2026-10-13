@@ -1,5 +1,6 @@
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 /** Browser assembly for the native Session Context Map. */
+import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import { useEffect } from 'react'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -22,7 +23,7 @@ import { ContextifyController, type ContextifyTransport } from './controller.ts'
 import { createContextMapStore } from './store.ts'
 import { ContextifyPromptSettingsSection } from './ContextifyPromptSettings.tsx'
 import { DraftContextReview, type DraftContextReviewInjected } from './DraftContextReview.tsx'
-import { en as stewardEn, zh as stewardZh } from './steward-locales.ts'
+import { en as stewardEn, zh as stewardZh } from './locales.ts'
 import type { ContextifyPromptSettings } from '@deepseek-ai/dsh-contextify/types'
 
 export { ContextMapPanel } from './ContextMapPanel.tsx'
@@ -32,7 +33,7 @@ export type { ContextifyControllerSnapshot, ContextifyTransport } from './contro
 export { createContextMapStore } from './store.ts'
 
 /** Services required by the Contextify Remote adapter and details surface. */
-export const inject = ['slots', 'remote', 'remote.contextify', 'layout', 'sessions', 'conversation', 'sidebarRight', 'sidebarRightTabs']
+export const inject = ['locale', 'slots', 'remote', 'remote.contextify', 'layout', 'sessions', 'conversation', 'sidebarRight', 'sidebarRightTabs']
 
 /** Convert a generated transport result into the component's ordinary promise contract. */
 function valueOf<T>(result: RemoteResult<T>): T {
@@ -71,6 +72,7 @@ function DetailsOpener({ open, useSessions }: {
 
 /** Register the pinned map and one shared controller per native Session. */
 export function apply(ctx: ClientContext): void {
+  const t = ctx.locale.bind('contextifySteward')
   const remote = ctx.remote.contextify
   const controllers = new Map<SessionId, ContextifyController>()
   ctx.inject(['locale'], localeCtx => localeCtx.effect(() =>
@@ -81,6 +83,7 @@ export function apply(ctx: ClientContext): void {
     settingsCtx.slots.inject('settings.section', () => settingsCtx.slots.register({
       name: 'settings.section',
       id: 'contextify-prompts',
+      locale: 'contextifySteward',
       order: 25,
       label: () => settingsCtx.locale.getSnapshot().active.startsWith('zh')
         ? 'Context Map 提示词'
@@ -176,6 +179,7 @@ export function apply(ctx: ClientContext): void {
   ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
     name: 'sidebar.right.pane.tab',
     key: 'context-map',
+    locale: 'contextifySteward',
     store: createContextMapStore(),
     inject: (sessionId: SessionId): ContextMapPanelInjected => {
       const controller = controllerFor(sessionId)
@@ -189,6 +193,38 @@ export function apply(ctx: ClientContext): void {
           redo: () => controller.redo(),
           recommend: (mode, objective) => controller.recommend(mode, objective),
           inspectPolicy: async () => valueOf(await remote.stewardProfile(sessionId)),
+          policyEvidence: async () => valueOf(await remote.policyEvidence(sessionId)),
+          resetPolicy: async () => {
+            valueOf(await remote.resetPolicy(sessionId, 'contextify-client'))
+            controller.clearRecommendation()
+            await controller.refresh()
+          },
+          reviewWorkState: async (proposal, targetSessionId, choice) => {
+            valueOf(await remote.reviewWorkState(sessionId, proposal, targetSessionId, choice, 'contextify-client'))
+            await controller.refresh()
+          },
+          moveDraftHere: async (targetSessionId) => {
+            const sourceScope = ctx.sessions.scope(sessionId)
+            if (sourceScope === undefined) throw new Error(t('error.currentSession'))
+            const { draft, draftRev, phase } = ctx.conversation.input.for(sourceScope).state.getSnapshot()
+            if (phase !== 'plain' || draft.trim().length === 0) throw new Error(t('error.emptyDraft'))
+            const revision = controller.getSnapshot().graphRevision
+            if (revision === undefined) throw new Error(t('error.mapNotReady'))
+            const page = valueOf(await remote.familyPage(sessionId, undefined, 1))
+            if (page.revision !== revision || page.activeSessionId !== sessionId
+              || targetSessionId === sessionId || !page.sessions.some(session => session.id === targetSessionId)) {
+              throw new Error(t('error.destinationChanged'))
+            }
+            if (!ctx.conversation.moveDraft(sessionId, targetSessionId, { draft, draftRev })) {
+              throw new Error(t('error.draftTransfer'))
+            }
+            try {
+              valueOf(await remote.recordManualRoute(sessionId, targetSessionId, randomUUID(),
+                revision, 'contextify-client', draft.trim()))
+            } finally {
+              ctx.sessions.open(targetSessionId)
+            }
+          },
           setWorkState: async (targetSessionId, state) => {
             const revision = controller.getSnapshot().graphRevision
             if (revision === undefined) throw new Error('The Context Map is not ready')
@@ -303,7 +339,7 @@ export function apply(ctx: ClientContext): void {
     inject: (sessionId: SessionId): DraftContextReviewInjected => {
       const controller = controllerFor(sessionId)
       return {
-        review: objective => controller.recommend('fast', objective, true),
+        review: (objective, mode = 'local') => controller.recommend(mode, objective, true),
         discard: () => { controller.clearRecommendation() },
         openMap: () => { ctx.sidebarRight.openTab('context-map') },
       }

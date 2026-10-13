@@ -1,0 +1,75 @@
+# Manage a long conversation with Context Steward
+
+English | [中文](context-steward.zh.md)
+
+## Summary
+
+Context Steward helps you keep planning, research, writing and brainstorming in one inspectable conversation family. You choose where the next turn belongs and which earlier material enters its request. Reviewed choices can guide later recommendations; the native conversation remains the evidence record.
+
+## Table of Contents
+
+- [Start a workspace](#start-a-workspace)
+- [Choose context and a destination](#choose-context-and-a-destination)
+- [Review Agent advice](#review-agent-advice)
+- [Manage work and preferences](#manage-work-and-preferences)
+- [Verify without an API](#verify-without-an-api)
+
+<a id="start-a-workspace"></a>
+## Start a workspace
+
+Follow the [source installation](../../../README.md#run-from-source), then [select a workspace and configure a model](index.md). Context Steward runs in the shipped `web` profile. Use an isolated `DSH_HOME` when trying a runtime upgrade with existing Session data; the [migration limitation](../../../README.md#existing-session-data) applies.
+
+Open the Context Map beside Chat. Each branch is a native Harness Session. Shared inherited messages appear once; each source retains its original owner. The current Session has its own Context Plan.
+
+<a id="choose-context-and-a-destination"></a>
+## Choose context and a destination
+
+**Natural** uses messages on the current Session path. **Exclude** omits a selected path message. **Include** borrows a supported source from another branch. Returning an imported source to Natural stops using it in the current request while preserving its origin. Include it again whenever it becomes useful.
+
+For example, research the launch date in one branch and draft a community website page in another. Include the date evidence while writing, return it to Natural when brainstorming unrelated wording, and Include it again for the final fact check. These are per-request selections, not deletion or task completion.
+
+Use **Branch** for a separate task. Use **Move draft here** to transfer the unchanged unsent draft to an existing branch; the operation rejects a changed draft or a destination that already has a draft. The control requires a nonempty unsent draft. **Locate** only inspects a message and supplies no preference label. A route recommendation can separately propose Navigate to an existing branch or Return through native ancestry.
+
+<a id="review-agent-advice"></a>
+## Review Agent advice
+
+| Mode | Purpose | Additional model requests |
+| --- | --- | --- |
+| Local | Graph checks, explicit routing cues and confirmed-choice advice | Zero; default |
+| Fast | Bounded semantic source and destination review | One tool-free request when explicitly selected |
+| Deep | Deliberate review of an isolated full-tree snapshot | Explicit DSH review; default 3 requests, configurable 1–10, 45-second timeout |
+
+Review a draft before sending it, or open the Map review menu. Advice never sends the draft, creates a branch or changes the Context Plan by itself. Destination relevance and evidence relevance are separate: a useful research branch may supply evidence while the conversation stays on the writing branch. Uncertain destination advice preserves the current branch. Local uses explicit cues, lexical overlap and confirmed choices; it does not establish general semantic understanding. Deep counts retries toward its request limit and caps each request at 1,200 output tokens.
+
+Accept only the useful items. **Keep current** explicitly declines that item's proposed action; leaving an item undecided is not feedback. Closing a sheet records already selected declines without changing context. Apply changes the reviewed selection as one revision; Undo removes the corresponding learning evidence. A changed draft, graph or Plan invalidates old advice and requires a fresh review.
+
+Automatic post-turn Branch classification is opt-in in the Prompt Dashboard. Enabling it can add one auxiliary request per eligible turn. The main Agent's explicit Branch request still produces a confirmation card when background classification is disabled.
+
+<a id="manage-work-and-preferences"></a>
+## Manage work and preferences
+
+Park, Complete and Reopen describe a branch's task lifecycle. They do not delete its evidence or change context selection. Completed branches remain available as evidence and for an explicit Resume. A later human turn reopens that branch. A suggested work-state change is reviewed separately from Include, Exclude and Archive. Local requires an explicit Park, Complete or Reopen cue; Fast and Deep may suggest at most one graph-valid change. An explicit draft cue takes precedence over model advice.
+
+The Preferences view summarizes repeated confirmed Context choices across native Session families in the same Profile. It conditions advice on the activity, source kind and branch relation where evidence exists. Sparse choices retain conservative defaults. Recent evidence identifies the originating Session event; passive viewing, unanswered cards and unmarked Remote calls do not train the profile.
+
+Reset learning clears the derived preference projection using logged Session watermarks. It retains conversations, their original choice records and the current Context Plan. Later explicit choices can build fresh evidence. This policy memory describes Context-management habits, not general personality or personal facts.
+
+<a id="verify-without-an-api"></a>
+## Verify without an API
+
+From the repository root with supported Node.js and installed dependencies, export the constructed 30-turn fixture and its separate expectations:
+
+```sh
+node --import tsx/esm scripts/context-steward-replay.ts /tmp/context-steward-replay
+pnpm exec vitest run scripts/context-steward-replay.spec.ts
+```
+
+The command writes `.visible.json`, `.gold.json` and `.summary.json`. Each visible packet contains only the graph and confirmed choices available before its decision. Expectations and controlled scorer outputs are kept out of that packet. The `actionPacket` field is the production bounded scorer input; the surrounding full fixture graph is debugging context, not an additional model request. The replay checks native fork identity, completed evidence, re-entry and route constraints without calling a provider. It is an engineering example, not a dataset of observed human preferences or a semantic-accuracy benchmark.
+
+The assembled browser acceptance case exercises actual UI and compiled requests with keyless response replay after building the Client:
+
+```sh
+DSH_SNAPSHOT=replay pnpm exec vitest run --config vitest.web.config.ts apps/web/tests/contextify-long-horizon.e2e.ts
+```
+
+See the [Contextify package](../../../packages/context/contextify/README.md) for compiler, source-bound worker and revision limitations, and the [UI package](../../../packages/client/ui-contextify/README.md) for integration details.

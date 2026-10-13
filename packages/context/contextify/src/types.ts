@@ -19,15 +19,19 @@ export interface ContextifyPromptSettings {
   readonly context: ContextifyPromptSection
   readonly archive: ContextifyPromptSection
   readonly branch: ContextifyPromptSection
-  /** Lightweight auxiliary classifier enabled for fresh Profiles; users may disable it. */
+  /** Opt-in auxiliary classifier; explicit Branch requests do not require it. */
   readonly automaticBranchReview: boolean
+  /** Maximum model requests in one explicitly selected Deep review. */
+  readonly deepMaxRequests: number
 }
 
 /** User-confirmed Context action whose proposal sensitivity may adapt. */
-export type ContextPolicyAction = 'include' | 'navigate' | 'branch' | 'return' | 'release'
+export type ContextPolicyAction = 'include' | 'navigate' | 'branch' | 'return' | 'release' | 'park' | 'complete' | 'reopen'
 
 /** One explicitly reviewed or directly applied Context-management choice. */
 export interface ContextPolicyObservation {
+  readonly sourceSessionId?: SessionId
+  readonly sourceEventSeq?: number
   readonly action: ContextPolicyAction
   readonly choice: 'accept' | 'reject'
   /** Passive non-response is deliberately not represented as a rejection. */
@@ -106,7 +110,8 @@ export const CONTEXTIFY_DEFAULT_SETTINGS: ContextifyPromptSettings = Object.free
   context: Object.freeze({ additional: '', override: '' }),
   archive: Object.freeze({ additional: '', override: '' }),
   branch: Object.freeze({ additional: '', override: '' }),
-  automaticBranchReview: true,
+  automaticBranchReview: false,
+  deepMaxRequests: 3,
 })
 
 /**
@@ -327,7 +332,7 @@ export interface ContextRecommendationBase {
 }
 
 /** User-selected analysis depth for one ephemeral Context recommendation. */
-export type ContextRecommendationMode = 'fast' | 'deep'
+export type ContextRecommendationMode = 'local' | 'fast' | 'deep'
 
 /** One review-only change to effective context selection. */
 export interface ContextSelectionRecommendation {
@@ -357,6 +362,15 @@ export interface ContextRecommendationProposal {
   readonly archive: readonly ContextArchiveCandidate[]
   /** Optional draft-bound Session route, reviewed separately from Context edits. */
   readonly route?: ContextRouteAdvice
+  /** Separate review-only task lifecycle advice; never changes prompt inclusion. */
+  readonly workStates?: readonly ContextWorkStateAdvice[]
+}
+
+/** A reviewable native task state, independent of selected context. */
+export interface ContextWorkStateAdvice {
+  readonly sessionId: SessionId
+  readonly state: 'open' | 'parked' | 'completed'
+  readonly reason: string
 }
 
 /** One explicit, review-only draft route tied to the graph and Plan it read. */
@@ -414,6 +428,29 @@ declare module '@deepseek-ai/dsh-session/types' {
       /** Client-declared action source; this is not authenticated human identity. */
       readonly uiOrigin?: 'contextify-client'
     }
+    /** Confirmed draft navigation; passive graph inspection does not emit this event. */
+    'contextify/manual-route': {
+      readonly actionId: string
+      readonly action: 'navigate' | 'return'
+      readonly targetSessionId: SessionId
+      readonly objective: string
+      readonly graphRevision: string
+      readonly uiOrigin?: 'contextify-client'
+    }
+    /** Profile policy reset watermarks; logs and Context Plans remain intact. */
+    'contextify/policy-reset': {
+      readonly cursors: readonly { readonly sessionId: SessionId; readonly seq: number }[]
+      readonly uiOrigin?: 'contextify-client'
+    }
+    /** Explicit review of one exact task-state suggestion. */
+    'contextify/work-state-choice': {
+      readonly targetSessionId: SessionId
+      readonly state: 'open' | 'parked' | 'completed'
+      readonly choice: 'accept' | 'reject'
+      readonly objective: string
+      readonly base: ContextRecommendationBase
+      readonly uiOrigin?: 'contextify-client'
+    }
     /** User-reviewed task lifecycle overlay; never alters Context Plan selection. */
     'contextify/work-state': {
       readonly targetSessionId: SessionId
@@ -443,6 +480,16 @@ declare module '@deepseek-ai/dsh-session/types' {
           readonly action: 'include' | 'exclude'
         }[]
       }
+    }
+    /** Frozen auxiliary Fast model request; no credentials are stored. */
+    'contextify/recommendation-request': {
+      readonly base: ContextRecommendationBase
+      readonly provider: string
+      readonly model: string
+      readonly objective: string
+      readonly system: string
+      readonly userText: string
+      readonly maxTokens: number
     }
     /** A current review rendered in the visible Client document; not proof that it was read. */
     'contextify/recommendation-presented': {

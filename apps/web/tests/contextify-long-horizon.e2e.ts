@@ -152,7 +152,8 @@ it('keeps a returned topic active across 30 chat turns and removes a corrected c
     expect(second).not.toContain(DETOUR)
     expect(second).toContain(OLD_SCREEN)
     await map.getByText('33 / 64 in context', { exact: true }).waitFor({ timeout: 10_000 })
-    await map.getByRole('button', { name: 'Recommend', exact: true }).click()
+    await map.getByRole('button', { name: 'Recommendation mode', exact: true }).click()
+    await map.getByRole('menuitem', { name: 'Fast review', exact: true }).click()
     const review = map.getByRole('dialog', { name: 'Context recommendation review' })
     try { await review.waitFor({ timeout: 10_000 }) } catch (cause) {
       const alerts = await map.getByRole('alert').allTextContents()
@@ -167,7 +168,8 @@ it('keeps a returned topic active across 30 chat turns and removes a corrected c
       .filter(event => event.type === 'contextify/recommendation-dismissed').length,
     { timeout: 10_000 }).toBe(1)
     expect(scaffold.ctx.contextify.get(active).plan.excluded).toHaveLength(1)
-    await map.getByRole('button', { name: 'Recommend', exact: true }).click()
+    await map.getByRole('button', { name: 'Recommendation mode', exact: true }).click()
+    await map.getByRole('menuitem', { name: 'Fast review', exact: true }).click()
     await review.waitFor({ timeout: 10_000 })
     await expect.poll(() => active.session.snapshotEvents()
       .filter(event => event.type === 'contextify/recommendation-presented').length,
@@ -212,7 +214,8 @@ it('keeps a returned topic active across 30 chat turns and removes a corrected c
     const planRevision = scaffold.ctx.contextify.get(active).plan.revision
     const support = (await scaffold.ctx.contextify.stewardProfile(active)).release.support
     await writeComposerDraft(page, composer, draft)
-    await page.getByRole('button', { name: 'Review context for draft', exact: true }).click()
+    await page.getByRole('button', { name: 'Draft review mode', exact: true }).click()
+    await page.getByRole('menuitem', { name: 'Fast review for draft', exact: true }).click()
     try { await review.waitFor({ timeout: 10_000 }) } catch (cause) {
       const alerts = await page.getByRole('alert').allTextContents()
       throw new Error(`Draft Keep review did not open: ${JSON.stringify(alerts)}`, { cause })
@@ -226,7 +229,8 @@ it('keeps a returned topic active across 30 chat turns and removes a corrected c
     expect((await scaffold.ctx.contextify.stewardProfile(active)).release.support).toBe(support + 1)
     expect(await composer.innerText()).toBe(draft)
 
-    await page.getByRole('button', { name: 'Review context for draft', exact: true }).click()
+    await page.getByRole('button', { name: 'Draft review mode', exact: true }).click()
+    await page.getByRole('menuitem', { name: 'Fast review for draft', exact: true }).click()
     await review.waitFor({ timeout: 10_000 })
     await review.getByText('The proposed context matches the current version.', { exact: true }).waitFor()
     expect(await review.getByRole('button', { name: 'Keep current context for ' + CURRENT_SCREEN }).count())

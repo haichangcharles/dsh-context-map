@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { Context, Service } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
+import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ContextMapPanelInjected } from '../src/client/ContextMapPanel.tsx'
@@ -16,6 +17,7 @@ const child = sid('session-child')
 /** Mount the browser plugin over real Cordis slots and deterministic fake service faces. */
 async function bench(withCleanup = false) {
   const ctx = new Context()
+  ctx.provide('locale', new LocaleRuntime(ctx))
   const calls: Array<{ method: string; args: unknown[] }> = []
   class RemoteService extends Service {
     constructor(serviceCtx: Context) { super(serviceCtx, 'remote') }
@@ -74,6 +76,10 @@ async function bench(withCleanup = false) {
     recommend: answer('recommend', proposal),
     reviewRoute: answer('reviewRoute', undefined),
     recordManualBranch: answer('recordManualBranch', undefined),
+    recordManualRoute: answer('recordManualRoute', undefined),
+    policyEvidence: answer('policyEvidence', []),
+    resetPolicy: answer('resetPolicy', undefined),
+    reviewWorkState: answer('reviewWorkState', undefined),
     cancelRecommendation: answer('cancelRecommendation', undefined),
     presentRecommendation: answer('presentRecommendation', undefined),
     dismissRecommendation: answer('dismissRecommendation', undefined),
@@ -211,6 +217,34 @@ describe('ui-contextify browser plugin', () => {
     expect(b.calls.some(call => call.method === 'recordManualBranch')).toBe(false)
   })
 
+  it('records explicit manual navigation only after successfully moving the captured draft', async () => {
+    const b = await bench()
+    await (b.panel.hooks.contextify as never as { refresh: () => Promise<void> }).refresh()
+    b.draftState.draft = 'Continue the Web planning task'
+    b.draftState.draftRev = 14
+    await b.panel.mapActions.moveDraftHere(child)
+    expect(b.moveDraft).toHaveBeenCalledWith(source, child, { draft: b.draftState.draft, draftRev: 14 })
+    expect(b.calls.filter(call => call.method === 'recordManualRoute')).toEqual([{
+      method: 'recordManualRoute', args: [source, child, expect.any(String), 'family-7',
+        'contextify-client', 'Continue the Web planning task'],
+    }])
+    expect(b.open).toHaveBeenCalledWith(child)
+    b.panel.mapActions.locate(b.record)
+    expect(b.calls.filter(call => call.method === 'recordManualRoute')).toHaveLength(1)
+  })
+
+  it('does not learn a manual route for an empty or unsuccessfully transferred draft', async () => {
+    const b = await bench()
+    await (b.panel.hooks.contextify as never as { refresh: () => Promise<void> }).refresh()
+    await expect(b.panel.mapActions.moveDraftHere(child)).rejects.toThrow(/Write a draft/)
+    expect(b.moveDraft).not.toHaveBeenCalled()
+    b.draftState.draft = 'A nonempty draft'
+    b.moveDraft.mockReturnValueOnce(false)
+    await expect(b.panel.mapActions.moveDraftHere(child)).rejects.toThrow(/draft changed/)
+    expect(b.calls.filter(call => call.method === 'recordManualRoute')).toHaveLength(0)
+    expect(b.open).not.toHaveBeenCalled()
+  })
+
   it('accepts a reviewed draft route only at the same graph and editor revision', async () => {
     const b = await bench()
     b.draftState.draft = 'Continue the writing branch'
@@ -269,8 +303,13 @@ describe('ui-contextify browser plugin', () => {
     expect(b.calls.filter(call => call.method === 'recommend')).toEqual([{
       method: 'recommend',
       args: [source, { planRevision: 4, graphRevision: 'family-7', activeSessionId: source },
-        'Bring the prior Web evidence into this draft', 'fast', true],
+        'Bring the prior Web evidence into this draft', 'local', true],
     }])
+    await actions.review('Compare the current Web sources', 'fast')
+    expect(b.calls.filter(call => call.method === 'recommend')[1]?.args).toEqual([
+      source, { planRevision: 4, graphRevision: 'family-7', activeSessionId: source },
+      'Compare the current Web sources', 'fast', true,
+    ])
     expect(b.calls.filter(call => call.method === 'setNodeModes')).toHaveLength(0)
     actions.openMap()
     expect(b.openDetails).toHaveBeenCalledOnce()
@@ -295,6 +334,18 @@ describe('ui-contextify browser plugin', () => {
         'contextify-client', []],
     }])
     expect(controller.getSnapshot().recommendation).toMatchObject({ phase: 'idle' })
+  })
+
+  it('clears advice invalidated by a policy reset while retaining the current Context Plan', async () => {
+    const b = await bench()
+    await b.panel.mapActions.recommend()
+    expect(b.panel.hooks.contextify.getSnapshot().recommendation.phase).toBe('ready')
+    await b.panel.mapActions.resetPolicy()
+    expect(b.calls.filter(call => call.method === 'resetPolicy')).toEqual([{
+      method: 'resetPolicy', args: [source, 'contextify-client'],
+    }])
+    expect(b.panel.hooks.contextify.getSnapshot().recommendation.phase).toBe('idle')
+    expect(b.calls.filter(call => call.method === 'reset' || call.method === 'setNodeModes')).toHaveLength(0)
   })
 
   it('confirms archive without forwarding Agent-authored placeholder content', async () => {

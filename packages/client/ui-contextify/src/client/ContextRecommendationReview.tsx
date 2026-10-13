@@ -3,10 +3,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   ContextArchiveCandidate, ContextFamilyGraph, ContextRecommendationProposal, ContextRouteAdvice,
 } from '@deepseek-ai/dsh-contextify/types'
+import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
+import './locales.ts'
 import type { ContextRecommendationState } from './controller.ts'
 import css from './ContextRecommendationReview.module.css'
 
-export interface ContextRecommendationReviewProps {
+export interface ContextRecommendationReviewProps extends PropsLocale<'contextifySteward'> {
+  readonly reviewWorkState: (proposal: ContextRecommendationProposal, sessionId: ContextFamilyGraph['activeSessionId'], choice: 'accept' | 'reject') => Promise<void>
   readonly state: ContextRecommendationState
   readonly graph: ContextFamilyGraph
   readonly pending: boolean
@@ -20,7 +23,7 @@ export interface ContextRecommendationReviewProps {
 }
 
 function ProposalReview({
-  proposal, stale, graph, pending, acceptRoute, rejectRoute, present, apply, confirmArchive, dismiss, reportError,
+  proposal, stale, graph, pending, acceptRoute, rejectRoute, present, apply, confirmArchive, dismiss, reportError, reviewWorkState, t,
 }: Omit<ContextRecommendationReviewProps, 'state'> & {
   readonly proposal: ContextRecommendationProposal
   readonly stale: boolean
@@ -28,6 +31,7 @@ function ProposalReview({
   const [reviewing, setReviewing] = useState<string | null>(null)
   const [kept, setKept] = useState<readonly string[]>([])
   const [keptCurrent, setKeptCurrent] = useState<readonly string[]>([])
+  const [reviewedStates, setReviewedStates] = useState<readonly string[]>([])
   const [routeDismissed, setRouteDismissed] = useState(false)
   const presented = useRef<ContextRecommendationProposal | null>(null)
   useEffect(() => {
@@ -35,7 +39,7 @@ function ProposalReview({
     const onVisible = (): void => {
       if (document.visibilityState !== 'visible' || presented.current === proposal) return
       presented.current = proposal
-      void present(proposal).catch((cause) => {
+      void present(proposal).catch((cause: unknown) => {
         if (presented.current === proposal) presented.current = null
         reportError(cause)
       })
@@ -49,6 +53,7 @@ function ProposalReview({
     setKept([])
     setKeptCurrent([])
     setRouteDismissed(false)
+    setReviewedStates([])
   }, [proposal])
   const nodes = useMemo(() => new Map(graph.nodes.map(node => [node.id, node])), [graph.nodes])
   const proposedNodeIds = useMemo(() => {
@@ -69,7 +74,7 @@ function ProposalReview({
     <div className={css.header}>
       <div>
         <h3>Review Context recommendations</h3>
-        <span className={css.mode}>{proposal.mode === 'deep' ? 'Deep tree review' : 'Fast review'}</span>
+        <span className={css.mode}>{t(proposal.mode === 'deep' ? 'mode.deep' : proposal.mode === 'fast' ? 'mode.fast' : 'mode.local')}</span>
         <p>Choose which context changes to apply. Nothing changes until you confirm.</p>
       </div>
       <button type="button" aria-label="Close recommendation review" onClick={() => { run(() => dismiss(keptCurrent)) }}>×</button>
@@ -87,6 +92,26 @@ function ProposalReview({
             : route.action === 'return' ? 'Return with draft' : 'Move draft to branch'}
         </button>
       </div>
+    </section>}
+    {(proposal.workStates?.length ?? 0) > 0 && <section className={css.section} aria-label={t('lifecycle.title')}>
+      <h4>{t('lifecycle.title')}</h4>
+      <p>{t('lifecycle.hint')}</p>
+      {proposal.workStates?.filter(item => !reviewedStates.includes(item.sessionId)).map(item => <article
+        className={css.item} key={item.sessionId}>
+        <strong>{graph.sessions.find(session => session.id === item.sessionId)?.depth === 0
+          ? t('branch.mainline') : graph.nodes.find(node => node.owner.sessionId === item.sessionId && node.role === 'user')?.preview ?? item.sessionId}</strong>
+        <p>{item.reason}</p>
+        <div className={css.actions}>
+          <button type="button" disabled={stale || pending} onClick={() => { run(async () => {
+            await reviewWorkState(proposal, item.sessionId, 'reject')
+            setReviewedStates(current => [...current, item.sessionId])
+          }) }}>{t('lifecycle.keep')}</button>
+          <button type="button" disabled={stale || pending} onClick={() => { run(async () => {
+            await reviewWorkState(proposal, item.sessionId, 'accept')
+            setReviewedStates(current => [...current, item.sessionId])
+          }) }}>{t(item.state === 'completed' ? 'lifecycle.completed' : item.state === 'parked' ? 'lifecycle.parked' : 'lifecycle.open')}</button>
+        </div>
+      </article>)}
     </section>}
     <section className={css.section} aria-label="Current and proposed context versions">
       <h4>Context replacement</h4>

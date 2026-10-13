@@ -8,9 +8,10 @@ import '@xyflow/react/dist/style.css'
 import type {
   ContextArchiveCandidate, ContextFamilyGraphNode, ContextFamilySession, ContextMessageRef, ContextNodeMutation,
   ContextRecommendationMode, ContextRecommendationProposal, ContextRouteAdvice, ContextStewardProfile,
+  ContextPolicyObservation,
 } from '@deepseek-ai/dsh-contextify/types'
 import type { WorkspaceSnapshot as WorkspaceListState } from '@deepseek-ai/dsh-api-workspace-controller/client'
-import type { HostObservable, PropsStore, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
+import type { HostObservable, PropsLocale, PropsStore, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import { projectUnarchivedContextFamily } from './archived-family.ts'
 import { ContextMapNode, type ContextMapNodeData, type ContextNodeMode } from './ContextMapNode.tsx'
 import {
@@ -22,6 +23,7 @@ import type { ContextifyControllerSnapshot } from './controller.ts'
 import { layoutContextMap, type ContextMapNodeSizes } from './layout.ts'
 import { reconcileMeasuredSizes, reduceMeasuredSizes } from './layout-measurements.ts'
 import { createContextMapStore } from './store.ts'
+import './locales.ts'
 import css from './ContextMapPanel.module.css'
 
 /** Model-changing and navigation actions shared with Chat controls. */
@@ -33,6 +35,10 @@ export interface ContextMapActions {
   redo: () => Promise<void>
   recommend: (mode?: ContextRecommendationMode, objective?: string) => Promise<void>
   inspectPolicy: () => Promise<ContextStewardProfile>
+  policyEvidence: () => Promise<readonly ContextPolicyObservation[]>
+  resetPolicy: () => Promise<void>
+  moveDraftHere: (sessionId: ContextFamilySession['id']) => Promise<void>
+  reviewWorkState: (proposal: ContextRecommendationProposal, sessionId: ContextFamilySession['id'], choice: 'accept' | 'reject') => Promise<void>
   setWorkState: (sessionId: ContextFamilySession['id'], state: NonNullable<ContextFamilySession['workState']>) => Promise<void>
   cancelRecommendation: () => Promise<void>
   applyRecommendations: (declinedNodeIds?: readonly string[]) => Promise<void>
@@ -61,6 +67,7 @@ export interface ContextMapPanelInjected {
 export type ContextMapPanelProps =
   PropsStore<ReturnType<typeof createContextMapStore>>
   & Omit<ContextMapPanelInjected, 'hooks'>
+  & PropsLocale<'contextifySteward'>
   & {
     readonly useContextify: SnapshotSelectorHook<ContextifyControllerSnapshot>
     readonly useWorkspaces: SnapshotSelectorHook<WorkspaceListState>
@@ -94,7 +101,7 @@ function canEditNode(record: ContextFamilyGraphNode, active: boolean): boolean {
 
 /** The pinned header, tree canvas, search, history, and batch controls. */
 export function ContextMapPanel({
-  useContextify, useWorkspaces, useStore, actions, mapActions,
+  useContextify, useWorkspaces, useStore, actions, mapActions, t,
 }: ContextMapPanelProps) {
   const snapshot = useContextify(value => value)
   const archivedSessionIds = useWorkspaces(value => value.archivedSessionIds)
@@ -117,7 +124,7 @@ export function ContextMapPanel({
   const [recommendationMenuOpen, setRecommendationMenuOpen] = useState(false)
   const [policyOpen, setPolicyOpen] = useState(false)
   const [policyState, setPolicyState] = useState<
-    { phase: 'idle' | 'loading' } | { phase: 'ready'; profile: ContextStewardProfile }
+    { phase: 'idle' | 'loading' } | { phase: 'ready'; profile: ContextStewardProfile; evidence: readonly ContextPolicyObservation[] }
     | { phase: 'error'; error: string }
   >({ phase: 'idle' })
   const policyRequest = useRef(0)
@@ -160,13 +167,15 @@ export function ContextMapPanel({
     : undefined
   const learnedProfile = policyState.phase === 'ready' ? policyState.profile : undefined
   const reviewedSupport = learnedProfile === undefined ? 0
-    : learnedProfile.evidence.support + learnedProfile.destination.support
-      + learnedProfile.branch.support + learnedProfile.return.support + learnedProfile.release.support
+    : Math.max(learnedProfile.evidence.support + learnedProfile.destination.support
+      + learnedProfile.branch.support + learnedProfile.return.support + learnedProfile.release.support,
+    policyState.phase === 'ready' ? policyState.evidence.filter(item => item.undone !== true)
+      .reduce((sum, item) => sum + (item.weight ?? 1), 0) : 0)
   const loadPolicy = (): void => {
     const request = ++policyRequest.current
     setPolicyState({ phase: 'loading' })
-    void mapActions.inspectPolicy().then((profile) => {
-      if (request === policyRequest.current) setPolicyState({ phase: 'ready', profile })
+    void Promise.all([mapActions.inspectPolicy(), mapActions.policyEvidence()]).then(([profile, evidence]) => {
+      if (request === policyRequest.current) setPolicyState({ phase: 'ready', profile, evidence })
     }).catch((cause: unknown) => {
       if (request === policyRequest.current) {
         setPolicyState({ phase: 'error', error: cause instanceof Error ? cause.message : String(cause) })
@@ -407,6 +416,10 @@ export function ContextMapPanel({
             return <li key={session.id} data-work-session-id={session.id} data-work-state={state}>
               <span className={css.branchStateLabel} title={label}>{label}</span>
               <span className={css.branchStateMeta}>{active ? 'Active' : 'Inactive'} · {state}</span>
+              {!active && <button type="button" disabled={mutationPending}
+                aria-label={`${t('action.moveDraftHere')}: ${label}`} onClick={() => {
+                  runMutation(`move:${session.id}`, () => mapActions.moveDraftHere(session.id))
+                }}>{t('action.moveDraftHere')}</button>}
               {state !== 'completed' && <button type="button" disabled={mutationPending}
                 aria-label={`Complete ${label}`} onClick={() => {
                   runMutation(`session:${session.id}`, () => mapActions.setWorkState(session.id, 'completed'))
@@ -414,7 +427,7 @@ export function ContextMapPanel({
               {state === 'completed' || state === 'parked' ? <button type="button" disabled={mutationPending}
                 aria-label={`Reopen ${label}`} onClick={() => {
                   runMutation(`session:${session.id}`, () => mapActions.setWorkState(session.id, 'open'))
-                }}>Reopen</button> : !active && <button type="button" disabled={mutationPending}
+                }}>Reopen</button> : <button type="button" disabled={mutationPending}
                 aria-label={`Park ${label}`} onClick={() => {
                   runMutation(`session:${session.id}`, () => mapActions.setWorkState(session.id, 'parked'))
                 }}>Park</button>}
@@ -432,8 +445,14 @@ export function ContextMapPanel({
               policyRequest.current += 1
               setPolicyOpen(false)
             }}>×</button>
+            <button type="button" disabled={mutationPending || policyState.phase === 'loading'}
+              onClick={() => { runMutation('__policy_reset__', async () => {
+                await mapActions.resetPolicy()
+                loadPolicy()
+              }) }}>{t('policy.reset')}</button>
           </div>
         </div>
+        <p>{t('policy.resetHint')}</p>
         <p>Only explicit Context choices count. These are adjustable action patterns, not personal facts. Refresh after Apply or Undo.</p>
         {policyState.phase === 'loading' && <p>Loading reviewed choices…</p>}
         {policyState.phase === 'error' && <p role="alert">{policyState.error} <button type="button"
@@ -460,6 +479,19 @@ export function ContextMapPanel({
             </li>)}</ul>}
           {policyState.profile.destination.support + policyState.profile.branch.support
             + policyState.profile.return.support === 0 && <p>No confirmed route choices yet</p>}
+          <details>
+            <summary>{t('policy.evidence')}</summary>
+            {policyState.evidence.length === 0 ? <p>{t('policy.emptyEvidence')}</p> : <ul>
+              {policyState.evidence.map((item, index) => <li key={`${item.sourceSessionId ?? 'legacy'}:${item.sourceEventSeq ?? 'unknown'}:${item.displayedIndex ?? index}`}>
+                <strong>{item.action} · {t(item.choice === 'accept' ? 'policy.accept' : 'policy.reject')}</strong>
+                {item.objective !== undefined && <span>{t('policy.objective')}: {item.objective}</span>}
+                {item.targetNodeId !== undefined && <span>{t('policy.context')}: {records.find(record => record.id === item.targetNodeId)?.preview ?? item.targetNodeId}</span>}
+                {item.targetSessionId !== undefined && <span>{item.targetSessionId}</span>}
+                {item.undone === true && <span>{t('policy.undone')}</span>}
+                {item.sourceSessionId !== undefined && <span>{t('policy.source')}: {item.sourceSessionId}:{item.sourceEventSeq}</span>}
+              </li>)}
+            </ul>}
+          </details>
         </>}
       </section>}
       <div className={css.toolbar}>
@@ -501,7 +533,7 @@ export function ContextMapPanel({
               setRecommendationMenuOpen(false)
               // The controller publishes recommendation failures itself. Avoid
               // duplicating the same failure in the generic mutation alert.
-              void mapActions.recommend('fast').catch(() => {})
+              void mapActions.recommend('local').catch(() => {})
             }}
           >{snapshot.recommendation.phase === 'running'
               ? snapshot.recommendation.mode === 'deep' ? 'Inspecting tree…' : 'Reviewing…'
@@ -519,21 +551,29 @@ export function ContextMapPanel({
             aria-label="Recommendation mode"
             data-opaque-surface="true"
           >
-            <button type="button" role="menuitem" aria-label="Fast review" onClick={() => {
+            <button type="button" role="menuitem" aria-label={t('mode.local')} onClick={() => {
+              setActionError(null)
+              setRecommendationMenuOpen(false)
+              void mapActions.recommend('local').catch(() => {})
+            }}>
+              <strong>{t('mode.local')}</strong>
+              <span>{t('mode.localHint')}</span>
+            </button>
+            <button type="button" role="menuitem" aria-label={t('mode.fast')} onClick={() => {
               setActionError(null)
               setRecommendationMenuOpen(false)
               void mapActions.recommend('fast').catch(() => {})
             }}>
-              <strong>Fast review</strong>
-              <span>Review a bounded set of likely candidates.</span>
+              <strong>{t('mode.fast')}</strong>
+              <span>{t('mode.fastHint')}</span>
             </button>
-            <button type="button" role="menuitem" aria-label="Deep tree review" onClick={() => {
+            <button type="button" role="menuitem" aria-label={t('mode.deep')} onClick={() => {
               setActionError(null)
               setRecommendationMenuOpen(false)
               void mapActions.recommend('deep').catch(() => {})
             }}>
-              <strong>Deep tree review</strong>
-              <span>Inspect the complete Context Tree with read and grep.</span>
+              <strong>{t('mode.deep')}</strong>
+              <span>{t('mode.deepHint')}</span>
             </button>
           </div>}
         </div>
@@ -684,6 +724,8 @@ export function ContextMapPanel({
           state={snapshot.recommendation}
           graph={graph}
           pending={mutationPending}
+          t={t}
+          reviewWorkState={(proposal, sessionId, choice) => mapActions.reviewWorkState(proposal, sessionId, choice)}
           acceptRoute={route => mapActions.acceptRoute(route)}
           rejectRoute={route => mapActions.rejectRoute(route)}
           present={proposal => mapActions.presentRecommendation(proposal)}

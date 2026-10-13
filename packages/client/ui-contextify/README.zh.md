@@ -26,11 +26,13 @@ kind: "package-reference"
 
 沿用独立版画布，节点操作集中在不透明的右键菜单：Locate in Chat、Branch from Here、Archive node、仅在存在 manual override 时显示的 Restore automatic，以及 Archive 后的 Show original/Restore node。Branch 会在消息对应的 completed Turn boundary 调用 Harness 原生 `sessions.fork`，把未变更的待发送草稿及附件转移到空白的 child 输入框，将成功的手动 fork 与转移的有界草稿记为一次 Context 策略选择，然后打开 child Session。如果 fork 期间草稿变更或 child 无法接收草稿，当前 Session 保持选中。Locate 会打开所属原生 Session、切换到 Chat、在需要时加载较早 history，并滚动和高亮准确的持久消息。Batch mode 会在一个 plan revision 中 include、exclude 或恢复多个画布选中节点。Clear manual changes 会移除全部 Include、Exclude 与 Archive overlay，但不会重置 graph layout；Undo 和 Redo 操作持久 plan history。
 
-主 `Recommend` 按钮运行 Fast review；相邻的 `Recommendation mode` 菜单让用户明确选择 Fast 或 Deep tree review，不会自动升级。Fast 发送有界 candidate set；Deep 让受限 Harness child 通过 Read/Grep 检查一次性的完整 tree 文件。Deep 以内联 `Inspecting tree…` 显示进度，并可取消且不影响 Chat。两种模式共用仍覆盖在可见 graph 底部的 Current → Proposed review sheet。Sheet 使用不透明的主题背景，避免底层 graph 干扰建议文字阅读；它汇总新增和移除节点，card checkbox 在用户确认前始终表示当前版本。用户可逐项选择保留当前设置；一次确认只应用接受的条目，若全部保留则不增加 Plan 修订。无害 no-op 会被过滤，不再让 proposal 失败；一次 Undo 会整体恢复此前版本。Archive 不提供批量执行：每个 candidate 都必须单独 review，展示 evidence 与 graph impact，并且只能确认为服务端所有的空 placeholder。替换后的 card 保持相同 node ID 与 graph structure，以空白正文显示 `Original retained`，并在右键菜单提供 `Show original` 和 `Restore node`。空 placeholder 正文不参与 Map 搜索。未过期的面板在可见 Client 文档中渲染时只记录一次建议呈现；这不证明用户读过它。关闭面板会记录明确的关闭动作，但不修改 Context Plan；只有显式切换为保留当前的条目被单独记录，关闭动作本身不作为偏好；取消正在运行的审核或清除错误不记录选择。Plan 变化、active Session 变化，或任意 parent、sibling、descendant 的追加都会把 proposal 标为 stale，Host 还会在 mutation 前立即重复校验。
+主要的 `Recommend` 操作执行零模型 Local 审核。旁边的 `Recommendation mode` 菜单显式选择 Local、一次调用的 Fast 或隔离 Deep 审核，不会自动升级。所有模式都在可见图上方使用 Current → Proposed 审核单，分别确认来源、路由与生命周期。确认前复选框保留当前选材。用户可以保持任一来源不变；一次 Apply 只接受选定条目，全部保留当前时 Plan 修订不变。Undo 恢复前一选材。Archive 仍逐节点确认服务端拥有的空占位内容，原文保留且可恢复。渲染只记录展示，不证明注意力。关闭时仅明确标为 Keep-current 的条目提供部分拒绝证据，不代表拒绝整单。草稿、图或 Plan 改变后旧建议失效，Host 在修改前再次检查。
 
-Composer 在草稿非空时显示“检查草稿所需的 Context”。点击后，客户端将尚未发送的草稿作为目标交给同一个有界 Fast Contextify 审阅，并打开 Context Map 供用户检查建议。点击前不会发起模型调用；审阅不会发送草稿，也不会修改 Context Plan。若分析过程中草稿变化，客户端会丢弃基于旧草稿的建议。明确返回、继续旧分支或另起话题的草稿还可能出现独立的路由卡；接受后，客户端会先把未变更的草稿和附件转入目标原生 Session，再切换过去；选择 Stay 会记录明确的路由拒绝。
+Composer 在未发送文本非空时显示 **Review context for draft**。默认 Local 审核不调用模型；旁边的草稿模式控件显式选择 Fast 或 Deep。点击审核保留未发送草稿并打开 Map。草稿改变后旧建议被丢弃。路由卡可以建议 Return、Navigate 或 Branch；接受时先通过原生服务转移原样草稿与附件，再切换分支，而 Stay 表示明确拒绝。
 
-**Branches** 折叠列表把每个原生 Session 的任务状态与 Active／Inactive 位置分开显示。Complete、Park 和 Reopen 是经用户操作确认的选择：它们追加原生工作状态事件并刷新 graph。完成分支不会排除其中的消息或删除证据；对于一般的新任务，路由器不会默认导航到它，但用户明确要求 Resume 时仍可返回。之后若用户在已完成的分支写入新一轮消息，graph 投影会重新标为 open。
+Map 标题栏的 **Preferences** 按需读取 Profile 策略，展示审核支持度、重复操作倾向，以及带拥有它们的 Session/事件引用的近期明确选择。**Refresh** 在操作或 Undo 后重读证据。**Reset learned preferences** 通过已记录的 Session 水位清空派生学习，同时保留原始记录与当前 Context Plan。视图不存储第二份 Client persona。
+
+**Branches** 折叠列表把每个原生 Session 的任务状态与 Active／Inactive 位置分开显示。**Move draft here** 明确把非空且未改变的草稿转移到另一个原生 Session；目标已有草稿时会拒绝，被动 Locate 不记录偏好。Complete、Park 和 Reopen 是经用户操作确认的选择：它们追加原生工作状态事件并刷新 graph。完成分支不会排除其中的消息或删除证据；对于一般的新任务，路由器不会默认导航到它，但用户明确要求 Resume 时仍可返回。之后若用户在已完成的分支写入新一轮消息，graph 投影会重新标为 open。
 
 当 completed Q&A 高置信度地偏离主题，或更适合与当前路径并列时，最终 output 旁会出现紧凑的非模态卡片。`Keep here` 放弃本次建议；`Move to new branch` 执行可重试的原生搬迁并打开新 Session。下一轮尚未修改的草稿及附件会在切换前转移到 child composer；若搬迁期间草稿变化，当前 Session 保持选中。源 card 会保留为结构性的 Archive placeholder，因此不会切断原 graph 支点。
 
@@ -40,7 +42,7 @@ Map 也会订阅 Harness 原生的 Workspace archive set。仅属于已归档 Se
 
 普通 Chat user 消息与已完成 assistant 消息旁提供紧凑的 Auto/Use/Skip/Map control。它们和 graph 使用同一个 controller，所以 Chat 侧修改会同步到 map，并在 reload 后保留。Steering、reasoning、tool 与仅 runtime 可见的 row 不会获得 Context Map control。
 
-Workspace 左侧栏会另外用递归可折叠 tree 展示原生 Session 祖先关系。在 branch family 很密集时，Map 是信息更完整的导航入口。
+Workspace 左侧栏使用上游 Session 列表。Map 提供完整的分支家族导航界面。
 
 <a id="model-experience"></a>
 ## 模型体验
@@ -56,7 +58,7 @@ UI 不添加提示词文本。Auto 跟随 active Session 历史，Skip 排除一
 <a id="known-limitations-and-deferred-work"></a>
 
 - Chat 或 Map 存在订阅者时，family update 使用有界的 1.5 秒 polling。
-- 自动 Branch review 对新 Profile 默认开启，是 one-shot、并发且不会进入 subagent 列表的辅助调用；用户可以在 Prompt Settings 中关闭。
+- 自动 Branch review 对新 Profile 需要主动开启，是 one-shot、并发且不会进入 subagent 列表的辅助调用。
 - 暂不提供跨 Map import。
 - Contextify placeholder 保持为原节点 overlay；其他 compaction relationship 暂不能展开。
 

@@ -224,4 +224,38 @@ describe('Contextify recommendation protocol', () => {
       effectiveIncludedNodeIds: [],
     })).toThrow(/500/)
   })
+
+  it('parses one optional bounded native task-state advice alongside legacy selection', () => {
+    const value = { include: [], exclude: [], archive: [], workStates: [
+      { sessionId: root, state: 'parked', reason: 'The user deferred this task to tomorrow' },
+    ] }
+    const parsed = parseRecommendationDecisionText(JSON.stringify(value))
+    expect(parsed).toEqual(value)
+    expect(Object.isFrozen(parsed.workStates)).toBe(true)
+    expect(Object.isFrozen(parsed.workStates?.[0])).toBe(true)
+    expect(validateRecommendation(parsed, validationContext).workStates).toEqual(value.workStates)
+    expect(parseRecommendationDecisionText('{}')).toEqual({ include: [], exclude: [], archive: [] })
+  })
+
+  it('rejects foreign, unsupported, oversized, and malformed lifecycle advice and removes state no-ops', () => {
+    const advice = { sessionId: root, state: 'completed', reason: 'The source lookup has concluded' }
+    expect(() => validateRecommendation({ workStates: [{ ...advice, sessionId: 'foreign' }] }, validationContext))
+      .toThrow(/unavailable/)
+    for (const value of [null, 'bad', [null], [{ ...advice, state: 'archived' }],
+      [advice, advice], [{ ...advice, reason: '' }], [{ ...advice, sessionId: '' }],
+      [{ ...advice, reason: 'x'.repeat(501) }], [{ ...advice, extra: true }]]) {
+      expect(() => parseRecommendationDecisionText(JSON.stringify({ workStates: value }))).toThrow()
+      expect(() => validateRecommendation({ workStates: value }, validationContext)).toThrow()
+    }
+    const completed = { ...validationContext, graph: { ...graph,
+      sessions: graph.sessions.map(session => ({ ...session, workState: 'completed' as const })),
+    } }
+    expect(validateRecommendation({ workStates: [advice] }, completed).workStates).toBeUndefined()
+    expect(validateRecommendation({ workStates: [] }, validationContext).workStates).toBeUndefined()
+    for (const state of ['open', 'parked', 'completed'] as const) {
+      expect(validateRecommendation({ workStates: [{ ...advice, state }] }, validationContext).workStates)
+        .toMatchObject([{ state }])
+    }
+  })
+
 })

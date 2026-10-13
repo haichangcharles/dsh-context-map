@@ -32,7 +32,8 @@ export const CONTEXTIFY_CLIENT_DEFAULT_SETTINGS: ContextifyPromptSettings = Obje
   context: Object.freeze({ additional: '', override: '' }),
   archive: Object.freeze({ additional: '', override: '' }),
   branch: Object.freeze({ additional: '', override: '' }),
-  automaticBranchReview: true,
+  automaticBranchReview: false,
+  deepMaxRequests: 3,
 })
 
 /**

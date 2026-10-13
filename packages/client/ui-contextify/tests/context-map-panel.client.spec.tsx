@@ -12,6 +12,7 @@ import {
 import {
   ContextifyController, type ContextifyControllerSnapshot, type ContextifyTransport,
 } from '../src/client/controller.ts'
+import { stewardTestTranslator } from './test-locale.client.ts'
 import { createContextMapStore } from '../src/client/store.ts'
 import { ContextMessageAction } from '../src/client/ContextMessageAction.tsx'
 import {
@@ -164,6 +165,10 @@ function mount(
       release: { acceptRate: 0.5, support: 0 },
       thresholds: { evidence: 0.7, destination: 0.7 }, rules: [],
     })),
+    policyEvidence: vi.fn(async () => []),
+    resetPolicy: vi.fn(async () => {}),
+    moveDraftHere: vi.fn(async () => {}),
+    reviewWorkState: vi.fn(async () => {}),
     setWorkState: vi.fn(async () => {}),
     cancelRecommendation: vi.fn(async () => {}),
     presentRecommendation: vi.fn(async () => {}),
@@ -190,6 +195,7 @@ function mount(
         useStore={bindSnapshotSelector(store)}
         actions={store.actions}
         mapActions={mapActions}
+        t={stewardTestTranslator()}
       />
     </div>,
   )
@@ -203,6 +209,76 @@ function mount(
 }
 
 describe('ContextMapPanel', () => {
+  it('offers Local review by default and reserves model review for explicit modes', () => {
+    const { mapActions } = mount()
+    fireEvent.click(screen.getByRole('button', { name: 'Recommend' }))
+    expect(mapActions.recommend).toHaveBeenCalledWith('local')
+    fireEvent.click(screen.getByRole('button', { name: 'Recommendation mode' }))
+    expect(screen.getByRole('menuitem', { name: 'Local review' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Fast review' }))
+    expect(mapActions.recommend).toHaveBeenLastCalledWith('fast')
+  })
+
+  it('moves a draft deliberately from the branch list while leaving context choices alone', async () => {
+    const { mapActions } = mount()
+    const count = screen.getByText(/in context/).textContent
+    fireEvent.click(screen.getByText('Branches (2) · task lifecycle'))
+    fireEvent.click(screen.getByRole('button', { name: 'Move draft here: Mainline' }))
+    await waitFor(() => { expect(mapActions.moveDraftHere).toHaveBeenCalledWith(root) })
+    expect(mapActions.setNodeModes).not.toHaveBeenCalled()
+    expect(screen.getByText(/in context/).textContent).toBe(count)
+  })
+
+  it('shows the choices behind preferences and resets policy without clearing the Context Plan', async () => {
+    const policyEvidence = vi.fn().mockResolvedValueOnce([{
+      action: 'navigate', choice: 'accept', origin: 'manual-action', objective: 'Continue the planning branch',
+      sourceSessionId: root, sourceEventSeq: 81, targetSessionId: child, at: 1, branchDepth: 0,
+    }]).mockResolvedValueOnce([])
+    const { mapActions } = mount(fixture(), { policyEvidence })
+    fireEvent.click(screen.getByRole('button', { name: 'Context preferences' }))
+    expect(await screen.findByText('navigate · Accepted')).toBeTruthy()
+    expect(screen.getByText('Task at the time: Continue the planning branch')).toBeTruthy()
+    expect(screen.getByText('Record source: root-session:81')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Reset learned preferences' }))
+    expect(await screen.findByText('No recorded explicit choices yet.')).toBeTruthy()
+    expect(mapActions.resetPolicy).toHaveBeenCalledOnce()
+    expect(mapActions.reset).not.toHaveBeenCalled()
+    expect(mapActions.setNodeModes).not.toHaveBeenCalled()
+  })
+
+  it('reviews a proposed lifecycle state independently from context selection', async () => {
+    const base = fixture()
+    const proposal = { mode: 'local' as const,
+      base: { planRevision: 3, graphRevision: 'family-20', activeSessionId: child },
+      currentNodeIds: ['root:1', 'root:2', 'child:8'], proposedNodeIds: ['root:1', 'root:2', 'child:8'],
+      addedNodeIds: [], removedNodeIds: [], selection: [], archive: [],
+      workStates: [{ sessionId: root, state: 'completed' as const, reason: 'The mainline task is finished' }],
+    }
+    const { mapActions } = mount({ ...base, recommendation: { phase: 'ready', proposal } })
+    const section = screen.getByRole('region', { name: 'Branch task state advice' })
+    fireEvent.click(within(section).getByRole('button', { name: 'Complete branch' }))
+    await waitFor(() => { expect(mapActions.reviewWorkState).toHaveBeenCalledWith(proposal, root, 'accept') })
+    expect(mapActions.applyRecommendations).not.toHaveBeenCalled()
+    expect(mapActions.setNodeModes).not.toHaveBeenCalled()
+  })
+
+  it('lets a user park and reopen the active task without moving or clearing context', async () => {
+    const { mapActions, publishSnapshot } = mount()
+    const count = screen.getByText(/in context/).textContent
+    fireEvent.click(screen.getByText('Branches (2) · task lifecycle'))
+    fireEvent.click(screen.getByRole('button', { name: 'Park branch follow-up' }))
+    await waitFor(() => { expect(mapActions.setWorkState).toHaveBeenCalledWith(child, 'parked') })
+    const next = fixture()
+    act(() => { publishSnapshot({ ...next, graph: { ...next.graph!, sessions: next.graph!.sessions.map(session =>
+      session.id === child ? { ...session, workState: 'parked', workStateSource: 'explicit' as const } : session),
+    } }) })
+    fireEvent.click(screen.getByRole('button', { name: 'Reopen branch follow-up' }))
+    await waitFor(() => { expect(mapActions.setWorkState).toHaveBeenLastCalledWith(child, 'open') })
+    expect(mapActions.moveDraftHere).not.toHaveBeenCalled()
+    expect(mapActions.setNodeModes).not.toHaveBeenCalled()
+    expect(screen.getByText(/in context/).textContent).toBe(count)
+  })
+
   it('exposes separate branch lifecycle actions without changing node selection', async () => {
     const setWorkState = vi.fn(async () => {})
     const { publishSnapshot } = mount(fixture(), { setWorkState })
@@ -326,8 +402,7 @@ describe('ContextMapPanel', () => {
     fireEvent.contextMenu(active, { clientX: 100, clientY: 120 })
     expect(screen.queryByRole('menuitem', { name: 'Archive node' })).toBeNull()
     const offPath = screen.getByLabelText('Web source message: Unrelated page')
-    expect((within(offPath).getByLabelText('Include Unrelated page in context') as HTMLInputElement).disabled)
-      .toBe(true)
+    expect(within(offPath).getByLabelText('Include Unrelated page in context')).toHaveProperty('disabled', true)
     const importable = screen.getByLabelText('Web source message: Publisher policy page')
     const checkbox = within(importable).getByLabelText('Include Publisher policy page in context')
     await waitFor(() => { expect((checkbox as HTMLInputElement).disabled).toBe(false) })
@@ -653,10 +728,10 @@ describe('ContextMapPanel', () => {
     expect(h.mapActions.reset).toHaveBeenCalledOnce()
   })
 
-  it('keeps Fast as the primary action and exposes Deep only through a manual mode menu', async () => {
+  it('keeps Local as the primary action and exposes model modes only through a manual menu', async () => {
     const h = mount()
     fireEvent.click(await screen.findByRole('button', { name: 'Recommend' }))
-    expect(h.mapActions.recommend).toHaveBeenCalledWith('fast')
+    expect(h.mapActions.recommend).toHaveBeenCalledWith('local')
 
     fireEvent.click(screen.getByRole('button', { name: 'Recommendation mode' }))
     const menu = screen.getByRole('menu', { name: 'Recommendation mode' })

@@ -12,7 +12,7 @@ DSH Context Map is an independently maintained long-horizon Chat workspace built
 
 - **Context Map** — view a connected family of native Harness Sessions as a message-level tree beside Chat.
 - **Explicit context control** — include or exclude individual user inputs and final assistant outputs without changing the underlying Session log.
-- **Context review** — request a fast bounded recommendation or a deliberate deep review of a temporary complete-tree snapshot, inspect the proposed replacement, and apply or undo it as one revision.
+- **Context Steward** — start with zero-model Local advice, explicitly request bounded Fast or isolated Deep review, and confirm source, destination and lifecycle proposals before they change state.
 - **Cross-turn reuse** — bring a source from another branch into the active Session, stop using it for a later turn, and bring it back without deleting its origin.
 - **Personal Context advice** — use Client-confirmed Include/Exclude and Keep-current choices as bounded examples for later review; recommendations never change the Plan before confirmation.
 - **Branch review** — receive a lightweight suggestion when a completed Q&A is better moved to a parallel native Session branch.
@@ -52,6 +52,7 @@ The Web UI starts at `http://127.0.0.1:3080` by default. Runtime credentials use
 
 DeepSeek Harness is the only Context Map host runtime implemented and supported by the current release. Contextify owns the durable message graph and Context Compiler behavior, while the Web plugin owns visualization and interaction. The application does not introduce another agent loop or call model providers directly from the browser.
 
+<a id="existing-session-data"></a>
 ### Existing Session data
 
 The official migration chain does not accept the fork’s format-v0 `context/compiler*` and `contextify/*` events. Later format migrations also renumber events, so accepting these records without migrating every cross-Session reference would be unsafe. Keep existing Context Map data on the previous runtime until a family-aware migration is available; validate this upgrade with an isolated configuration and Session directory. This branch does not modify existing data directories.
@@ -78,6 +79,10 @@ pnpm run doc-sync
 ```
 
 Resolve conflicts at the smallest Contextify integration points and keep product feature work out of synchronization branches. The detailed maintenance contract is in [the project identity design](docs/plans/2026-09-07-dsh-context-map-project-identity-design.md).
+
+## Context Steward guide
+
+Follow the [long-conversation guide](docs/user/guide/context-steward.md) for source selection, explicit draft navigation, branch lifecycle, preference inspection and zero-API verification. Local review is the default; automatic post-turn Branch classification is opt-in. The included 30-turn replay exports prefix-only scorer packets and separate constructed expectations. It verifies engineering behavior and does not establish human personalization gains or model accuracy.
 
 ## Development
 

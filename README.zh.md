@@ -12,7 +12,7 @@ DSH Context Map 是一个基于 [DeepSeek Harness](https://github.com/deepseek-a
 
 - **Context Map** —— 在 Chat 旁边把一组相互连接的 Harness 原生 Session 显示为消息级树。
 - **显式上下文控制** —— Include 或 Exclude 单条用户输入和模型最终输出，同时不改写底层 Session log。
-- **上下文推荐** —— 使用快速的有限候选推荐，或主动开启读取临时完整树快照的深度检查；确认整体替换方案后一次 Apply，也可以一次 Undo。
+- **Context Steward** —— 默认使用零模型 Local 建议，也可以显式选择有界 Fast 或隔离 Deep 审核；来源、目标分支与生命周期建议在确认后才改变状态。
 - **跨轮次复用** —— 把其他分支的来源带入活动 Session，在后续轮次停止使用，再次需要时重新带入，而不删除原始来源。
 - **个性化 Context 建议** —— 把 Client 确认的 Include/Exclude 与 Keep-current 选择作为后续审核的有界示例；建议在确认前绝不改变 Plan。
 - **Branch 推荐** —— 当一个已完成的 Q&A 更适合移动到平行 Session 时，以轻量方式询问用户是否创建原生分支。
@@ -52,6 +52,7 @@ Web UI 默认启动在 `http://127.0.0.1:3080`。运行时密钥沿用 DeepSeek 
 
 DeepSeek Harness 是当前版本唯一已经实现并受支持的 Context Map 宿主 Runtime。Contextify 负责持久消息图和 Context Compiler 行为，Web 插件负责可视化与交互。本项目不会引入第二套 agent loop，也不会从浏览器直接调用模型服务商。
 
+<a id="existing-session-data"></a>
 ### 已有 Session 数据
 
 官方迁移链不接受本分支格式 v0 中的 `context/compiler*` 和 `contextify/*` 事件。后续格式迁移还会改变事件序号，因此不能在缺少跨 Session 引用迁移的情况下直接放行这些记录。支持完整 Session 家族的迁移实现前，已有 Context Map 数据应继续使用旧 Runtime；请在独立的配置和 Session 目录中验证本次升级。此分支不会修改已有数据目录。
@@ -78,6 +79,10 @@ pnpm run doc-sync
 ```
 
 只在最小的 Contextify 接入位置解决冲突，不要在上游同步分支中混入产品功能。完整维护约定见[项目身份设计](docs/plans/2026-09-07-dsh-context-map-project-identity-design.zh.md)。
+
+## Context Steward 指南
+
+[长对话指南](docs/user/guide/context-steward.zh.md)介绍来源选择、明确草稿导航、分支生命周期、偏好检查与零 API 验证。Local 审核为默认模式；每轮结束后的自动 Branch 分类需要主动开启。内置 30 轮回放导出只含历史信息的 scorer 数据包与分离的构造预期结果。它验证工程行为，不能证明真人个性化收益或模型准确率。
 
 ## 开发
 

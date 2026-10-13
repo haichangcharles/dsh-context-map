@@ -24,11 +24,11 @@ export interface ContextRouteCandidate {
 
 /** Independent destination, evidence, and correction scores for one branch. */
 export interface ScoredContextRouteCandidate extends ContextRouteCandidate {
-  /** Probability that this is the place where the next user turn belongs. */
+  /** Ranking signal for the place where the next user turn belongs. */
   readonly destinationScore: number
-  /** Probability that material here is useful in the next answer. */
+  /** Ranking signal for material useful in the next answer. */
   readonly evidenceScore: number
-  /** Probability that later corrections make the candidate unsafe to reuse. */
+  /** Ranking signal for later corrections making the candidate unsafe to reuse. */
   readonly supersededScore: number
   /** Bounded, dependency-closed source selection supplied by the scorer. */
   readonly evidenceNodeIds?: readonly string[]
@@ -55,6 +55,24 @@ export const DEFAULT_CONTEXT_ROUTE_THRESHOLDS: ContextRouteThresholds = Object.f
   destination: 0.7,
   evidence: 0.7,
 })
+
+/** Only explicit task-routing language can move a draft away from its Session.
+ * @param objective - The current unsent draft text.
+ * @returns A conservative route intent or unknown when no explicit cue appears.
+ */
+export function draftRouteIntent(objective: string): ContextRouteIntent {
+  const draft = objective.trim().toLocaleLowerCase()
+  if (/\b(?:return|go back|back) to (?:the )?(?:parent|mainline|main thread)\b|回到主线|返回主线|回到父分支/.test(draft)) {
+    return 'return'
+  }
+  if (/^(?:new (?:topic|task|thread|branch)\b|separate (?:topic|task)\b|另起(?:一个)?(?:话题|任务|分支)|新(?:话题|任务)[：:])/.test(draft)) {
+    return 'new-task'
+  }
+  if (/\b(?:resume|continue|pick up|go back to|back to)\b|继续|接着|回到|返回/.test(draft)) {
+    return 'resume'
+  }
+  return 'unknown'
+}
 
 function bounded(value: string, max = 100): string {
   return Array.from(value.replace(/\s+/g, ' ').trim()).slice(0, max).join('')

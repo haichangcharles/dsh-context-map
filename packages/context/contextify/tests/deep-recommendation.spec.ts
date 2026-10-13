@@ -17,6 +17,7 @@ import {
   withDeepSnapshot,
 } from '../src/deep-recommendation.ts'
 import type { ContextFamilyGraph, ContextPlanSnapshot } from '../src/types.ts'
+import { validateRecommendation } from '../src/recommendation.ts'
 
 const root = 'deep-root' as SessionId
 const sibling = 'deep-sibling' as SessionId
@@ -185,6 +186,57 @@ describe('Deep Context recommendation snapshot', () => {
     } finally {
       await ctx.fiber.dispose()
     }
+  })
+
+  it('stops before a second model call when the explicit Deep budget is one and disposes its child', async () => {
+    const ctx = new Context()
+    await mountAgentLoopTestDependencies(ctx)
+    await ctx.plugin(AgentLoop, { agents: [] })
+    registerNoopDeepTools(ctx)
+    const adapter = new MockAdapter([
+      toolCallResponse('budget-read-1', 'read', { file_path: 'context-tree.jsonl' }),
+      toolCallResponse('budget-read-2', 'read', { file_path: 'context-tree.jsonl' }),
+    ])
+    ctx.llm.registerAdapter(['mock'], adapter)
+    const parent = await ctx.agentLoop.create(root, { provider: 'mock', model: 'mock' })
+    let childId: SessionId | undefined
+    let childDirectory = ''
+    ctx.on('agent/created', ({ agent }) => {
+      if (agent === parent) return
+      childId = agent.id
+      childDirectory = agent.session.header.cwd ?? ''
+    })
+    try {
+      await expect(runDeepRecommendation({
+        parent, snapshot: snapshot(), signal: new AbortController().signal, maxRequests: 1,
+      })).rejects.toThrow(/without a structured submission|model request budget/)
+      expect(adapter.requests).toHaveLength(1)
+      expect(childId).toBeDefined()
+      expect(ctx.agents.get(childId!)).toBeUndefined()
+      await expect(stat(childDirectory)).rejects.toMatchObject({ code: 'ENOENT' })
+      expect(ctx.agents.get(parent.id)).toBe(parent)
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it('rejects invalid Deep request budgets before creating a child or calling a model', async () => {
+    const ctx = new Context()
+    await mountAgentLoopTestDependencies(ctx)
+    await ctx.plugin(AgentLoop, { agents: [] })
+    registerNoopDeepTools(ctx)
+    const adapter = new MockAdapter([])
+    ctx.llm.registerAdapter(['mock'], adapter)
+    const parent = await ctx.agentLoop.create(root, { provider: 'mock', model: 'mock' })
+    let children = 0
+    ctx.on('agent/created', ({ agent }) => { if (agent !== parent) children += 1 })
+    try {
+      for (const maxRequests of [0, 11, 1.5, NaN, Infinity]) {
+        await expect(runDeepRecommendation({
+          parent, snapshot: snapshot(), signal: new AbortController().signal, maxRequests,
+        })).rejects.toThrow('request budget must be 1-10')
+      }
+      expect(children).toBe(0)
+      expect(adapter.requests).toHaveLength(0)
+    } finally { await ctx.fiber.dispose() }
   })
 
   it('surfaces an exact-path denial to the child without executing the read body', async () => {
@@ -388,4 +440,38 @@ describe('Deep Context recommendation snapshot', () => {
       await rm(temporaryRoot, { recursive: true, force: true })
     }
   })
+
+  it('submits model-inferred lifecycle advice without an explicit current-task command', async () => {
+    const ctx = new Context()
+    await mountAgentLoopTestDependencies(ctx)
+    await ctx.plugin(AgentLoop, { agents: [] })
+    registerNoopDeepTools(ctx)
+    const workStates = [{ sessionId: sibling, state: 'completed' as const,
+      reason: 'The source lookup goal is finished; its evidence remains available' }]
+    const adapter = new MockAdapter([(options) => {
+      const submit = options.tools?.find(tool => tool.name === 'submit_context_recommendation')
+      expect(JSON.stringify(submit)).toContain('workStates')
+      expect(JSON.stringify(options.messages)).toContain('Mere irrelevance to this answer does not imply task completion')
+      return toolCallResponse('infer-lifecycle', 'submit_context_recommendation', {
+        exclude: [], include: [], archive: [], workStates,
+      })
+    }])
+    ctx.llm.registerAdapter(['mock'], adapter)
+    const parent = await ctx.agentLoop.create(root, { provider: 'mock', model: 'mock' })
+    try {
+      const decision = await runDeepRecommendation({ parent,
+        snapshot: { ...snapshot(), objective: 'Draft the overview using the completed source lookup' },
+        signal: new AbortController().signal })
+      expect(decision.workStates).toEqual(workStates)
+      const proposal = validateRecommendation(decision, {
+        mode: 'deep', base: { planRevision: plan.revision, graphRevision: 'graph-7', activeSessionId: root },
+        graph, effectiveIncludedNodeIds: ['root:2', 'sibling:1'],
+        explicitIncludedNodeIds: [], explicitExcludedNodeIds: [],
+      })
+      expect(proposal.workStates).toEqual(workStates)
+      expect(adapter.requests).toHaveLength(1)
+      expect(parent.session.snapshotEvents().some(event => event.type === 'contextify/work-state')).toBe(false)
+    } finally { await ctx.fiber.dispose() }
+  })
+
 })

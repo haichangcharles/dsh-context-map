@@ -58,12 +58,38 @@ export interface ContextRecommendationDecision {
   readonly exclude: readonly { readonly nodeId: string; readonly reason: string }[]
   readonly include: readonly { readonly nodeId: string; readonly reason: string }[]
   readonly archive: readonly { readonly nodeId: string; readonly reason: string }[]
+  /** Optional model-inferred task status; validated against native Sessions separately. */
+  readonly workStates?: readonly {
+    readonly sessionId: string
+    readonly state: 'open' | 'parked' | 'completed'
+    readonly reason: string
+  }[]
+}
+
+function readWorkStates(value: unknown): ContextRecommendationDecision['workStates'] {
+  if (value === undefined) return undefined
+  const items = array(value, 'workStates')
+  if (items.length > 1) throw new Error('workStates supports at most one Session')
+  return Object.freeze(items.map((raw, index) => {
+    const item = record(raw, `workStates[${String(index)}]`)
+    for (const key of Object.keys(item)) {
+      if (key !== 'sessionId' && key !== 'state' && key !== 'reason') {
+        throw new Error(`workStates field "${key}" is unsupported`)
+      }
+    }
+    const state = item.state
+    if (state !== 'open' && state !== 'parked' && state !== 'completed') {
+      throw new Error('workStates state is unsupported')
+    }
+    return Object.freeze({ sessionId: boundedText(item.sessionId, 'workStates sessionId'),
+      state, reason: boundedText(item.reason, 'workStates reason') })
+  }))
 }
 
 /**
  * Parse one JSON object from a tool-free classifier response.
  * @param text - Raw classifier text containing one recommendation JSON object.
- * @returns A frozen three-list recommendation decision.
+ * @returns Frozen selection lists and optional bounded native task-state advice.
  */
 export function parseRecommendationDecisionText(text: string): ContextRecommendationDecision {
   const start = text.indexOf('{')
@@ -76,7 +102,7 @@ export function parseRecommendationDecisionText(text: string): ContextRecommenda
     throw new Error('recommendation response contained invalid JSON')
   }
   const root = record(parsed, 'recommendation')
-  const allowed = new Set(['exclude', 'include', 'archive'])
+  const allowed = new Set(['exclude', 'include', 'archive', 'workStates'])
   for (const key of Object.keys(root)) {
     if (!allowed.has(key)) throw new Error(`recommendation field "${key}" is unsupported`)
   }
@@ -88,7 +114,9 @@ export function parseRecommendationDecisionText(text: string): ContextRecommenda
         reason: boundedText(item.reason, `${key} reason`),
       })
     })
+  const workStates = readWorkStates(root.workStates)
   return Object.freeze({
+    ...(workStates === undefined ? {} : { workStates }),
     exclude: Object.freeze(items('exclude')),
     include: Object.freeze(items('include')),
     archive: Object.freeze(items('archive')),
@@ -181,10 +209,16 @@ export function validateRecommendation(
   const explicitIncluded = new Set(context.explicitIncludedNodeIds)
   const explicitExcluded = new Set(context.explicitExcludedNodeIds)
   const reviewableExcluded = new Set(context.reviewableExcludedNodeIds ?? [])
-  const allowed = new Set(['exclude', 'include', 'archive'])
+  const allowed = new Set(['exclude', 'include', 'archive', 'workStates'])
   for (const key of Object.keys(root)) {
     if (!allowed.has(key)) throw new Error(`recommendation field "${key}" is unsupported`)
   }
+  const workStates = (readWorkStates(root.workStates) ?? []).flatMap((item) => {
+    const session = context.graph.sessions.find(candidate => candidate.id === item.sessionId)
+    if (session === undefined) throw new Error(`workStates Session "${item.sessionId}" is unavailable`)
+    return session.workState === item.state ? []
+      : [Object.freeze({ sessionId: session.id, state: item.state, reason: item.reason })]
+  })
   const selectionByNode = new Map<string, ContextSelectionRecommendation>()
   const readSelection = (action: 'exclude' | 'include'): void => {
     const items = root[action] === undefined ? [] : array(root[action], action)
@@ -249,6 +283,7 @@ export function validateRecommendation(
   const proposedNodeIds = graphOrder.filter(nodeId => proposed.has(nodeId))
   return Object.freeze({
     mode: context.mode,
+    ...(workStates.length === 0 ? {} : { workStates: Object.freeze(workStates) }),
     base: Object.freeze({ ...context.base }),
     currentNodeIds: Object.freeze(currentNodeIds),
     proposedNodeIds: Object.freeze(proposedNodeIds),
@@ -258,6 +293,6 @@ export function validateRecommendation(
     // Fast review selects evidence for one request. Retiring a conversation
     // node is a durable lifecycle decision and requires the separate Deep
     // review path, even if the Fast model emits an Archive entry anyway.
-    archive: Object.freeze(context.mode === 'fast' ? [] : archive),
+    archive: Object.freeze(context.mode === 'deep' ? archive : []),
   })
 }

@@ -437,7 +437,7 @@ Source: [`packages/context/context-compiler/src/index.ts:115`](../packages/conte
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:390`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:404`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifybranch-relocation--log-only"></a>
 
@@ -452,7 +452,7 @@ Source: [`packages/context/contextify/src/types.ts:390`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:506`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:553`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifybranch-review--log-only"></a>
 
@@ -466,7 +466,7 @@ Source: [`packages/context/contextify/src/types.ts:506`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:385`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:399`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifydelegation-slice--log-only"></a>
 
@@ -498,7 +498,7 @@ Source: [`packages/context/contextify/src/revision-lineage.ts:30`](../packages/c
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:494`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:541`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifymanual-branch--log-only"></a>
 
@@ -515,7 +515,25 @@ Source: [`packages/context/contextify/src/types.ts:494`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:410`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:424`](../packages/context/contextify/src/types.ts)
+
+<a id="contextifymanual-route--log-only"></a>
+
+#### `contextify/manual-route` — log-only
+
+```ts persistence-catalog
+/** Confirmed draft navigation; passive graph inspection does not emit this event. */
+'contextify/manual-route': {
+  readonly actionId: string
+  readonly action: 'navigate' | 'return'
+  readonly targetSessionId: SessionId
+  readonly objective: string
+  readonly graphRevision: string
+  readonly uiOrigin?: 'contextify-client'
+}
+```
+
+Source: [`packages/context/contextify/src/types.ts:432`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifynode-choice--log-only"></a>
 
@@ -546,7 +564,7 @@ Source: [`packages/context/contextify/src/types.ts:410`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:426`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:463`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyplan--log-only"></a>
 
@@ -557,7 +575,21 @@ Source: [`packages/context/contextify/src/types.ts:426`](../packages/context/con
 'contextify/plan': ContextPlanSnapshot
 ```
 
-Source: [`packages/context/contextify/src/types.ts:383`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:397`](../packages/context/contextify/src/types.ts)
+
+<a id="contextifypolicy-reset--log-only"></a>
+
+#### `contextify/policy-reset` — log-only
+
+```ts persistence-catalog
+/** Profile policy reset watermarks; logs and Context Plans remain intact. */
+'contextify/policy-reset': {
+  readonly cursors: readonly { readonly sessionId: SessionId; readonly seq: number }[]
+  readonly uiOrigin?: 'contextify-client'
+}
+```
+
+Source: [`packages/context/contextify/src/types.ts:441`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyrecommendation-dismissed--log-only"></a>
 
@@ -582,7 +614,7 @@ Source: [`packages/context/contextify/src/types.ts:383`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:463`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:510`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyrecommendation-presented--log-only"></a>
 
@@ -606,7 +638,26 @@ Source: [`packages/context/contextify/src/types.ts:463`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:448`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:495`](../packages/context/contextify/src/types.ts)
+
+<a id="contextifyrecommendation-request--log-only"></a>
+
+#### `contextify/recommendation-request` — log-only
+
+```ts persistence-catalog
+/** Frozen auxiliary Fast model request; no credentials are stored. */
+'contextify/recommendation-request': {
+  readonly base: ContextRecommendationBase
+  readonly provider: string
+  readonly model: string
+  readonly objective: string
+  readonly system: string
+  readonly userText: string
+  readonly maxTokens: number
+}
+```
+
+Source: [`packages/context/contextify/src/types.ts:485`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyrecommendation-reviewed--log-only"></a>
 
@@ -630,7 +681,7 @@ Source: [`packages/context/contextify/src/types.ts:448`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:479`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:526`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyrequest-read-set--log-only"></a>
 
@@ -662,7 +713,7 @@ Source: [`packages/context/contextify/src/revision-lineage.ts:32`](../packages/c
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:398`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:412`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifywork-state--log-only"></a>
 
@@ -679,7 +730,25 @@ Source: [`packages/context/contextify/src/types.ts:398`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:418`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:455`](../packages/context/contextify/src/types.ts)
+
+<a id="contextifywork-state-choice--log-only"></a>
+
+#### `contextify/work-state-choice` — log-only
+
+```ts persistence-catalog
+/** Explicit review of one exact task-state suggestion. */
+'contextify/work-state-choice': {
+  readonly targetSessionId: SessionId
+  readonly state: 'open' | 'parked' | 'completed'
+  readonly choice: 'accept' | 'reject'
+  readonly objective: string
+  readonly base: ContextRecommendationBase
+  readonly uiOrigin?: 'contextify-client'
+}
+```
+
+Source: [`packages/context/contextify/src/types.ts:446`](../packages/context/contextify/src/types.ts)
 
 ### `deliverables/*`
 

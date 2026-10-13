@@ -16,7 +16,7 @@ import {
 } from '@deepseek-ai/dsh-subagent'
 import { defineTool, type ToolExecution, type ToolGuard } from '@deepseek-ai/dsh-tools'
 import { parseRecommendationDecisionText, type ContextRecommendationDecision } from './recommendation.ts'
-import type { ContextFamilyGraph, ContextPlanSnapshot } from './types.ts'
+import type { ContextFamilyGraph, ContextFamilySession, ContextPlanSnapshot } from './types.ts'
 
 const TEMP_DIRECTORY_PREFIX = 'dsh-contextify-'
 const SNAPSHOT_FILE_NAME = 'context-tree.jsonl'
@@ -25,7 +25,7 @@ const SNAPSHOT_FILE_NAME = 'context-tree.jsonl'
 export const DEEP_RECOMMENDATION_TEMP_RETENTION_MS = 7 * 24 * 60 * 60 * 1_000
 /** Hard wall-clock bound for one isolated Deep review. */
 export const DEEP_RECOMMENDATION_TIMEOUT_MS = 45_000
-/** Per-request output ceiling; the final value is a small three-list tool call. */
+/** Per-request output ceiling for selection and optional task-state advice. */
 export const DEEP_RECOMMENDATION_MAX_TOKENS = 1_200
 
 /** One complete visible Context Map node supplied to Deep review. */
@@ -54,6 +54,7 @@ export interface DeepRecommendationSnapshot {
   readonly graphRevision: string
   readonly planRevision: number
   readonly objective: string
+  readonly sessions?: readonly ContextFamilySession[]
   readonly nodes: readonly DeepRecommendationNode[]
 }
 
@@ -110,6 +111,14 @@ function installRecommendationSubmission(childCtx: Context): RecommendationCaptu
       exclude: { type: 'array', required: true, items: decisionItem },
       include: { type: 'array', required: true, items: decisionItem },
       archive: { type: 'array', required: true, items: decisionItem },
+      workStates: { type: 'array', description: 'Optional task lifecycle advice for at most one native Session.', items: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          sessionId: { type: 'string', required: true },
+          state: { type: 'string', required: true, enum: ['open', 'parked', 'completed'] },
+          reason: { type: 'string', required: true },
+        },
+      } },
     },
     output: {
       schema: {
@@ -154,6 +163,8 @@ export interface RunDeepRecommendationRequest {
   readonly archivePrompt?: string
   /** Test/deployment override; production defaults to 45 seconds. */
   readonly timeoutMs?: number
+  /** Explicit operation budget, including retried model requests. */
+  readonly maxRequests?: number
 }
 
 function deepCancelled(message: string): Error {
@@ -164,13 +175,17 @@ function deepCancelled(message: string): Error {
 
 /**
  * Run one native Harness child against one private full-tree file, then destroy
- * both resources before returning its structured three-list decision.
+ * both resources before returning its structured selection and task-state decision.
  * @param request - Parent Agent, frozen snapshot, cancellation signal, and optional timeout.
- * @returns The validated integrated include, exclude, and archive recommendation.
+ * @returns Parsed selection and optional task-state advice for graph validation by the caller.
  */
 export async function runDeepRecommendation(
   request: RunDeepRecommendationRequest,
 ): Promise<ContextRecommendationDecision> {
+  const maxRequests = request.maxRequests ?? 3
+  if (!Number.isSafeInteger(maxRequests) || maxRequests < 1 || maxRequests > 10) {
+    throw new RangeError('Deep recommendation request budget must be 1-10')
+  }
   const timeoutMs = request.timeoutMs ?? DEEP_RECOMMENDATION_TIMEOUT_MS
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     throw new RangeError('Deep recommendation timeout must be a positive number')
@@ -188,6 +203,7 @@ export async function runDeepRecommendation(
     }, timeoutMs)
     let handle: Awaited<ReturnType<typeof request.parent.ctx.agents.create>> | undefined
     let capture: RecommendationCapture | undefined
+    const requestBudget = { exceeded: false }
     try {
       const childDepth = resolveChildDepth(request.parent, undefined)
       handle = await request.parent.ctx.agents.create({
@@ -213,6 +229,15 @@ export async function runDeepRecommendation(
           // conversation parent uses Code Mode presentation.
           childCtx.tools.presentAs('native')
           childCtx.tools.guard(deepSnapshotGuard(filePath))
+          let requests = 0
+          childCtx.on('agent/request', async (_payload, next) => {
+            if (requests >= maxRequests) {
+              requestBudget.exceeded = true
+              throw new Error('Deep Context review reached its model request budget')
+            }
+            requests += 1
+            return await next()
+          })
           capture = installRecommendationSubmission(childCtx)
           childCtx.systemPrompt.section({
             name: 'contextify:deep-review',
@@ -223,7 +248,10 @@ export async function runDeepRecommendation(
               + 'cautiously flag obsolete or false nodes for Archive. Separate task lifecycle from '
               + 'next-request relevance: a still-open task may be deferred without being Archived. '
               + 'Do not Exclude or Archive a whole message that mixes needed and superseded facts. '
-              + 'Never invent or rewrite node IDs.'
+              + 'Optionally propose at most one workStates item for a native Session in the snapshot. '
+              + 'Use completed only when its goal is finished, parked only when its work is deferred, '
+              + 'or open when unfinished work resumes. Mere irrelevance to this answer does not imply task completion. '
+              + 'Never invent or rewrite node or Session IDs.'
               + (request.archivePrompt?.trim() ? `\n\nArchive guidance: ${request.archivePrompt}` : ''),
           })
         },
@@ -253,6 +281,7 @@ export async function runDeepRecommendation(
           ? `Deep Context recommendation timed out after ${String(timeoutMs)} ms`
           : 'Deep Context recommendation was cancelled')
       }
+      if (requestBudget.exceeded) throw new Error('Deep Context review reached its model request budget')
       const decision = capture?.captured()
       if (decision === undefined) {
         throw new Error('Deep Context recommendation finished without a structured submission')
@@ -328,6 +357,7 @@ export function buildDeepRecommendationSnapshot(
     graphRevision: request.graphRevision,
     planRevision: request.plan.revision,
     objective: request.objective,
+    sessions: Object.freeze([...request.graph.sessions]),
     nodes: Object.freeze(nodes),
   })
 }
@@ -347,6 +377,7 @@ export function serializeDeepRecommendationSnapshot(snapshot: DeepRecommendation
     planRevision: snapshot.planRevision,
     objective: snapshot.objective,
     nodeCount: snapshot.nodes.length,
+    ...(snapshot.sessions === undefined ? {} : { sessions: snapshot.sessions }),
   }
   return `${[JSON.stringify(header), ...snapshot.nodes.map(node => JSON.stringify(node))].join('\n')}\n`
 }

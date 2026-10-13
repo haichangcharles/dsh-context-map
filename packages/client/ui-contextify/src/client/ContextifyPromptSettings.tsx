@@ -1,5 +1,7 @@
 /** Profile prompt dashboard for Context, Archive, and Branch review agents. */
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
+import './locales.ts'
 import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { ContextifyPromptSection, ContextifyPromptSettings } from '@deepseek-ai/dsh-contextify/types'
 import {
@@ -16,38 +18,43 @@ function label(kind: PromptKind): string {
   return `${kind.slice(0, 1).toUpperCase()}${kind.slice(1)}`
 }
 
-export interface ContextifyPromptSettingsViewProps {
+export interface ContextifyPromptSettingsViewProps extends PropsLocale<'contextifySteward'> {
   readonly scope: SettingsScope<ContextifyPromptSettings>
   readonly snapshot: SettingsScopeSnapshot<ContextifyPromptSettings>
 }
 
 /** Slot-facing wrapper over the native settings scope. */
-export function ContextifyPromptSettingsSection({ scope }: {
+export function ContextifyPromptSettingsSection({ scope, t }: PropsLocale<'contextifySteward'> & {
   readonly scope?: SettingsScope<ContextifyPromptSettings>
 }) {
   if (scope === undefined) return null
-  return <ConnectedPromptSettings scope={scope} />
+  return <ConnectedPromptSettings scope={scope} t={t} />
 }
 
-function ConnectedPromptSettings({ scope }: { readonly scope: SettingsScope<ContextifyPromptSettings> }) {
+function ConnectedPromptSettings({ scope, t }: PropsLocale<'contextifySteward'> & { readonly scope: SettingsScope<ContextifyPromptSettings> }) {
   const snapshot = useSyncExternalStore(
     listener => scope.subscribe(listener),
     () => scope.getSnapshot(),
   )
-  return <ContextifyPromptSettingsView scope={scope} snapshot={snapshot} />
+  return <ContextifyPromptSettingsView scope={scope} snapshot={snapshot} t={t} />
 }
 
 /** Render package defaults as immutable reference and Profile changes as explicit layers. */
-export function ContextifyPromptSettingsView({ scope, snapshot }: ContextifyPromptSettingsViewProps) {
+export function ContextifyPromptSettingsView({ scope, snapshot, t }: ContextifyPromptSettingsViewProps) {
   const settings = snapshot.value ?? CONTEXTIFY_CLIENT_DEFAULT_SETTINGS
   const [drafts, setDrafts] = useState<ContextifyPromptSettings>(settings)
   const [confirming, setConfirming] = useState<PromptKind | null>(null)
   const [overrideEnabled, setOverrideEnabled] = useState<ReadonlySet<PromptKind>>(
     () => new Set(kinds.filter(kind => settings[kind].override.trim().length > 0)),
   )
+  const [deepLimitDraft, setDeepLimitDraft] = useState(String(settings.deepMaxRequests))
+  const [settingsError, setSettingsError] = useState<string | null>(null)
   const [pending, setPending] = useState<PromptKind | null>(null)
 
-  useEffect(() => { setDrafts(settings) }, [settings])
+  useEffect(() => { setDrafts(settings); setDeepLimitDraft(String(settings.deepMaxRequests)) }, [settings])
+  const deepLimit = Number(deepLimitDraft)
+  const validDeepLimit = deepLimitDraft.trim().length > 0
+    && Number.isInteger(deepLimit) && deepLimit >= 1 && deepLimit <= 10
 
   const update = (kind: PromptKind, patch: Partial<ContextifyPromptSection>): void => {
     setDrafts(current => ({ ...current, [kind]: { ...current[kind], ...patch } }))
@@ -83,6 +90,25 @@ export function ContextifyPromptSettingsView({ scope, snapshot }: ContextifyProm
       />
       <small>Off by default. When enabled, one invisible auxiliary model call reviews each completed Turn.</small>
     </label>
+    <label className={css.card}>
+      <span>{t('settings.deepLimit')}</span>
+      <input type="number" aria-label={t('settings.deepLimit')} min={1} max={10} step={1} value={deepLimitDraft}
+        disabled={!snapshot.writable || pending !== null}
+        onChange={(event) => { setDeepLimitDraft(event.target.value) }} />
+      <small>{t('settings.deepLimitHint')}</small>
+    </label>
+    <div className={css.actions}>
+      <button type="button" disabled={!snapshot.writable || pending !== null || !validDeepLimit}
+        onClick={() => {
+          setPending('context')
+          setSettingsError(null)
+          void scope.set('deepMaxRequests', deepLimit).catch((cause: unknown) => {
+            setSettingsError(cause instanceof Error ? cause.message : String(cause))
+            setDeepLimitDraft(String(settings.deepMaxRequests))
+          }).finally(() => { setPending(null) })
+        }}>{t('settings.saveDeepLimit')}</button>
+    </div>
+    {settingsError !== null && <p role="alert">{settingsError}</p>}
     {kinds.map((kind) => {
       const title = label(kind)
       const draft = drafts[kind]

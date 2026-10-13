@@ -58,6 +58,9 @@
     },
     {
       "path": "../../typert/protocol"
+    },
+    {
+      "path": "../../util/crypto"
     }
   ]
 }
