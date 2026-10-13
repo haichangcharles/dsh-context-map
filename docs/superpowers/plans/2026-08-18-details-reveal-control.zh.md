@@ -2,6 +2,8 @@
 
 [English](2026-08-18-details-reveal-control.md) | 中文
 
+这是历史计划。已迁移文件的引用指向当前包所有者。`historical-proposal/` 下的名称表示当前 checkout 中不存在的历史拟议文件，并非当前仓库文件；执行前须核对当前包约定。
+
 > **面向 Agent 工作者：** 必须使用子技能：按任务逐项执行本计划时，使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans。步骤用复选框（`- [ ]`）语法跟踪。
 
 **目标：** 在框架右侧边缘增加悬浮左箭头，让用户关闭 Context Map 或 Tool 详情后可以重新打开原生详情栏。
@@ -56,14 +58,14 @@ pnpm vitest run packages/client/ui-layout/tests/app-frame.client.spec.tsx
 **文件：**
 - 修改：`packages/client/ui-layout/README.md`
 - 修改：`packages/client/ui-layout/README.zh.md`
-- 验证：`packages/client/ui-conversation/tests/gate-branch-tails.client.spec.tsx`
+- 验证：`packages/client/ui-chat/tests/gate-branch-tails.client.spec.tsx`
 
 - [x] **步骤 1：扩展并运行 Details 切换测试**
 
 运行：
 
 ```bash
-pnpm vitest run packages/client/ui-conversation/tests/gate-branch-tails.client.spec.tsx -t "switches pinned content and Tool details"
+pnpm vitest run packages/client/ui-chat/tests/gate-branch-tails.client.spec.tsx -t "switches pinned content and Tool details"
 ```
 
 预期：通过，证明未选择 Tool 时 Details 也可点击并显示原生空状态；选择后切换页面仍保留 Tool 选择。

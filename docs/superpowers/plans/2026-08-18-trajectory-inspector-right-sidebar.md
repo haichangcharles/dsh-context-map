@@ -2,6 +2,8 @@
 
 English | [中文](2026-08-18-trajectory-inspector-right-sidebar.zh.md)
 
+This is a historical plan. Current package owners replace moved file references. Paths under `historical-proposal/` name historical proposed files absent from the current checkout, not current repository files; consult the current package contracts before executing this plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Render the unchanged native Trajectory Inspector in Harness's far-right Details page while keeping Context Map/Details switching manual.
@@ -17,9 +19,9 @@ English | [中文](2026-08-18-trajectory-inspector-right-sidebar.zh.md)
 **Files:**
 - Modify: `packages/client/ui-conversation/src/client/contract/slots.ts`
 - Modify: `packages/client/ui-conversation/src/client/apply.ts`
-- Modify: `packages/client/ui-conversation/src/client/skeleton/DetailsPanel.tsx`
-- Modify: `packages/client/ui-conversation/src/client/skeleton/DetailsPanel.module.css`
-- Test: `packages/client/ui-conversation/tests/gate-branch-tails.client.spec.tsx`
+- Modify: `packages/client/ui-sidebar-right/src/client/shell/SidebarRight.tsx`
+- Modify: `packages/client/ui-sidebar-right/src/client/shell/SidebarRight.module.css`
+- Test: `packages/client/ui-chat/tests/gate-branch-tails.client.spec.tsx`
 - Test: `packages/client/ui-conversation/tests/apply-inject.client.spec.tsx`
 
 - [x] **Step 1: Write failing DetailsPanel tests**
@@ -31,7 +33,7 @@ Extend the DetailsPanel switching test with a `conversation.details.inspector` r
 Run:
 
 ```bash
-pnpm vitest run packages/client/ui-conversation/tests/gate-branch-tails.client.spec.tsx packages/client/ui-conversation/tests/apply-inject.client.spec.tsx
+pnpm vitest run packages/client/ui-chat/tests/gate-branch-tails.client.spec.tsx packages/client/ui-conversation/tests/apply-inject.client.spec.tsx
 ```
 
 Expected: FAIL because `conversation.details.inspector` is not declared or rendered.
@@ -57,8 +59,8 @@ Run the Task 1 command. Expected: all focused conversation tests pass.
 ### Task 2: Portal the existing Trajectory Inspector into the seat
 
 **Files:**
-- Create: `packages/client/ui-trajectory/src/client/TrajectoryInspectorSeat.tsx`
-- Create: `packages/client/ui-trajectory/src/client/TrajectoryInspectorSeat.module.css`
+- Create: `historical-proposal/TrajectoryInspectorSeat.tsx`
+- Create: `historical-proposal/TrajectoryInspectorSeat.module.css`
 - Modify: `packages/client/ui-trajectory/src/client/index.ts`
 - Modify: `packages/client/ui-trajectory/src/client/TrajectoryView.tsx`
 - Modify: `packages/client/ui-trajectory/src/client/TrajectoryTable.tsx`
@@ -120,7 +122,7 @@ Run the Task 2 command. Expected: all focused Trajectory tests pass.
 ### Task 3: Lock the manual-switching experiment invariant
 
 **Files:**
-- Test: `packages/client/ui-conversation/tests/gate-branch-tails.client.spec.tsx`
+- Test: `packages/client/ui-chat/tests/gate-branch-tails.client.spec.tsx`
 - Test: `packages/client/ui-trajectory/tests/table.client.spec.tsx`
 
 - [x] **Step 1: Add cross-behavior assertions**

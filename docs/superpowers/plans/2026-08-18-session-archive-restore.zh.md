@@ -2,6 +2,8 @@
 
 [English](2026-08-18-session-archive-restore.md) | 中文
 
+这是历史计划。已迁移文件的引用指向当前包所有者。`historical-proposal/` 下的名称表示当前 checkout 中不存在的历史拟议文件，并非当前仓库文件；执行前须核对当前包约定。
+
 > **面向 agent worker：** 必须使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans，逐项执行本计划。所有步骤使用 checkbox（`- [ ]`）跟踪。
 
 **目标：** 增加原生已归档 Session 列表和冲突安全的恢复操作，让同一个 Session 回到当前 Workspace 树与完整 Context Map family。
@@ -17,9 +19,9 @@
 - `packages/workspace/workspace/src/index.ts` 负责原子修改归档成员关系。
 - `packages/host/apiproxy` 的 Workspace API、schema、dispatch 与 proxy 文件负责逆向 RPC。
 - `packages/client/connection/src/client/fixture.ts` 为浏览器 fixture 镜像 Host 行为。
-- `packages/client/runtime/src/client/workspaces` 负责安装完整归档集合并暴露恢复操作。
-- `packages/client/ui-workspace/src/client/archived.ts` 单独派生归档分组。
-- `packages/client/ui-workspace/src/client/ArchivedSessionsView.tsx` 负责过滤、单行 pending、重试错误与恢复。
+- `packages/api/workspace-controller/src/client` 负责安装完整归档集合并暴露恢复操作。
+- `historical-proposal/archived.ts` 单独派生归档分组。
+- `historical-proposal/ArchivedSessionsView.tsx` 负责过滤、单行 pending、重试错误与恢复。
 - `packages/client/ui-contextify/src/client/store.ts` 区分可见 selection 与完整 family 位置保留。
 - 现有 package README 与 Session archive Agent Note 记录发布后的 contract 与 rationale。
 
@@ -175,12 +177,12 @@ git commit -m "feat(host): expose session archive restore"
 
 **文件：**
 - 修改：`packages/client/connection/src/client/fixture.ts`
-- 修改：`packages/client/connection/tests/fake-api.client.ts`
+- 修改：`packages/client/connection/tests/fake-generation.client.ts`
 - 修改：`packages/client/runtime/tests/fake-api.client.ts`
 - 修改：`packages/client/runtime/tests/workspaces-service.client.spec.ts`
-- 修改：`packages/client/runtime/src/client/contract/workspaces.ts`
-- 修改：`packages/client/runtime/src/client/workspaces/manager.ts`
-- 修改：`packages/client/runtime/src/client/workspaces/service.ts`
+- 修改：`packages/api/workspace-controller/src/client/service.ts`
+- 修改：`packages/api/workspace-controller/src/client/service.ts`
+- 修改：`packages/api/workspace-controller/src/client/service.ts`
 
 - [ ] **步骤 1：先写 echo、错误、selection 与过期 baseline 测试**
 
@@ -245,8 +247,8 @@ git commit -m "feat(client): restore archived session state"
 ### 任务 4：纯归档列表 projection
 
 **文件：**
-- 创建：`packages/client/ui-workspace/src/client/archived.ts`
-- 创建：`packages/client/ui-workspace/tests/archived.client.spec.ts`
+- 创建：`historical-proposal/archived.ts`
+- 创建：`historical-proposal/archived.client.spec.ts`
 
 - [ ] **步骤 1：先写 projection 测试**
 
@@ -266,7 +268,7 @@ expect(groups[0]?.rows[0]).toMatchObject({ title: 'child', parentTitle: 'parent'
 - [ ] **步骤 2：运行 projection test 并确认 RED**
 
 ~~~bash
-pnpm exec vitest run packages/client/ui-workspace/tests/archived.client.spec.ts
+pnpm exec vitest run historical-proposal/archived.client.spec.ts
 ~~~
 
 - [ ] **步骤 3：实现独立 view type 与 derivation**
@@ -285,24 +287,24 @@ export function deriveArchivedGroups(
 - [ ] **步骤 4：运行 test 并确认 GREEN**
 
 ~~~bash
-pnpm exec vitest run packages/client/ui-workspace/tests/archived.client.spec.ts
+pnpm exec vitest run historical-proposal/archived.client.spec.ts
 ~~~
 
 - [ ] **步骤 5：提交**
 
 ~~~bash
-git add packages/client/ui-workspace/src/client/archived.ts packages/client/ui-workspace/tests/archived.client.spec.ts
+git add historical-proposal/archived.ts historical-proposal/archived.client.spec.ts
 git commit -m "feat(ui-workspace): derive archived session groups"
 ~~~
 
 ### 任务 5：已归档 Session 侧边栏子视图
 
 **文件：**
-- 创建：`packages/client/ui-workspace/src/client/ArchivedSessionsView.tsx`
-- 创建：`packages/client/ui-workspace/src/client/ArchivedSessionsView.module.css`
+- 创建：`historical-proposal/ArchivedSessionsView.tsx`
+- 创建：`historical-proposal/ArchivedSessionsView.module.css`
 - 修改：`packages/client/ui-workspace/src/css-modules.d.ts`
-- 修改：`packages/client/ui-workspace/src/client/WorkspaceBrowser.tsx`
-- 修改：`packages/client/ui-workspace/src/client/WorkspaceBrowser.module.css`
+- 修改：`packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.tsx`
+- 修改：`packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.module.css`
 - 修改：`packages/client/ui-workspace/src/client/contract/slots.ts`
 - 修改：`packages/client/ui-workspace/src/client/index.ts`
 - 修改：`packages/client/ui-workspace/src/client/locales.ts`
@@ -334,7 +336,7 @@ Contract 增加 `restoreSession(sessionId): Promise<void>`，registration 绑定
 - [ ] **步骤 6：运行 UI 测试并确认 GREEN**
 
 ~~~bash
-pnpm exec vitest run packages/client/ui-workspace/tests/archived.client.spec.ts packages/client/ui-workspace/tests/workspace-browser.client.spec.tsx packages/client/ui-workspace/tests/apply.client.spec.ts packages/client/ui-workspace/tests/browser-styles.client.spec.ts
+pnpm exec vitest run historical-proposal/archived.client.spec.ts packages/client/ui-workspace/tests/workspace-browser.client.spec.tsx packages/client/ui-workspace/tests/apply.client.spec.ts packages/client/ui-workspace/tests/browser-styles.client.spec.ts
 ~~~
 
 - [ ] **步骤 7：提交**
@@ -447,7 +449,7 @@ pnpm exec vitest run \
   packages/host/apiproxy/tests/rpc-schemas.spec.ts \
   packages/host/apiproxy/tests/api-proxy-workspace.spec.ts \
   packages/client/runtime/tests/workspaces-service.client.spec.ts \
-  packages/client/ui-workspace/tests/archived.client.spec.ts \
+  historical-proposal/archived.client.spec.ts \
   packages/client/ui-workspace/tests/workspace-browser.client.spec.tsx \
   packages/client/ui-contextify/tests/store.client.spec.ts \
   packages/client/ui-contextify/tests/context-map-panel.client.spec.tsx \

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/superpowers/plans/2026-08-18-session-archive-restore.md
-2026-08-18-session-archive-restore.md: 0028a66e3c4e65cf21053e7a8d3b63f33fad7ade
-2026-08-18-session-archive-restore.zh.md: 41de21ea84deb7eff2d591f3efa0901b8226303a
+2026-08-18-session-archive-restore.md: ca7ff1500f854872c4b3ef04416c1910eacdbc57
+2026-08-18-session-archive-restore.zh.md: 6f2c8c9a65be86e9c3da13eccfcdc8b49f0c6dc5

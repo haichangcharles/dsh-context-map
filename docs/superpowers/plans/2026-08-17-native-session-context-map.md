@@ -2,6 +2,8 @@
 
 English | [中文](2026-08-17-native-session-context-map.zh.md)
 
+This is a historical implementation plan. File references resolve to the current owners after package splits; current behavior is defined by the [Contextify package contract](../../../packages/context/contextify/README.md). A standalone Contextify invariant is omitted; compiler tests verify selected snapshot provenance.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace Contextify's same-Session virtual branches with a real graph of native Session forks and let Chat and Context Map control one durable message-level Context Plan.
@@ -26,7 +28,7 @@ English | [中文](2026-08-17-native-session-context-map.zh.md)
 - `packages/client/ui-contextify/src/client/layout.ts`: Dagre tree, mind-map, and timeline placement.
 - `packages/client/ui-contextify/src/client/ContextMapPanel.tsx`: React Flow canvas and controls.
 - `packages/client/ui-contextify/src/client/ContextMessageAction.tsx`: Chat-side Natural, Include, Exclude, and Locate action.
-- `packages/client/ui-conversation/src/client/chat/MessageItem.tsx`: native Branch action on finalized user messages.
+- `packages/client/ui-chat/src/client/chat/MessageItem.tsx`: native Branch action on finalized user messages.
 - `apps/web/tests/contextify-map.e2e.ts`: replay-backed native-fork and model-input proof.
 
 ### Task 1: Durable compiler snapshot events
@@ -331,7 +333,7 @@ git commit -m "feat: compile revisioned native context plans"
 - Modify: `packages/context/contextify/package.json`
 - Modify: `packages/context/contextify/tsconfig.json`
 - Replace: `packages/context/contextify/tests/service.spec.ts`
-- Modify: `packages/context/contextify/src/invariant.ts`
+- Modify: `packages/context/contextify/tests/compiler.spec.ts`
 
 - [ ] **Step 1: Write failing service tests**
 
@@ -430,7 +432,7 @@ git commit -m "feat: manage context across native Session families"
 **Files:**
 - Modify: `packages/client/ui-workspace/src/client/tree.ts`
 - Modify: `packages/client/ui-workspace/src/client/stores.ts`
-- Modify: `packages/client/ui-workspace/src/client/WorkspaceBrowser.tsx`
+- Modify: `packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.tsx`
 - Modify: `packages/client/ui-workspace/src/client/rows/Rows.tsx`
 - Modify: `packages/client/ui-workspace/src/client/rows/Rows.module.css`
 - Modify: `packages/client/ui-workspace/tests/tree.client.spec.ts`
@@ -478,11 +480,11 @@ git commit -m "feat: nest native Session forks in Workspace tree"
 ### Task 6: Branch from user and assistant messages through completed turns
 
 **Files:**
-- Modify: `packages/client/ui-conversation/src/client/chat/MessageItem.tsx`
-- Modify: `packages/client/ui-conversation/src/client/chat/TurnTailNodeView.tsx`
-- Modify: `packages/client/ui-conversation/src/client/chat/ChatNodeSeat.tsx`
+- Modify: `packages/client/ui-chat/src/client/chat/MessageItem.tsx`
+- Modify: `packages/client/ui-chat/src/client/chat/TurnTailNodeView.tsx`
+- Modify: `packages/client/ui-chat/src/client/chat/ChatNodeSeat.tsx`
 - Modify: `packages/client/ui-conversation/src/client/contract/slots.ts`
-- Modify: `packages/client/ui-conversation/tests/chat-view.client.spec.tsx`
+- Modify: `packages/client/ui-chat/tests/chat-view.client.spec.tsx`
 - Modify: `packages/client/ui-conversation/tests/apply-inject.client.spec.tsx`
 
 - [ ] **Step 1: Write the failing user-Branch test**
@@ -499,7 +501,7 @@ expect(h.forkAt.mock.calls).toEqual([[3], [3]])
 
 - [ ] **Step 2: Verify RED**
 
-Run: `pnpm exec vitest run packages/client/ui-conversation/tests/chat-view.client.spec.tsx -t "completed turn"`
+Run: `pnpm exec vitest run packages/client/ui-chat/tests/chat-view.client.spec.tsx -t "completed turn"`
 
 Expected: only the assistant Branch button exists and it calls the assistant message sequence.
 
@@ -575,8 +577,8 @@ git commit -m "feat: render Context Map as an interactive graph"
 - Modify: `packages/client/ui-contextify/src/client/index.ts`
 - Modify: `packages/client/ui-contextify/tests/browser-plugin.client.spec.tsx`
 - Modify: `packages/client/ui-conversation/src/client/contract/slots.ts`
-- Modify: `packages/client/ui-conversation/src/client/chat/MessageItem.tsx`
-- Modify: `packages/client/ui-conversation/src/client/chat/TurnTailNodeView.tsx`
+- Modify: `packages/client/ui-chat/src/client/chat/MessageItem.tsx`
+- Modify: `packages/client/ui-chat/src/client/chat/TurnTailNodeView.tsx`
 
 - [ ] **Step 1: Write failing assembly tests**
 

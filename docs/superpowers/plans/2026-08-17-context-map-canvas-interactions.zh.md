@@ -2,6 +2,8 @@
 
 [English](2026-08-17-context-map-canvas-interactions.md) | 中文
 
+这是历史实施计划。文件引用对应包拆分后的当前所有者；当前行为以 [Contextify 包约定](../../../packages/context/contextify/README.zh.md) 为准。Contextify 不提供独立 invariant，由 compiler 测试验证所选 snapshot 的来源。
+
 > **面向 Agent 工作者：** 必须使用子技能：按任务逐项执行本计划时，使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans。步骤用复选框（`- [ ]`）语法跟踪。
 
 **目标：** 恢复独立版 Context Map 的点击、多选、右键菜单、实时拖拽和 Chat 定位交互，同时让 Harness Context Plan 与原生 Session 保持权威。
@@ -19,13 +21,13 @@
 - 修改 `packages/client/ui-contextify/src/client/ContextMapPanel.tsx`：Normal/Selection 模式、自定义框选、批量栏、实时受控节点和右键菜单编排。
 - 修改 `packages/client/ui-contextify/src/client/ContextMapNode.tsx`：卡片点击与右键事件上交，同时保留无障碍直接控件。
 - 修改 `packages/client/ui-contextify/src/client/ContextMapPanel.module.css`：选择切换、框选、菜单、高亮和浮动操作栏样式。
-- 新建 `packages/client/ui-conversation/src/client/chat/message-reveal.ts`：按 Session 隔离的一次性 reveal 请求注册表。
+- 新建 `packages/client/ui-conversation/src/client/service.ts`：按 Session 隔离的一次性 reveal 请求注册表。
 - 修改 `packages/client/ui-conversation/src/client/service.ts`：公开 `revealMessage(sessionId, seq)` 请求接口。
 - 修改 `packages/client/ui-conversation/src/client/apply.ts`：把 reveal 注册表绑定到 Chat view 注入，并激活原生 Chat 标签。
 - 修改 `packages/client/ui-conversation/src/client/contract/slots.ts`：ChatView 所需的强类型 reveal 订阅/消费属性。
-- 修改 `packages/client/ui-conversation/src/client/chat/ChatNodeSeat.tsx`：持久消息序号锚点。
-- 修改 `packages/client/ui-conversation/src/client/chat/ChatView.tsx`：消费 reveal 请求、滚动和临时高亮。
-- 修改 `packages/client/ui-conversation/src/client/chat/ChatView.module.css`：支持 reduced-motion 的 reveal 高亮动画。
+- 修改 `packages/client/ui-chat/src/client/chat/ChatNodeSeat.tsx`：持久消息序号锚点。
+- 修改 `packages/client/ui-chat/src/client/chat/ChatView.tsx`：消费 reveal 请求、滚动和临时高亮。
+- 修改 `packages/client/ui-chat/src/client/chat/ChatView.module.css`：支持 reduced-motion 的 reveal 高亮动画。
 - 修改 `packages/client/ui-contextify/src/client/index.ts`：把 Locate in Chat 路由到 `ctx.conversation.revealMessage`。
 - 修改 `packages/client/ui-contextify/tests/` 与 `packages/client/ui-conversation/tests/` 中的聚焦测试；行为通过后更新两个包的 README 语言对和一份 Agent Note。
 
@@ -178,14 +180,14 @@ if (change.type === 'position' && change.position !== undefined) {
 ### 任务 4：增加原生 Chat 消息 reveal 契约
 
 **文件：**
-- 新建：`packages/client/ui-conversation/src/client/chat/message-reveal.ts`
+- 新建：`packages/client/ui-conversation/src/client/service.ts`
 - 修改：`packages/client/ui-conversation/tests/service-orchestration.client.spec.ts`
 - 修改：`packages/client/ui-conversation/src/client/service.ts`
 - 修改：`packages/client/ui-conversation/src/client/apply.ts`
 - 修改：`packages/client/ui-conversation/src/client/contract/slots.ts`
-- 修改：`packages/client/ui-conversation/src/client/chat/ChatNodeSeat.tsx`
-- 修改：`packages/client/ui-conversation/src/client/chat/ChatView.tsx`
-- 修改：`packages/client/ui-conversation/src/client/chat/ChatView.module.css`
+- 修改：`packages/client/ui-chat/src/client/chat/ChatNodeSeat.tsx`
+- 修改：`packages/client/ui-chat/src/client/chat/ChatView.tsx`
+- 修改：`packages/client/ui-chat/src/client/chat/ChatView.module.css`
 
 - [ ] **步骤 1：编写失败的 reveal 注册表与 ChatView 测试**
 

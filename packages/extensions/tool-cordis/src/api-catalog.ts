@@ -778,6 +778,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'Family metadata, all edges, and the requested canonical node page.',
       },
       {
+        signature: '@Remote(\'setWorkState\') async setWorkState( agent: Agent, targetSessionId: SessionId, state: \'open\' | \'parked\' | \'completed\', expectedGraphRevision: string, uiOrigin?: \'contextify-client\', ): Promise<void>',
+        description: 'Record a reviewed task lifecycle choice without altering the Context Plan.',
+        parameters: [{ name: 'agent', description: 'Live Agent whose Session owns the choice.' }, { name: 'targetSessionId', description: 'Native family Session whose work state changes.' }, { name: 'state', description: 'Explicitly reviewed task lifecycle state.' }, { name: 'expectedGraphRevision', description: 'Family revision shown when the choice was made.' }, { name: 'uiOrigin', description: 'Client-declared action source, not authenticated identity.' }],
+      },
+      {
         signature: '@Remote(\'stewardProfile\') async stewardProfile(agent: Agent): Promise<ContextStewardProfile>',
         description: 'Project confirmed Context-management choices across this DSH Profile\'s Sessions. The returned policy changes proposal thresholds only; it cannot authorize mutation.',
         parameters: [{ name: 'agent', description: 'Live Agent selecting the native Session family.' }],
@@ -805,9 +810,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'agent', description: 'Live Agent that owns the pending route card.' }, { name: 'route', description: 'Exact revision-bound route card returned by Fast review.' }, { name: 'choice', description: 'Explicit acceptance or rejection of that card.' }, { name: 'actualTargetSessionId', description: 'Native destination after an accepted transfer.' }, { name: 'uiOrigin', description: 'Marks a Client review without claiming authenticated identity.' }],
       },
       {
-        signature: '@Remote(\'recordManualBranch\') async recordManualBranch( agent: Agent, childSessionId: SessionId, uiOrigin?: \'contextify-client\', ): Promise<void>',
+        signature: '@Remote(\'recordManualBranch\') async recordManualBranch( agent: Agent, childSessionId: SessionId, uiOrigin?: \'contextify-client\', objective?: string, ): Promise<void>',
         description: 'Record one completed manual Context Map fork as a positive Branch choice.',
-        parameters: [{ name: 'agent', description: 'Live Agent whose family contains the fork.' }, { name: 'childSessionId', description: 'Native child created by the manual fork.' }, { name: 'uiOrigin', description: 'Marks a Client action without claiming authenticated identity.' }],
+        parameters: [{ name: 'agent', description: 'Live Agent whose family contains the fork.' }, { name: 'childSessionId', description: 'Native child created by the manual fork.' }, { name: 'uiOrigin', description: 'Marks a Client action without claiming authenticated identity.' }, { name: 'objective', description: 'Draft that was transferred into the child after the fork.' }],
       },
       {
         signature: '@Remote(\'dismissRecommendation\') async dismissRecommendation(agent: Agent, proposal: ContextRecommendationProposal, uiOrigin?: \'contextify-client\', declinedNodeIds?: readonly string[]): Promise<void>',
@@ -4149,7 +4154,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContextFamilySession',
-    declaration: 'export interface ContextFamilySession {\n    readonly id: SessionId;\n    readonly parentSessionId?: SessionId;\n    readonly seedLength: number;\n    readonly depth: number;\n    readonly tipNodeId: string | null;\n}',
+    declaration: 'export interface ContextFamilySession {\n    readonly id: SessionId;\n    readonly parentSessionId?: SessionId;\n    readonly seedLength: number;\n    readonly depth: number;\n    readonly tipNodeId: string | null;\n    readonly workState?: \'open\' | \'parked\' | \'completed\';\n    readonly workStateSource?: \'derived\' | \'explicit\';\n}',
   },
   {
     name: 'ContextFormed',

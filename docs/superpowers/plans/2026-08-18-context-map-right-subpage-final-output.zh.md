@@ -2,6 +2,8 @@
 
 [English](2026-08-18-context-map-right-subpage-final-output.md) | 中文
 
+这是历史实施计划。文件引用对应包拆分后的当前所有者；当前行为以 [Contextify 包约定](../../../packages/context/contextify/README.zh.md) 为准。Contextify 不提供独立 invariant，由 compiler 测试验证所选 snapshot 的来源。
+
 > **面向 Agent 工作者：** 必须使用子技能：按任务逐项执行本计划时，使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans。步骤用复选框（`- [ ]`）语法跟踪。
 
 **目标：** 将 Context Map 变成原生详情栏中只采用树形布局的子页，并把每个 Session 轮次精简为真实输入和已完成的最终助手输出。
@@ -77,14 +79,14 @@ pnpm vitest run packages/client/ui-contextify/tests/context-map-panel.client.spe
 ### 任务 3：把 Context Map 与 Tool 详情路由为原生子页
 
 **文件：**
-- 新建：`packages/client/ui-conversation/src/client/details-navigation.ts`
+- 新建：`packages/client/ui-sidebar-right/src/client/service.ts`
 - 修改：`packages/client/ui-conversation/src/client/service.ts`
 - 修改：`packages/client/ui-conversation/src/client/apply.ts`
 - 修改：`packages/client/ui-conversation/src/client/contract/slots.ts`
-- 修改：`packages/client/ui-conversation/src/client/skeleton/DetailsPanel.tsx`
-- 修改：`packages/client/ui-conversation/src/client/skeleton/DetailsPanel.module.css`
+- 修改：`packages/client/ui-sidebar-right/src/client/shell/SidebarRight.tsx`
+- 修改：`packages/client/ui-sidebar-right/src/client/shell/SidebarRight.module.css`
 - 修改：`packages/client/ui-conversation/tests/apply-inject.client.spec.tsx`
-- 修改：`packages/client/ui-conversation/tests/gate-branch-tails.client.spec.tsx`
+- 修改：`packages/client/ui-chat/tests/gate-branch-tails.client.spec.tsx`
 - 修改：`packages/client/ui-contextify/src/client/index.ts`
 - 修改：`packages/client/ui-contextify/tests/browser-plugin.client.spec.tsx`
 
@@ -97,7 +99,7 @@ pnpm vitest run packages/client/ui-contextify/tests/context-map-panel.client.spe
 运行：
 
 ```bash
-pnpm vitest run packages/client/ui-conversation/tests/apply-inject.client.spec.tsx packages/client/ui-conversation/tests/gate-branch-tails.client.spec.tsx packages/client/ui-contextify/tests/browser-plugin.client.spec.tsx
+pnpm vitest run packages/client/ui-conversation/tests/apply-inject.client.spec.tsx packages/client/ui-chat/tests/gate-branch-tails.client.spec.tsx packages/client/ui-contextify/tests/browser-plugin.client.spec.tsx
 ```
 
 预期：失败，因为还没有详情页注册表或子页标签。

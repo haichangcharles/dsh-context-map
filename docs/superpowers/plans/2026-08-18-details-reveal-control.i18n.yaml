@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/superpowers/plans/2026-08-18-details-reveal-control.md
-2026-08-18-details-reveal-control.md: c4eb59d2e776e7e43df8b4818902ac7832827693
-2026-08-18-details-reveal-control.zh.md: 5e8998ea166348af2ef15a76fa89b5662d68edfc
+2026-08-18-details-reveal-control.md: 3c276b561f18cbb904bd70d8122346e33275ba86
+2026-08-18-details-reveal-control.zh.md: 903d28fff56e9fb1b26cf292263f053f1ab87b38

@@ -2,6 +2,8 @@
 
 English | [中文](2026-08-18-session-archive-restore.zh.md)
 
+This is a historical plan. Current package owners replace moved file references. Paths under `historical-proposal/` name historical proposed files absent from the current checkout, not current repository files; consult the current package contracts before executing this plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a native archived-Session list and a conflict-safe restore operation that returns the same Session to its current Workspace tree and complete Context Map family.
@@ -17,9 +19,9 @@ English | [中文](2026-08-18-session-archive-restore.zh.md)
 - `packages/workspace/workspace/src/index.ts` owns atomic archive membership mutation.
 - `packages/host/apiproxy/src/api/workspace.ts`, `workspace.schema.ts`, `rpc-map.ts`, `fetch/handler.ts`, `fetch/client.ts`, and `api-proxy.ts` expose and execute the inverse RPC.
 - `packages/client/connection/src/client/fixture.ts` mirrors Host behavior for browser fixtures.
-- `packages/client/runtime/src/client/workspaces/manager.ts`, `service.ts`, and `contract/workspaces.ts` install the returned full archive set and expose the action.
-- `packages/client/ui-workspace/src/client/archived.ts` derives archived groups without mixing them into active-tree derivation.
-- `packages/client/ui-workspace/src/client/ArchivedSessionsView.tsx` owns filtering, pending rows, retry errors, and restore actions.
+- `packages/api/workspace-controller/src/client/service.ts`, `service.ts`, and `contract/workspaces.ts` install the returned full archive set and expose the action.
+- `historical-proposal/archived.ts` derives archived groups without mixing them into active-tree derivation.
+- `historical-proposal/ArchivedSessionsView.tsx` owns filtering, pending rows, retry errors, and restore actions.
 - `packages/client/ui-contextify/src/client/store.ts` distinguishes visible selection retention from complete-family position retention.
 - Existing package READMEs and the Session archive Agent Note own the shipped contract and rationale.
 
@@ -175,12 +177,12 @@ git commit -m "feat(host): expose session archive restore"
 
 **Files:**
 - Modify: `packages/client/connection/src/client/fixture.ts`
-- Modify: `packages/client/connection/tests/fake-api.client.ts`
+- Modify: `packages/client/connection/tests/fake-generation.client.ts`
 - Modify: `packages/client/runtime/tests/fake-api.client.ts`
 - Modify: `packages/client/runtime/tests/workspaces-service.client.spec.ts`
-- Modify: `packages/client/runtime/src/client/contract/workspaces.ts`
-- Modify: `packages/client/runtime/src/client/workspaces/manager.ts`
-- Modify: `packages/client/runtime/src/client/workspaces/service.ts`
+- Modify: `packages/api/workspace-controller/src/client/service.ts`
+- Modify: `packages/api/workspace-controller/src/client/service.ts`
+- Modify: `packages/api/workspace-controller/src/client/service.ts`
 
 - [ ] **Step 1: Write failing echo, failure, selection, and stale-baseline tests**
 
@@ -245,8 +247,8 @@ git commit -m "feat(client): restore archived session state"
 ### Task 4: Pure archived-list projection
 
 **Files:**
-- Create: `packages/client/ui-workspace/src/client/archived.ts`
-- Create: `packages/client/ui-workspace/tests/archived.client.spec.ts`
+- Create: `historical-proposal/archived.ts`
+- Create: `historical-proposal/archived.client.spec.ts`
 
 - [ ] **Step 1: Write failing projection tests**
 
@@ -266,7 +268,7 @@ expect(groups[0]?.rows[0]).toMatchObject({ title: 'child', parentTitle: 'parent'
 - [ ] **Step 2: Run the projection test and verify RED**
 
 ~~~bash
-pnpm exec vitest run packages/client/ui-workspace/tests/archived.client.spec.ts
+pnpm exec vitest run historical-proposal/archived.client.spec.ts
 ~~~
 
 - [ ] **Step 3: Implement focused view types and derivation**
@@ -287,24 +289,24 @@ Build a Workspace-by-Session index, iterate reversed Host archive order, use `di
 - [ ] **Step 4: Run projection tests and verify GREEN**
 
 ~~~bash
-pnpm exec vitest run packages/client/ui-workspace/tests/archived.client.spec.ts
+pnpm exec vitest run historical-proposal/archived.client.spec.ts
 ~~~
 
 - [ ] **Step 5: Commit**
 
 ~~~bash
-git add packages/client/ui-workspace/src/client/archived.ts packages/client/ui-workspace/tests/archived.client.spec.ts
+git add historical-proposal/archived.ts historical-proposal/archived.client.spec.ts
 git commit -m "feat(ui-workspace): derive archived session groups"
 ~~~
 
 ### Task 5: Archived Sessions sidebar subview
 
 **Files:**
-- Create: `packages/client/ui-workspace/src/client/ArchivedSessionsView.tsx`
-- Create: `packages/client/ui-workspace/src/client/ArchivedSessionsView.module.css`
+- Create: `historical-proposal/ArchivedSessionsView.tsx`
+- Create: `historical-proposal/ArchivedSessionsView.module.css`
 - Modify: `packages/client/ui-workspace/src/css-modules.d.ts`
-- Modify: `packages/client/ui-workspace/src/client/WorkspaceBrowser.tsx`
-- Modify: `packages/client/ui-workspace/src/client/WorkspaceBrowser.module.css`
+- Modify: `packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.tsx`
+- Modify: `packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.module.css`
 - Modify: `packages/client/ui-workspace/src/client/contract/slots.ts`
 - Modify: `packages/client/ui-workspace/src/client/index.ts`
 - Modify: `packages/client/ui-workspace/src/client/locales.ts`
@@ -336,7 +338,7 @@ Add `archiveViewOpen` to `WorkspaceBrowser`. In wide mode, render an `IconArchiv
 - [ ] **Step 6: Run UI tests and verify GREEN**
 
 ~~~bash
-pnpm exec vitest run packages/client/ui-workspace/tests/archived.client.spec.ts packages/client/ui-workspace/tests/workspace-browser.client.spec.tsx packages/client/ui-workspace/tests/apply.client.spec.ts packages/client/ui-workspace/tests/browser-styles.client.spec.ts
+pnpm exec vitest run historical-proposal/archived.client.spec.ts packages/client/ui-workspace/tests/workspace-browser.client.spec.tsx packages/client/ui-workspace/tests/apply.client.spec.ts packages/client/ui-workspace/tests/browser-styles.client.spec.ts
 ~~~
 
 - [ ] **Step 7: Commit**
@@ -449,7 +451,7 @@ pnpm exec vitest run \
   packages/host/apiproxy/tests/rpc-schemas.spec.ts \
   packages/host/apiproxy/tests/api-proxy-workspace.spec.ts \
   packages/client/runtime/tests/workspaces-service.client.spec.ts \
-  packages/client/ui-workspace/tests/archived.client.spec.ts \
+  historical-proposal/archived.client.spec.ts \
   packages/client/ui-workspace/tests/workspace-browser.client.spec.tsx \
   packages/client/ui-contextify/tests/store.client.spec.ts \
   packages/client/ui-contextify/tests/context-map-panel.client.spec.tsx \

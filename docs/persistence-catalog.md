@@ -437,7 +437,7 @@ Source: [`packages/context/context-compiler/src/index.ts:115`](../packages/conte
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:385`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:390`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifybranch-relocation--log-only"></a>
 
@@ -452,7 +452,7 @@ Source: [`packages/context/contextify/src/types.ts:385`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:489`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:506`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifybranch-review--log-only"></a>
 
@@ -466,7 +466,7 @@ Source: [`packages/context/contextify/src/types.ts:489`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:380`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:385`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifydelegation-slice--log-only"></a>
 
@@ -498,7 +498,7 @@ Source: [`packages/context/contextify/src/revision-lineage.ts:30`](../packages/c
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:477`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:494`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifymanual-branch--log-only"></a>
 
@@ -508,12 +508,14 @@ Source: [`packages/context/contextify/src/types.ts:477`](../packages/context/con
 /** Confirmed manual fork from Context Map, after native draft transfer. */
 'contextify/manual-branch': {
   readonly childSessionId: SessionId
+  /** Bounded unsent draft that motivated this confirmed fork, when present. */
+  readonly objective?: string
   /** Client-declared action source; this is not authenticated human identity. */
   readonly uiOrigin?: 'contextify-client'
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:405`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:410`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifynode-choice--log-only"></a>
 
@@ -544,7 +546,7 @@ Source: [`packages/context/contextify/src/types.ts:405`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:411`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:426`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyplan--log-only"></a>
 
@@ -555,7 +557,7 @@ Source: [`packages/context/contextify/src/types.ts:411`](../packages/context/con
 'contextify/plan': ContextPlanSnapshot
 ```
 
-Source: [`packages/context/contextify/src/types.ts:378`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:383`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyrecommendation-dismissed--log-only"></a>
 
@@ -566,6 +568,8 @@ Source: [`packages/context/contextify/src/types.ts:378`](../packages/context/con
 'contextify/recommendation-dismissed': {
   readonly mode: ContextRecommendationMode
   readonly base: ContextRecommendationBase
+  /** Bounded reviewed objective, present only when items were explicitly declined. */
+  readonly objective?: string
   readonly selection: readonly {
     readonly nodeId: string
     readonly action: 'include' | 'exclude'
@@ -578,7 +582,7 @@ Source: [`packages/context/contextify/src/types.ts:378`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:448`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:463`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyrecommendation-presented--log-only"></a>
 
@@ -602,7 +606,7 @@ Source: [`packages/context/contextify/src/types.ts:448`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:433`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:448`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyrecommendation-reviewed--log-only"></a>
 
@@ -626,7 +630,7 @@ Source: [`packages/context/contextify/src/types.ts:433`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:462`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:479`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyrequest-read-set--log-only"></a>
 
@@ -658,7 +662,24 @@ Source: [`packages/context/contextify/src/revision-lineage.ts:32`](../packages/c
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:393`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:398`](../packages/context/contextify/src/types.ts)
+
+<a id="contextifywork-state--log-only"></a>
+
+#### `contextify/work-state` — log-only
+
+```ts persistence-catalog
+/** User-reviewed task lifecycle overlay; never alters Context Plan selection. */
+'contextify/work-state': {
+  readonly targetSessionId: SessionId
+  readonly state: 'open' | 'parked' | 'completed'
+  /** Target Session cursor when the choice was made; later human turns reopen it. */
+  readonly targetEventSeq?: number
+  readonly uiOrigin?: 'contextify-client'
+}
+```
+
+Source: [`packages/context/contextify/src/types.ts:418`](../packages/context/contextify/src/types.ts)
 
 ### `deliverables/*`
 

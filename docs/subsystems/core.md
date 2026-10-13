@@ -963,6 +963,15 @@ Durable Context Plan mutations and native Session-family graph reads.
  */
 @Remote('familyPage') async familyPage(agent: Agent, after?: number, limit?: number): Promise<ContextFamilyGraphPage>
 
+/** Record a reviewed task lifecycle choice without altering the Context Plan.
+ * @param agent - Live Agent whose Session owns the choice.
+ * @param targetSessionId - Native family Session whose work state changes.
+ * @param state - Explicitly reviewed task lifecycle state.
+ * @param expectedGraphRevision - Family revision shown when the choice was made.
+ * @param uiOrigin - Client-declared action source, not authenticated identity.
+ */
+@Remote('setWorkState') async setWorkState( agent: Agent, targetSessionId: SessionId, state: 'open' | 'parked' | 'completed', expectedGraphRevision: string, uiOrigin?: 'contextify-client', ): Promise<void>
+
 /**
  * Project confirmed Context-management choices across this DSH Profile's Sessions.
  * The returned policy changes proposal thresholds only; it cannot authorize mutation.
@@ -1011,8 +1020,9 @@ Durable Context Plan mutations and native Session-family graph reads.
  * @param agent - Live Agent whose family contains the fork.
  * @param childSessionId - Native child created by the manual fork.
  * @param uiOrigin - Marks a Client action without claiming authenticated identity.
+ * @param objective - Draft that was transferred into the child after the fork.
  */
-@Remote('recordManualBranch') async recordManualBranch( agent: Agent, childSessionId: SessionId, uiOrigin?: 'contextify-client', ): Promise<void>
+@Remote('recordManualBranch') async recordManualBranch( agent: Agent, childSessionId: SessionId, uiOrigin?: 'contextify-client', objective?: string, ): Promise<void>
 
 /** Log an explicit dismissal of the exact current review without changing Context selection.
  * A stale review is consumed without a preference event.
