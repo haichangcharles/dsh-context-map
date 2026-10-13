@@ -706,8 +706,24 @@ describe.skipIf(MODE === 'record')('web e2e: active Schedule catalog', () => {
     await openSession(page, CATALOG_TITLE)
     const parentAgent = await liveAgent(scaffold, CATALOG_SESSION_ID)
 
+    // The clamp case requires a near-right-edge trigger. Verify the shipped auto-opened Map,
+    // then restore the original left-sidebar geometry through real user controls.
+    const rightColumn = page.locator('[data-rightbar-col]')
+    await rightColumn.locator('[data-dockkit-tab]').filter({ hasText: 'Context Map' }).waitFor()
+    await expect.poll(() => rightColumn.locator('[data-sidebar-right-open]').count()).toBe(1)
+    await page.getByRole('button', { name: 'Collapse right sidebar', exact: true }).click()
+    await expect.poll(() => rightColumn.locator('[data-sidebar-right-open]').count()).toBe(0)
+    const expandLeftSidebar = page.getByRole('button', { name: 'Open sidebar', exact: true })
+    if (await expandLeftSidebar.isVisible()) await expandLeftSidebar.click()
+    await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).waitFor()
+    await expect.poll(() => page.locator('[class*="frame"]').first().evaluate(element =>
+      element.getAnimations().every(animation => animation.playState !== 'running'))).toBe(true)
+
     const trigger = page.getByRole('button', { name: '3 reminders' })
     await trigger.waitFor({ timeout: 15_000 })
+    await expect.poll(() => trigger.evaluate(element =>
+      element.getBoundingClientRect().left > window.innerWidth - 336 - 16),
+    { message: 'catalog clamp fixture requires a settled near-right-edge trigger' }).toBe(true)
     await trigger.click()
     const catalog = page.getByRole('list', { name: 'Active reminders' })
     await catalog.waitFor({ timeout: 10_000 })

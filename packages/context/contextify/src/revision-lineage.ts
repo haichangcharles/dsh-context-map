@@ -1,4 +1,5 @@
 /** Durable source dependencies for opt-in revision-consistent agent requests. */
+import assert from 'tiny-invariant'
 import { createHash } from 'node:crypto'
 import { SessionSeq } from '@deepseek-ai/dsh-session'
 import type { Session, SessionId, UserMessage } from '@deepseek-ai/dsh-session'
@@ -79,9 +80,10 @@ function sourceClosureAllowed(session: Session, state: LineageState, seq: number
   if (state.deniedSources.has(seq)) return false
   const cached = state.sourceClosureCache.get(seq)
   if (cached !== undefined) return cached
-  if (visiting.has(seq)) return false
+  // Session validates every provenance edge as an earlier dense-log reference.
+  assert(!visiting.has(seq), 'Native source provenance cannot be cyclic')
   const event = session.eventAt(SessionSeq(seq))
-  if (event === undefined) return false
+  assert(event, `Native source provenance event ${String(seq)} is unavailable`)
   visiting.add(seq)
   const allowed = (event.sourceEventSeqs ?? []).every(sourceSeq =>
     sourceClosureAllowed(session, state, sourceSeq, visiting))
@@ -226,8 +228,13 @@ export function sourceBoundDelegationCandidates(session: Session, beforeSeq?: nu
   }
   const hasMore = sources.length > 16
   const page = sources.slice(0, 16)
-  return { sources: page,
-    nextBeforeSeq: hasMore ? page[page.length - 1]?.seq ?? null : null }
+  if (hasMore) {
+    // A dense push-built list with more than16 entries always yields a full16-item page.
+    const oldest = page[page.length - 1]
+    assert(oldest, 'Source pagination requires a full page when more sources remain')
+    return { sources: page, nextBeforeSeq: oldest.seq }
+  }
+  return { sources: page, nextBeforeSeq: null }
 }
 
 /**

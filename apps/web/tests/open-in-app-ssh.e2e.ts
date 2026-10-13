@@ -10,7 +10,7 @@ import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden,
   launchWebScaffold, seedSession, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { newEnglishPage, saveFailureShot } from './support.ts'
+import { restoreFullWidthChat, newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/open-in-app-ssh', import.meta.url))
 const SEED = fileURLToPath(new URL('../../../snapshots/web/seeded-history/session.v3.jsonl', import.meta.url))
@@ -63,6 +63,7 @@ describe.skipIf(MODE === 'record')('web e2e: Open In under SSH', () => {
     expect(await page.getByRole('button', { name: /^Open workspace in / }).count()).toBe(0)
     expect(await page.getByRole('button', { name: 'Choose an app to open in', exact: true }).count()).toBe(0)
     expect(await page.evaluate(() => localStorage.getItem('dsh.open-in-app.choice'))).toBe('"vscode"')
+    await restoreFullWidthChat(page)
     const snapshot = (await captureStableAria(page, 'role=banner', scaffold.workspaceCwd))
       .split(SEED_ID).join('{{seededId}}')
     await compareOrRefreshGolden(join(SNAPSHOT_DIR, 'header.expected.md'), snapshot, MODE)

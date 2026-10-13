@@ -101,7 +101,7 @@ export class ContextifyRevisionLineageRuntime extends Service {
       const decision = await next()
       if (decision.kind !== 'enter' || agent.session.header.origin === 'subagent') return decision
       const descriptor = ctx.contextCompiler.descriptor(agent.session)
-      if (descriptor.id === 'contextify') {
+      if (descriptor.id === 'contextify' || descriptor.id === 'surface') {
         if (hasUnrecordedAssistantHistory(agent.session)) {
           return decision
         }

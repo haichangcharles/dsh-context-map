@@ -479,7 +479,7 @@ Source: [`packages/context/contextify/src/types.ts:399`](../packages/context/con
 'contextify/delegation-slice': DelegationSliceRecord
 ```
 
-Source: [`packages/context/contextify/src/revision-lineage.ts:30`](../packages/context/contextify/src/revision-lineage.ts)
+Source: [`packages/context/contextify/src/revision-lineage.ts:31`](../packages/context/contextify/src/revision-lineage.ts)
 
 <a id="contextifyexcerpt-choice--log-only"></a>
 
@@ -694,7 +694,7 @@ Source: [`packages/context/contextify/src/types.ts:526`](../packages/context/con
 'contextify/request-read-set': RequestReadSetRecord
 ```
 
-Source: [`packages/context/contextify/src/revision-lineage.ts:32`](../packages/context/contextify/src/revision-lineage.ts)
+Source: [`packages/context/contextify/src/revision-lineage.ts:33`](../packages/context/contextify/src/revision-lineage.ts)
 
 <a id="contextifyroute-choice--log-only"></a>
 

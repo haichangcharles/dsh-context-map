@@ -74,8 +74,8 @@ export function explicitWebSourceExclusion(
   // A second instruction may be separated by a period consumed as URL
   // punctuation by the first match. Abstain rather than applying only half.
   if (!singleSelectionCommand(objective)) return null
-  const target = normalizedHttpUrl(references[0]?.[1] ?? '')
-  if (target === null) return null
+  const [target] = references.map(reference => normalizedHttpUrl(reference.slice(1, 2).join('')))
+  if (typeof target !== 'string') return null
   const matches = sources.filter(source => normalizedHttpUrl(source.url) === target)
   if (matches.length !== 1 || !matches[0]?.included || matches[0].explicitlyIncluded) return null
   return Object.freeze({
@@ -96,8 +96,8 @@ export function explicitWebSourceInclusion(
 ): ContextRecommendationDecision | null {
   const references = [...objective.matchAll(ENGLISH_INCLUDE), ...objective.matchAll(CHINESE_INCLUDE)]
   if (references.length !== 1 || !singleSelectionCommand(objective)) return null
-  const target = normalizedHttpUrl(references[0]?.[1] ?? '')
-  if (target === null) return null
+  const [target] = references.map(reference => normalizedHttpUrl(reference.slice(1, 2).join('')))
+  if (typeof target !== 'string') return null
   const matches = sources.filter(source => normalizedHttpUrl(source.url) === target)
   const source = matches[0]
   if (matches.length !== 1 || source === undefined || source.included

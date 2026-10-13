@@ -15,8 +15,6 @@
 - button "include context for Render this mathematical proof.": Use
 - button "exclude context for Render this mathematical proof.": Skip
 - button "Locate Render this mathematical proof. in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - heading "Math rendering" [level=2]
 - paragraph:
   - text: Inline dollar

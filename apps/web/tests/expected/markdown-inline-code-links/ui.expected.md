@@ -15,8 +15,6 @@
 - button "include context for Show the local preview URL.": Use
 - button "exclude context for Show the local preview URL.": Skip
 - button "Locate Show the local preview URL. in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - heading "Inline code links" [level=2]
 - paragraph:
   - text: "Preview:"

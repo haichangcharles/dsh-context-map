@@ -16,6 +16,14 @@ Client 将 Move draft here 与 Locate 区分开。Move draft here 要求非空�
 
 Policy memory 仍是可以从明确原生事件重建的投影。证据标明拥有它的 Session 与事件序号。重置记录各 Session 自有事件的水位，并保留原始对话与当前 Context Plan。重置后追加的事件，包括时间戳相同的事件，可以训练新投影。[Policy memory 决策](2026-10-12-context-steward-policy-memory.zh.md)负责估计与反馈规则。
 
+当 Plan 刷新替换节点数据时，图保留 React Flow 的受控节点测量。搜索和 Locate 各自有明确的聚焦请求；每次请求只将已测量的目标适配到视口一次，无关节点的尺寸更新不会覆盖用户后续的平移。当前语言变化时，节点文案随之更新。[长对话浏览器检查](../../../../apps/web/tests/contextify-graph-refresh.e2e.ts)通过原生编译器验证 Plan 修改、Undo/Redo，以及借用可搜索的其他分支来源。
+
+这些组件复用 DSH 的 Session、fork、持久化和编译器 API，React Flow 的节点与视口 API，以及 Dagre 布局。偏好归纳借鉴 [Mem0](https://arxiv.org/abs/2504.19413) 对证据和派生记忆的区分；本项目实现保存 Context 操作，而非一般个人事实。事件水位遵循[事件溯源投影模式](https://learn.microsoft.com/en-us/azure/architecture/patterns/event-sourcing)。这两项参考都没有引入第二个智能体运行时，也不能证明本项目优于其 benchmark。
+
+控制器刷新内容未变时复用图和 Plan，不发出重复快照通知；比较仍保留同一图版本下的视图与推荐变化。消息控件只订阅自己的节点、模式和 pending 状态。Dagre 定位与选择、颜色更新分开缓存。在本机 Chromium 的同一负载（240 轮、120 个 delta、16 ms 回放间隔）中，三次采样的翻页中位耗时从 2,055.76 ms 降至 326.46 ms，Trajectory 从 953.96 ms 降至 160.40 ms，输入完成从 250.03 ms 降至 136.43 ms。三次输入均发生在回复结束前。原有预算与负载保持不变；这些本地回放结果排除了模型延迟，不能预测其他机器表现。控制器与消息控件的独立回归测试验证无变化刷新、同版本下的变化及原有操作。
+
+浏览器集成保持 Map 改变宽度时的 Chat 阅读行为。贴底位置到达新的精确底部时，滚动状态先落定，再响应随后输入框或回复增长；离底阅读仍保留原采样阈值。轮次导航条追踪实测视口高度，在单轮对话增长出导航条时安装监听，并在隐藏后恢复可见时跟随当前轮次；普通阅读滚动和指针操作仍由用户控制。[Chat 滚动验收](../../../../apps/web/tests/chat-scroll-contract.e2e.ts) 的全部七条原有路径通过，未降低门槛，流式 fling 场景保持 Map 打开。原生对话 fixture 先观察 Map 自动打开，再通过真实 UI 恢复完整宽度参考面。子 Agent 执行详情路由不会自动打开不受支持的家族 Map。归档投影保留任务状态及其事件来源，即使归档 Session 属于另一家族也如此。审阅后的快照保留新增 Context 控件和 Event details，录制的模型日志和快照 normalizer 保持不变。React Flow 控件使用应用已有的表面与标签颜色别名和本地化标签；真实浏览器验证了浅色与深色主题中的图标对比度。
+
 ## 考虑过的替代方案
 
 **将证据相关性当作目标分支相关性。** 未采用，因为借用研究证据不应把正在进行的写作任务转移到研究分支。

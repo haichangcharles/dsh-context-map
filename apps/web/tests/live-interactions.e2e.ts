@@ -27,7 +27,7 @@ import {
   compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, recordFixture, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
+import { connectFreshWorkspace, newEnglishPage, restoreFullWidthChat, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/live-interactions', import.meta.url))
 const FIXTURE = join(SNAPSHOT_DIR, 'session.v3.jsonl')
@@ -65,15 +65,25 @@ describe('web e2e: live-turn interactions (cancel / error / retry)', () => {
   let tripwire: ReturnType<typeof watchConsole>
   let sessionEvents: SessionEvent[]
   let sidecarDir: string | undefined
+  let turnCompletion: Promise<{ kind: 'completed' } | { kind: 'failed'; error: unknown }> | undefined
 
   afterEach(async () => {
     // scaffold.close() failures MUST fail the scenario: assertConsumed() is
     // the fixture-drift tripwire and cleanup problems are real defects. Run
     // every teardown step regardless, then rethrow what failed.
     const failures: unknown[] = []
+    const closing = scaffold
+    if (closing !== undefined && turnCompletion !== undefined) {
+      for (const agent of closing.ctx.agents.list()) {
+        if (agent.status !== 'idle') agent.cancel({ kind: 'user' })
+        await agent.whenIdle().catch((error: unknown) => failures.push(error))
+      }
+      const outcome = await turnCompletion
+      if (outcome.kind === 'failed') failures.push(outcome.error)
+      turnCompletion = undefined
+    }
     await browser?.close().catch((error: unknown) => failures.push(error))
     browser = undefined
-    const closing = scaffold
     scaffold = undefined
     await closing?.close().catch((error: unknown) => failures.push(error))
     if (sidecarDir !== undefined) await rm(sidecarDir, { recursive: true, force: true }).catch((error: unknown) => failures.push(error))
@@ -115,6 +125,12 @@ describe('web e2e: live-turn interactions (cancel / error / retry)', () => {
     await connectFreshWorkspace(page, scaffold.workspaceCwd)
   }
 
+  async function captureContextAria(completed = false): Promise<string> {
+    await page.getByRole('button', { name: `Locate ${PROMPT} in Context Map`, exact: true }).waitFor()
+    if (completed) await page.getByRole('button', { name: /^Locate Event sourcing is a pattern/ }).waitFor()
+    return await captureStableAria(page, '[class*="centerCol"]', scaffold!.workspaceCwd)
+  }
+
   /**
    * Type the recorded prompt and send, with the settled barrier pre-armed.
    * Returned WRAPPED ({ settled }) — a bare returned promise would be
@@ -125,8 +141,13 @@ describe('web e2e: live-turn interactions (cancel / error / retry)', () => {
     const input = page.locator('[data-composer-input]').first()
     await input.waitFor({ timeout: 10_000 })
     const settled = scaffold!.whenTurnSettled(timeoutMs)
+    turnCompletion = settled.then(() => ({ kind: 'completed' as const }),
+      (error: unknown) => ({ kind: 'failed' as const, error }))
     await input.fill(PROMPT)
     await input.press('Enter')
+    await page.getByRole('button', { name: `Locate ${PROMPT} in Context Map`, exact: true }).waitFor()
+    await restoreFullWidthChat(page)
+    await page.mouse.move(0, 0)
     return { settled }
   }
 
@@ -163,7 +184,7 @@ describe('web e2e: live-turn interactions (cancel / error / retry)', () => {
     await page.locator('[data-streaming="true"]')
       .getByText('partial', { exact: true })
       .waitFor({ timeout: 30_000 })
-    const loadingSnapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold!.workspaceCwd)
+    const loadingSnapshot = await captureContextAria()
     await compareOrRefreshGolden(LOADING_EXPECTED, loadingSnapshot, MODE)
 
     const input = page.locator('[data-composer-input]').first()
@@ -174,7 +195,7 @@ describe('web e2e: live-turn interactions (cancel / error / retry)', () => {
     await send.waitFor({ timeout: 10_000 })
     expect(await page.getByRole('button', { name: 'Stop generating', exact: true }).count()).toBe(0)
     expect(await page.getByRole('button', { name: 'Send message', exact: true }).count()).toBe(0)
-    const runningDraftSnapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold!.workspaceCwd)
+    const runningDraftSnapshot = await captureContextAria()
     await compareOrRefreshGolden(RUNNING_DRAFT_EXPECTED, runningDraftSnapshot, MODE)
     await send.click()
     await expect.poll(() => input.textContent(), { timeout: 10_000 }).toBe('')
@@ -198,7 +219,7 @@ describe('web e2e: live-turn interactions (cancel / error / retry)', () => {
     await expect.poll(() => page.getByRole('tooltip').count()).toBe(0)
     // Golden of the aborted end-state: the prompt bubble plus the frozen
     // partial ('partial' is the hang entry's replayed prefix) and no more.
-    const snapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold!.workspaceCwd)
+    const snapshot = await captureContextAria()
     await compareOrRefreshGolden(CANCEL_EXPECTED, snapshot, MODE)
     const expanded = await captureExpandedTurnProcessAria(
       page,
@@ -227,14 +248,14 @@ describe('web e2e: live-turn interactions (cancel / error / retry)', () => {
     expect(await errorStatus.textContent()).toContain('API key is invalid')
     expect(await errorStatus.textContent()).toContain('AUTH')
     expect(await page.locator('body').textContent()).not.toContain('sk-preview-secret')
-    const snapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold!.workspaceCwd)
+    const snapshot = await captureContextAria()
     await compareOrRefreshGolden(ERROR_EXPECTED, snapshot, MODE)
     await page.getByRole('tab', { name: 'Trajectory' }).click()
     const requestMarker = page.locator('tr[data-request-only="true"]').last()
       .getByRole('button', { name: /Request #/ })
     await requestMarker.click()
-    await page.getByRole('tab', { name: 'Details' }).click()
-    await page.getByText('API key is invalid', { exact: true }).waitFor({ timeout: 10_000 })
+    const details = page.getByRole('complementary', { name: 'Event details' })
+    await details.getByText('API key is invalid', { exact: true }).waitFor({ timeout: 10_000 })
     expect(await page.locator('body').textContent()).not.toContain('sk-preview-secret')
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])
@@ -288,7 +309,7 @@ describe('web e2e: live-turn interactions (cancel / error / retry)', () => {
     await expect.poll(() => page.getByText('event sourcing', { exact: false }).count(), { timeout: 10_000 }).toBeGreaterThan(0)
     // Golden of the recovered end-state: the discarded partial stays absent,
     // while the settled retry row remains as durable recovery context.
-    const snapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold!.workspaceCwd)
+    const snapshot = await captureContextAria(true)
     await compareOrRefreshGolden(RETRY_EXPECTED, snapshot, MODE)
     const expanded = await captureExpandedTurnProcessAria(
       page,
@@ -327,7 +348,7 @@ describe('web e2e: live-turn interactions (cancel / error / retry)', () => {
     expect(await errorStatus.textContent()).toContain('SERVER')
     // The settled retry chain stays alongside the terminal row as recovery
     // context; the golden pins both.
-    const snapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold!.workspaceCwd)
+    const snapshot = await captureContextAria()
     await compareOrRefreshGolden(RETRY_EXHAUSTED_EXPECTED, snapshot, MODE)
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])

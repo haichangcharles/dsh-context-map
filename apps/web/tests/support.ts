@@ -33,6 +33,45 @@ export async function newEnglishPage(browser: Browser, height = 1000): Promise<P
 }
 
 /**
+ * Restore the full-width Chat fixture through the shipped sidebar control.
+ * Explicit callers retain all tabs and Context actions; no plugin or snapshot content is filtered.
+ * @param page - Settled Session page whose scenario requires the original Chat width.
+ */
+export async function restoreFullWidthChat(page: Page): Promise<void> {
+  await page.evaluate(() => new Promise<void>(resolve =>
+    requestAnimationFrame(() => requestAnimationFrame(() => { resolve() }))))
+  // Observe a completed Map publication before hiding it. Native graphs populate
+  // Chat actions; empty Sessions and unsupported subagent routes may instead
+  // publish an explicit empty/error state. Loading alone is not ready.
+  const selectedMap = page.locator('[data-rightbar-col] [data-sidebar-right-open] [data-dockkit-tab][aria-selected="true"]')
+    .filter({ hasText: 'Context Map' })
+  if (await selectedMap.count() > 0) {
+    const panel = page.locator('[data-rightbar-col] [data-sidebar-right-open]')
+    await panel.locator('[data-context-node-id]')
+      .or(panel.getByRole('alert'))
+      .or(panel.getByText('No message nodes yet.', { exact: true }))
+      .or(panel.getByText('尚无消息节点。', { exact: true }))
+      .first().waitFor({ state: 'attached', timeout: 15_000 })
+  }
+  const focused = await page.evaluateHandle(() => document.activeElement)
+  try {
+    const toggle = page.locator('[data-rightbar-col] [data-sidebar-right-open] [data-sidebar-right-toggle]')
+    if (await toggle.count() > 0) await toggle.click()
+    await page.waitForFunction(() => {
+      const frame = document.querySelector('[class*="frame"]')
+      return frame instanceof HTMLElement && frame.dataset.rightbarCollapsed === 'true'
+        && document.querySelector('[data-sidebar-right-open]') === null
+        && frame.getAnimations().every(animation => animation.playState !== 'running')
+    }, undefined, { timeout: 10_000 })
+    await focused.evaluate((element) => {
+      if (element instanceof HTMLElement && element.isConnected) element.focus({ preventScroll: true })
+    })
+  } finally {
+    await focused.dispose()
+  }
+}
+
+/**
  * Expand every currently eligible Turn-process group so a Tool-focused
  * scenario can exercise the original row contract beneath product-default
  * compact Chat presentation.

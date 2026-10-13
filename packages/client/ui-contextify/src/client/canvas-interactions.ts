@@ -47,7 +47,7 @@ export function effectiveContextIncluded(active: boolean, mode: ContextNodeMode)
  * @param included - The effective result requested by the user.
  * @returns `natural` for the automatic result, otherwise `include` or `exclude`.
  */
-export function modeForEffectiveContext(active: boolean, included: boolean): ContextNodeMode {
+export function effectiveContextMode(active: boolean, included: boolean): ContextNodeMode {
   if (included === active) return 'natural'
   return included ? 'include' : 'exclude'
 }

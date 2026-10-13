@@ -192,6 +192,11 @@ interface ToolArgsMap {
     /** Path to the image file, resolved by the filesystem backend. */
     file_path: string;
   } & Record<string, JsonValue>;
+  /** Request a user-confirmed native conversation branch for the current Q&A. Use this when the direct human explicitly asks to open, create, or move the current exchange to a new branch. This schedules a confirmation card after the final answer; it does not create the branch by itself, so do not claim that the branch already exists. */
+  request_context_branch: {
+    /** Short user-facing explanation of why this Q&A should become a separate branch. */
+    reason: string;
+  } & Record<string, JsonValue>;
   /** Send a message to a direct continuable child by its agent id. If you are a resident continuable child, you may also target your direct parent. If the target is still working, the message steers its nearest step; if it is idle, the message starts a turn. This call returns no answer from the agent — only confirmation that the message was delivered. A failure means the message was NOT delivered. */
   send_message: {
     /** The agent id of your direct continuable child, or your direct parent when you are a resident continuable child. */
@@ -443,6 +448,9 @@ interface ToolOutputMap {
         height: number;
       };
     };
+  };
+  request_context_branch: {
+    status: "pending_user_confirmation";
   };
   send_message: {
     messageId: string;

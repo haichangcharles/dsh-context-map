@@ -11,6 +11,10 @@
 - text: Research notes what changed? Referenced session · Research notes {{clock}}
 - button "Copy":
   - img
+- button "natural context for @Research notes what changed?" [disabled]: Auto
+- button "include context for @Research notes what changed?": Use
+- button "exclude context for @Research notes what changed?": Skip
+- button "Locate @Research notes what changed? in Context Map": Map
 - button "Session recall Research notes":
   - img
   - text: Session recall Research notes

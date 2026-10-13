@@ -68,10 +68,9 @@ function visibleMessage(event: SessionEvent, webCalls: ReadonlyMap<string, WebCa
   if (event.type === 'tool/result') {
     const call = webCalls.get(event.data.message.source.callId)
     if (call === undefined) return null
-    const blocks = event.data.message.content
-    const result = blocks.length === 1 && blocks[0]?.type === 'tool-result'
-      && blocks[0].toolCallId === event.data.message.source.callId && !blocks[0].isError
-      ? blocks[0].content : null
+    const block = event.data.message.content[0]
+    const result = block.toolCallId === event.data.message.source.callId && !block.isError
+      ? block.content : null
     const importable = event.sourceEventSeqs?.length === 1
       && event.sourceEventSeqs[0] === call.seq
       && result !== null && result.length > 0
@@ -236,9 +235,13 @@ function canonicalSessionParents(
     if (actualParent === undefined) continue
     const seedLength = inspection.inheritedEventCount
     const forkEvent = seedLength > 0 ? inspection.events[seedLength - 1] : undefined
+    const inheritedOwner = forkEvent === undefined
+      ? actualParent : canonicalOwner(inspection, forkEvent, byId, ownerCache).sessionId
+    // Missing or unverifiable ancestor inspection leaves ownership on the
+    // child. Preserve its declared native parent instead of creating a self edge.
     parents.set(
       inspection.meta.id,
-      forkEvent === undefined ? actualParent : canonicalOwner(inspection, forkEvent, byId, ownerCache).sessionId,
+      inheritedOwner === inspection.meta.id ? actualParent : inheritedOwner,
     )
   }
   return parents

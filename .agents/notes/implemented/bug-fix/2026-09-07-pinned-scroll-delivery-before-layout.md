@@ -21,3 +21,5 @@ A delayed scroll sample compares positions from different layouts. While Chat is
 ## Consequences
 
 Pinned deliveries incur immediate scroll-metric reads. History reading retains its bounded sampling cadence, and explicit return-to-bottom deliveries clear any pending away sample. [Focused tests](../../../../packages/client/ui-chat/tests/chat-view.client.spec.tsx) cover shrink/regrowth before scrollend, observer growth without row measurements, repinning with a pending sample, timer and scrollend sampling, and unmount cancellation. The [keyless browser scenario](../../../../apps/web/tests/chat-scroll-contract.e2e.ts) covers pinned Send, real scroll-away input, streaming, and tool disclosure across the long transcript.
+
+[Deferred layout follow](2026-10-14-deferred-scroll-follow.md) separately handles resize notifications postponed while a reader scroll returns from history. It preserves this immediate pinned-delivery path and the protections for upward reader input.

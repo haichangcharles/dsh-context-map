@@ -17,6 +17,10 @@
 - text: "Use one run_code program to do the following in order. Call present for missing.txt and catch its error without creating that file. Use bash to run exactly `printf \"DELIVERED_REPORT\\n\" > report.txt; printf \"DELIVERED_NOTE\\n\" > 说明.txt`. Call present for report.txt and 说明.txt. After present succeeds, deliberately throw the string \"AFTER_PRESENT\" (not an Error object) from that same run_code program. Do not retry the program or create any other files. Finish by mentioning `report.txt` and `说明.txt` in inline code, and put PRESENT_DONE in a separate paragraph. {{clock}}"
 - button "Copy":
   - img
+- 'button "natural context for Use one run_code program to do the following in order. Call present for missing.txt and catch its error without creating that file. Use bash to run exactly `printf \"DELIVERED_REPORT\\n\" > report.txt; printf \"DELIVERED_NOTE\\n\" > 说明.txt`. Call" [disabled]': Auto
+- 'button "include context for Use one run_code program to do the following in order. Call present for missing.txt and catch its error without creating that file. Use bash to run exactly `printf \"DELIVERED_REPORT\\n\" > report.txt; printf \"DELIVERED_NOTE\\n\" > 说明.txt`. Call"': Use
+- 'button "exclude context for Use one run_code program to do the following in order. Call present for missing.txt and catch its error without creating that file. Use bash to run exactly `printf \"DELIVERED_REPORT\\n\" > report.txt; printf \"DELIVERED_NOTE\\n\" > 说明.txt`. Call"': Skip
+- 'button "Locate Use one run_code program to do the following in order. Call present for missing.txt and catch its error without creating that file. Use bash to run exactly `printf \"DELIVERED_REPORT\\n\" > report.txt; printf \"DELIVERED_NOTE\\n\" > 说明.txt`. Call in Context Map"': Map
 - button "1 tool call" [expanded]:
   - text: 1 tool call
   - img
@@ -81,6 +85,10 @@
   - img
 - button "Bad response":
   - img
+- 'button "natural context for The single program ran exactly as ordered: `present` for `missing.txt` failed and was caught (no file created), bash ran the exact command successfully, then `present` succeeded for `report.txt` and `说明.txt`, after which the program deliber" [disabled]': Auto
+- 'button "include context for The single program ran exactly as ordered: `present` for `missing.txt` failed and was caught (no file created), bash ran the exact command successfully, then `present` succeeded for `report.txt` and `说明.txt`, after which the program deliber"': Use
+- 'button "exclude context for The single program ran exactly as ordered: `present` for `missing.txt` failed and was caught (no file created), bash ran the exact command successfully, then `present` succeeded for `report.txt` and `说明.txt`, after which the program deliber"': Skip
+- 'button "Locate The single program ran exactly as ordered: `present` for `missing.txt` failed and was caught (no file created), bash ran the exact command successfully, then `present` succeeded for `report.txt` and `说明.txt`, after which the program deliber in Context Map"': Map
 - button "Branch into a new conversation":
   - img
 - button "Usage 19K tok":

@@ -41,6 +41,10 @@
   - img
 - button "Bad response":
   - img
+- 'button "natural context for **Turn 1 / 2** — 随机选中的包：`packages/context/session-reference` 📦 ``` session-reference ├── README.md ├── package.json ├── src │ ├── index.ts │ └── uri.ts └── tests └── session-reference.spec.ts ``` ``` session-reference/ ├── README." [disabled]': Auto
+- 'button "include context for **Turn 1 / 2** — 随机选中的包：`packages/context/session-reference` 📦 ``` session-reference ├── README.md ├── package.json ├── src │ ├── index.ts │ └── uri.ts └── tests └── session-reference.spec.ts ``` ``` session-reference/ ├── README."': Use
+- 'button "exclude context for **Turn 1 / 2** — 随机选中的包：`packages/context/session-reference` 📦 ``` session-reference ├── README.md ├── package.json ├── src │ ├── index.ts │ └── uri.ts └── tests └── session-reference.spec.ts ``` ``` session-reference/ ├── README."': Skip
+- 'button "Locate **Turn 1 / 2** — 随机选中的包：`packages/context/session-reference` 📦 ``` session-reference ├── README.md ├── package.json ├── src │ ├── index.ts │ └── uri.ts └── tests └── session-reference.spec.ts ``` ``` session-reference/ ├── README. in Context Map"': Map
 - button "Branch into a new conversation":
   - img
 - button "Ran for {{duration}}":
@@ -108,6 +112,10 @@
   - img
 - button "Bad response":
   - img
+- 'button "natural context for 两个 turn 都完成了 ✅ **总结：** - **Turn 1** — 随机选中 `packages/context/session-reference`，输出了文件结构： ``` session-reference/ ├── README.md ├── package.json ├── src/ │ ├── index.ts │ └── uri.ts └── tests/ └── session-reference" [disabled]': Auto
+- 'button "include context for 两个 turn 都完成了 ✅ **总结：** - **Turn 1** — 随机选中 `packages/context/session-reference`，输出了文件结构： ``` session-reference/ ├── README.md ├── package.json ├── src/ │ ├── index.ts │ └── uri.ts └── tests/ └── session-reference"': Use
+- 'button "exclude context for 两个 turn 都完成了 ✅ **总结：** - **Turn 1** — 随机选中 `packages/context/session-reference`，输出了文件结构： ``` session-reference/ ├── README.md ├── package.json ├── src/ │ ├── index.ts │ └── uri.ts └── tests/ └── session-reference"': Skip
+- 'button "Locate 两个 turn 都完成了 ✅ **总结：** - **Turn 1** — 随机选中 `packages/context/session-reference`，输出了文件结构： ``` session-reference/ ├── README.md ├── package.json ├── src/ │ ├── index.ts │ └── uri.ts └── tests/ └── session-reference in Context Map"': Map
 - button "Branch into a new conversation":
   - img
 - tooltip "Branch into a new conversation"

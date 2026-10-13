@@ -20,6 +20,10 @@
 - text: Read the attached file with the read tool, reply with exactly the single word it contains, and stop. {{clock}}
 - button "Copy":
   - img
+- button "natural context for [Image] Read the attached file with the read tool, reply with exactly the single word it contains, and stop." [disabled]: Auto
+- button "include context for [Image] Read the attached file with the read tool, reply with exactly the single word it contains, and stop.": Use
+- button "exclude context for [Image] Read the attached file with the read tool, reply with exactly the single word it contains, and stop.": Skip
+- button "Locate [Image] Read the attached file with the read tool, reply with exactly the single word it contains, and stop. in Context Map": Map
 - button "1 tool call":
   - text: 1 tool call
   - img

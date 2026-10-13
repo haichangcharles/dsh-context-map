@@ -5,6 +5,10 @@
 - text: 简单画一个 SVG 表示冯诺依曼架构, 保存为 von-neumann.svg {{clock}}
 - button "复制":
   - img
+- button "对 简单画一个 SVG 表示冯诺依曼架构, 保存为 von-neumann.svg 的 Context 执行 natural" [disabled]: 自动
+- button "对 简单画一个 SVG 表示冯诺依曼架构, 保存为 von-neumann.svg 的 Context 执行 include": 使用
+- button "对 简单画一个 SVG 表示冯诺依曼架构, 保存为 von-neumann.svg 的 Context 执行 exclude": 跳过
+- button "在 Context Map 中定位 简单画一个 SVG 表示冯诺依曼架构, 保存为 von-neumann.svg": 图
 - button "2 次工具调用 · 1 条消息" [expanded]:
   - text: 2 次工具调用 · 1 条消息
   - img

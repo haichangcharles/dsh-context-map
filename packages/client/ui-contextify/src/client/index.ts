@@ -55,14 +55,15 @@ export function nativeBranchSource(node: ContextFamilyGraphNode): {
   return { sessionId: node.owner.sessionId, atSeq: node.branchAtSeq, increaseTitle: true }
 }
 
-/** Open the Context Map when the user enters a nonempty Session. */
+/** Open the family Map for nonempty native Sessions; execution-detail routes have a separate owner. */
 function DetailsOpener({ open, useSessions }: {
   open: () => void
   useSessions: SnapshotSelectorHook<SessionListState>
 }) {
   const sessionId = useSessions((state) => {
     const current = state.current
-    return current !== undefined && state.byId[current]?.blank === false ? current : undefined
+    if (current === undefined || state.currentAddress !== undefined || state.byId[current]?.origin === 'subagent') return undefined
+    return state.byId[current]?.blank === false ? current : undefined
   })
   useEffect(() => {
     if (sessionId !== undefined) open()
@@ -75,9 +76,8 @@ export function apply(ctx: ClientContext): void {
   const t = ctx.locale.bind('contextifySteward')
   const remote = ctx.remote.contextify
   const controllers = new Map<SessionId, ContextifyController>()
-  ctx.inject(['locale'], localeCtx => localeCtx.effect(() =>
-    localeCtx.locale.register('contextifySteward', { zh: stewardZh, en: stewardEn }),
-  'ui-contextify: Steward copy'))
+  ctx.effect(() => ctx.locale.register('contextifySteward', { zh: stewardZh, en: stewardEn }),
+    'ui-contextify: Steward copy')
   ctx.inject(['settingsScope', 'locale', 'connection'], (settingsCtx) => {
     const promptScope = settingsCtx.settingsScope.bind<ContextifyPromptSettings>({ namespace: 'contextify' })
     settingsCtx.slots.inject('settings.section', () => settingsCtx.slots.register({
@@ -85,9 +85,7 @@ export function apply(ctx: ClientContext): void {
       id: 'contextify-prompts',
       locale: 'contextifySteward',
       order: 25,
-      label: () => settingsCtx.locale.getSnapshot().active.startsWith('zh')
-        ? 'Context Map 提示词'
-        : 'Context Map prompts',
+      label: () => t('copy.contextMapPrompts'),
       inject: () => ({ scope: promptScope }),
     }, ContextifyPromptSettingsSection))
   })
@@ -161,11 +159,11 @@ export function apply(ctx: ClientContext): void {
       keepBranchSuggestion: suggestionId => controller.keepBranchSuggestion(suggestionId),
       moveBranchSuggestion: async (suggestionId) => {
         const sourceScope = ctx.sessions.scope(sessionId)
-        if (sourceScope === undefined) throw new Error('The current Session is unavailable')
+        if (sourceScope === undefined) throw new Error(t('error.currentSession'))
         const { draft, draftRev } = ctx.conversation.input.for(sourceScope).state.getSnapshot()
         const result = await controller.acceptBranchSuggestion(suggestionId)
         if (!ctx.conversation.moveDraft(sessionId, result.childSessionId, { draft, draftRev })) {
-          throw new Error('The draft changed or the new branch cannot receive it')
+          throw new Error(t('error.newBranchDraft'))
         }
         ctx.sessions.open(result.childSessionId)
       },
@@ -173,8 +171,8 @@ export function apply(ctx: ClientContext): void {
   }
 
   ctx.effect(() => ctx.sidebarRightTabs.register({
-    id: 'context-map', kind: 'context-map', priority: 'builtin', title: () => 'Context Map',
-    guide: [{ order: 10, title: () => 'Context Map', description: () => 'Inspect branches and control conversation context' }],
+    id: 'context-map', kind: 'context-map', priority: 'builtin', title: () => t('copy.contextMap'),
+    guide: [{ order: 10, title: () => t('copy.contextMap'), description: () => t('guide.contextMapDescription') }],
   }))
   ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
     name: 'sidebar.right.pane.tab',
@@ -227,7 +225,7 @@ export function apply(ctx: ClientContext): void {
           },
           setWorkState: async (targetSessionId, state) => {
             const revision = controller.getSnapshot().graphRevision
-            if (revision === undefined) throw new Error('The Context Map is not ready')
+            if (revision === undefined) throw new Error(t('error.mapNotReady'))
             valueOf(await remote.setWorkState(sessionId, targetSessionId, state,
               revision, 'contextify-client'))
             await controller.refresh()
@@ -239,44 +237,44 @@ export function apply(ctx: ClientContext): void {
             const sourceScope = ctx.sessions.scope(sessionId)
             if (sourceScope === undefined
               || ctx.conversation.input.for(sourceScope).state.getSnapshot().draft.trim() !== route.objective) {
-              throw new Error('The draft changed after Context review')
+              throw new Error(t('error.changedDraftReview'))
             }
             valueOf(await remote.reviewRoute(sessionId, route, 'reject', undefined, 'contextify-client'))
           },
           acceptRoute: async (route: ContextRouteAdvice) => {
-            if (route.base.activeSessionId !== sessionId) throw new Error('The draft route is stale')
+            if (route.base.activeSessionId !== sessionId) throw new Error(t('error.staleRoute'))
             const page = valueOf(await remote.familyPage(sessionId, undefined, 1))
             const view = valueOf(await remote.get(sessionId))
             if (page.revision !== route.base.graphRevision
               || view.plan.revision !== route.base.planRevision
-              || page.activeSessionId !== sessionId) throw new Error('The draft route is stale')
+              || page.activeSessionId !== sessionId) throw new Error(t('error.staleRoute'))
             const sourceScope = ctx.sessions.scope(sessionId)
-            if (sourceScope === undefined) throw new Error('The current Session is unavailable')
+            if (sourceScope === undefined) throw new Error(t('error.currentSession'))
             const { draft, draftRev, phase } = ctx.conversation.input.for(sourceScope).state.getSnapshot()
             if (phase !== 'plain' || draft.trim() !== route.objective) {
-              throw new Error('The draft changed after Context review')
+              throw new Error(t('error.changedDraftReview'))
             }
             let targetId: SessionId
             if (route.action === 'branch') {
               const graph = controller.getSnapshot().graph
               if (controller.getSnapshot().graphRevision !== page.revision || graph === undefined) {
-                throw new Error('The draft route is stale')
+                throw new Error(t('error.staleRoute'))
               }
               const pivot = graph.nodes.filter(node => node.sessionIds.includes(sessionId)
                 && node.branchAtSeq !== null).at(-1)
               if (pivot?.branchAtSeq === null || pivot === undefined) {
-                throw new Error('This Session has no completed Turn to branch from')
+                throw new Error(t('error.noBranchTurn'))
               }
               targetId = await ctx.sessions.fork({ sessionId, atSeq: pivot.branchAtSeq, increaseTitle: true })
             } else {
               const target = route.targetSessionId
               if (target === undefined || !page.sessions.some(session => session.id === target)) {
-                throw new Error('The destination Session is unavailable')
+                throw new Error(t('error.destinationSession'))
               }
               targetId = target
             }
             if (!ctx.conversation.moveDraft(sessionId, targetId, { draft, draftRev })) {
-              throw new Error('The draft changed or the destination cannot receive it')
+              throw new Error(t('error.draftTransfer'))
             }
             try {
               valueOf(await remote.reviewRoute(sessionId, route, 'accept', targetId, 'contextify-client'))
@@ -293,11 +291,11 @@ export function apply(ctx: ClientContext): void {
           restoreNode: node => controller.restoreNode(node),
           branch: async (node: ContextFamilyGraphNode) => {
             const sourceScope = ctx.sessions.scope(sessionId)
-            if (sourceScope === undefined) throw new Error('The current Session is unavailable')
+            if (sourceScope === undefined) throw new Error(t('error.currentSession'))
             const { draft, draftRev } = ctx.conversation.input.for(sourceScope).state.getSnapshot()
             const childId = await ctx.sessions.fork(nativeBranchSource(node))
             if (!ctx.conversation.moveDraft(sessionId, childId, { draft, draftRev })) {
-              throw new Error('The draft changed or the new branch cannot receive it')
+              throw new Error(t('error.newBranchDraft'))
             }
             try {
               valueOf(await remote.recordManualBranch(sessionId, childId, 'contextify-client', draft))
@@ -315,17 +313,20 @@ export function apply(ctx: ClientContext): void {
   ctx.slots.inject('conversation.chat.user-actions', () => ctx.slots.register({
     name: 'conversation.chat.user-actions',
     id: 'contextify',
+    locale: 'contextifySteward',
     order: 20,
     inject: messageActionInjected,
   }, ContextMessageAction))
   ctx.slots.inject('conversation.chat.assistant-actions', () => ctx.slots.register({
     name: 'conversation.chat.assistant-actions',
     id: 'contextify',
+    locale: 'contextifySteward',
     order: 20,
     inject: messageActionInjected,
   }, ContextMessageAction))
   ctx.slots.inject('conversation.chat.turnTail', () => ctx.slots.register({
     name: 'conversation.chat.turnTail',
+    locale: 'contextifySteward',
     priority: 10,
     select: owner => owner.seq,
     inject: branchSuggestionInjected,

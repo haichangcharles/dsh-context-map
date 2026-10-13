@@ -18,7 +18,7 @@ import {
   captureStableAria, compareOrRefreshGolden,
   launchWebScaffold, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
+import { restoreFullWidthChat, connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/queued-image', import.meta.url))
 const FIXTURE = fileURLToPath(new URL('../../../snapshots/web/live-interactions/session.v3.jsonl', import.meta.url))
@@ -95,6 +95,9 @@ describe('web e2e: queued image submission', () => {
     await input.fill(ACTIVE_PROMPT)
     await input.press('Enter')
     await expect.poll(() => existsSync(readyFile), { timeout: 15_000 }).toBe(true)
+    // Prepare the reference Chat width before queue/attachment admission; the
+    // real sidebar toggle must not run inside the transient dock observation.
+    await restoreFullWidthChat(page)
 
     // A just-submitted composer is read-only for the prompt round-trip.
     await page.locator('[data-composer-input][contenteditable="true"]').first().waitFor({ timeout: 10_000 })
@@ -179,6 +182,7 @@ describe('web e2e: queued image submission', () => {
       () => page.getByRole('button', { name: /^3 turns 3 steps/ }).count(),
       { timeout: 15_000 },
     ).toBe(1)
+    await restoreFullWidthChat(page)
     const deliveredSnapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(DELIVERED_EXPECTED, deliveredSnapshot, MODE)
 

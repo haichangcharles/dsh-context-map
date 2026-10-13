@@ -1,8 +1,14 @@
 // @vitest-environment jsdom
 import { Context, Service } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
-import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
+import { render } from '@testing-library/react'
+import type { ComponentType } from 'react'
+import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
+import { stewardTestBaseLocale } from './test-locale.client.ts'
+import { en } from '../src/client/locales.ts'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type { SidebarRightTabDefinition } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ContextMapPanelInjected } from '../src/client/ContextMapPanel.tsx'
 import type { ContextMessageActionInjected } from '../src/client/ContextMessageAction.tsx'
@@ -17,7 +23,7 @@ const child = sid('session-child')
 /** Mount the browser plugin over real Cordis slots and deterministic fake service faces. */
 async function bench(withCleanup = false) {
   const ctx = new Context()
-  ctx.provide('locale', new LocaleRuntime(ctx))
+  ctx.provide('locale', stewardTestBaseLocale(ctx))
   const calls: Array<{ method: string; args: unknown[] }> = []
   class RemoteService extends Service {
     constructor(serviceCtx: Context) { super(serviceCtx, 'remote') }
@@ -100,7 +106,7 @@ async function bench(withCleanup = false) {
   const fork = vi.fn(async () => child)
   const open = vi.fn()
   ctx.provide('sessions', { fork, open, scope: () => ctx })
-  const registerTab = vi.fn(() => () => {})
+  const registerTab = vi.fn<(definition: SidebarRightTabDefinition) => () => void>(() => () => {})
   ctx.provide('sidebarRightTabs', { register: registerTab } as never)
   ctx.provide('sidebarRight', { openTab: openDetails, isExpanded: () => true, toggleExpanded: closeDetails } as never)
   const revealMessage = vi.fn()
@@ -125,13 +131,17 @@ async function bench(withCleanup = false) {
   } as never, (() => null) as never)
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
+  const t = ctx.locale.bind('contextifySteward')
+  for (const key of ['error.newBranchDraft', 'error.changedDraftReview', 'error.staleRoute'] as const) {
+    expect(t(key)).toBe(en[key])
+  }
   const pinned = ctx.slots.entries('sidebar.right.pane.tab')[0]
   const injectPanel = pinned?.inject as unknown as ((sessionId: SessionId) => ContextMapPanelInjected)
   const userAction = ctx.slots.entries('conversation.chat.user-actions')[0]
   const assistantAction = ctx.slots.entries('conversation.chat.assistant-actions')[0]
   const turnTail = ctx.slots.entries('conversation.chat.turnTail')[0]
   return {
-    ctx, fiber, calls, closeDetails, openDetails, fork, open, moveDraft, draftState,
+    ctx, fiber, calls, closeDetails, openDetails, fork, open, moveDraft, draftState, registerTab,
     revealMessage, openPinnedDetails, record,
     panel: injectPanel(source),
     pinned,
@@ -144,6 +154,47 @@ async function bench(withCleanup = false) {
 }
 
 describe('ui-contextify browser plugin', () => {
+  it.each([
+    { label: 'ordinary native fork', origin: false, addressed: false, blank: false, expected: 1 },
+    { label: 'addressed execution detail', origin: false, addressed: true, blank: false, expected: 0 },
+    { label: 'cataloged execution detail', origin: true, addressed: false, blank: false, expected: 0 },
+    { label: 'blank native fork', origin: false, addressed: false, blank: true, expected: 0 },
+  ])('auto-opens only supported nonempty native Sessions: $label', async ({ origin, addressed, blank, expected }) => {
+    const b = await bench()
+    const state: SessionListState = {
+      ids: [child], current: child, phase: 'ready', subagentsByParent: {}, jobsBySession: {},
+      currentAddress: addressed ? { parentSessionId: source, childSessionId: child, mode: 'continuable' } : undefined,
+      byId: { [child]: {
+        id: child, parentId: source, displayTitle: 'Child', running: false, blank, updatedAt: 0,
+        ...(origin ? { origin: 'subagent' as const } : {}),
+      } },
+    }
+    const useSessions: SnapshotSelectorHook<SessionListState> = selector => selector(state)
+    // The registry erases component props; this entry's declared standard seat is useSessions.
+    const Opener = b.opener?.component as ComponentType<{ open: () => void; useSessions: typeof useSessions }>
+    const mounted = render(<Opener open={b.openDetails} useSessions={useSessions} />)
+    try {
+      expect(b.openDetails).toHaveBeenCalledTimes(expected)
+    } finally {
+      mounted.unmount()
+      await b.fiber.dispose()
+    }
+  })
+
+  it('resolves registry and guide copy through the current language', async () => {
+    const b = await bench()
+    const definition = b.registerTab.mock.calls[0]?.[0]
+    expect(definition).toBeDefined()
+    expect(definition?.title('sidebar://context-map')).toBe('Context Map')
+    expect(definition?.guide?.[0]?.title()).toBe('Context Map')
+    expect(definition?.guide?.[0]?.description?.()).toBe('Inspect branches and control conversation context')
+    b.ctx.locale.setLocale('zh')
+    expect(definition?.title('sidebar://context-map')).toBe('Context Map')
+    expect(definition?.guide?.[0]?.title()).toBe('Context Map')
+    expect(definition?.guide?.[0]?.description?.()).toBe('查看分支并管理对话 Context')
+    await b.fiber.dispose()
+  })
+
   it('shares one native-family controller across the pinned map and both Chat action slots', async () => {
     const b = await bench()
     expect(b.pinned?.options).toMatchObject({ key: 'context-map' })

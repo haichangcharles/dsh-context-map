@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-10-14-contextify-partial-lineage-and-policy-boundaries.md
+2026-10-14-contextify-partial-lineage-and-policy-boundaries.md: 15aefa9ba82705b6dfd01f43f58a64200d72697d
+2026-10-14-contextify-partial-lineage-and-policy-boundaries.zh.md: 18a373a9d02ff4ce30fb2706e39593ecbc3835bf

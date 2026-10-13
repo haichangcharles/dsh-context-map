@@ -44,8 +44,6 @@
 - button "include context for m1": Use
 - button "exclude context for m1": Skip
 - button "Locate m1 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r1
 - button "Copy":
   - img
@@ -69,8 +67,6 @@
 - button "include context for m2": Use
 - button "exclude context for m2": Skip
 - button "Locate m2 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r2
 - button "Copy":
   - img
@@ -94,8 +90,6 @@
 - button "include context for m3": Use
 - button "exclude context for m3": Skip
 - button "Locate m3 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r3
 - button "Copy":
   - img
@@ -119,8 +113,6 @@
 - button "include context for m4": Use
 - button "exclude context for m4": Skip
 - button "Locate m4 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r4
 - button "Copy":
   - img
@@ -144,8 +136,6 @@
 - button "include context for m5": Use
 - button "exclude context for m5": Skip
 - button "Locate m5 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r5
 - button "Copy":
   - img
@@ -169,8 +159,6 @@
 - button "include context for m6": Use
 - button "exclude context for m6": Skip
 - button "Locate m6 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r6
 - button "Copy":
   - img
@@ -194,8 +182,6 @@
 - button "include context for m7": Use
 - button "exclude context for m7": Skip
 - button "Locate m7 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r7
 - button "Copy":
   - img
@@ -219,8 +205,6 @@
 - button "include context for m8": Use
 - button "exclude context for m8": Skip
 - button "Locate m8 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r8
 - button "Copy":
   - img
@@ -244,8 +228,6 @@
 - button "include context for m9": Use
 - button "exclude context for m9": Skip
 - button "Locate m9 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r9
 - button "Copy":
   - img
@@ -269,8 +251,6 @@
 - button "include context for m10": Use
 - button "exclude context for m10": Skip
 - button "Locate m10 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r10
 - button "Copy":
   - img
@@ -294,8 +274,6 @@
 - button "include context for m11": Use
 - button "exclude context for m11": Skip
 - button "Locate m11 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r11
 - button "Copy":
   - img
@@ -319,8 +297,6 @@
 - button "include context for m12": Use
 - button "exclude context for m12": Skip
 - button "Locate m12 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r12
 - button "Copy":
   - img
@@ -344,8 +320,6 @@
 - button "include context for m13": Use
 - button "exclude context for m13": Skip
 - button "Locate m13 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r13
 - button "Copy":
   - img
@@ -369,8 +343,6 @@
 - button "include context for m14": Use
 - button "exclude context for m14": Skip
 - button "Locate m14 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r14
 - button "Copy":
   - img
@@ -394,8 +366,6 @@
 - button "include context for m15": Use
 - button "exclude context for m15": Skip
 - button "Locate m15 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r15
 - button "Copy":
   - img
@@ -419,8 +389,6 @@
 - button "include context for m16": Use
 - button "exclude context for m16": Skip
 - button "Locate m16 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r16
 - button "Copy":
   - img
@@ -444,8 +412,6 @@
 - button "include context for m17": Use
 - button "exclude context for m17": Skip
 - button "Locate m17 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r17
 - button "Copy":
   - img
@@ -469,8 +435,6 @@
 - button "include context for m18": Use
 - button "exclude context for m18": Skip
 - button "Locate m18 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r18
 - button "Copy":
   - img
@@ -494,8 +458,6 @@
 - button "include context for m19": Use
 - button "exclude context for m19": Skip
 - button "Locate m19 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r19
 - button "Copy":
   - img
@@ -519,8 +481,6 @@
 - button "include context for m20": Use
 - button "exclude context for m20": Skip
 - button "Locate m20 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r20
 - button "Copy":
   - img
@@ -544,8 +504,6 @@
 - button "include context for m21": Use
 - button "exclude context for m21": Skip
 - button "Locate m21 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r21
 - button "Copy":
   - img
@@ -569,8 +527,6 @@
 - button "include context for m22": Use
 - button "exclude context for m22": Skip
 - button "Locate m22 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r22
 - button "Copy":
   - img
@@ -594,8 +550,6 @@
 - button "include context for m23": Use
 - button "exclude context for m23": Skip
 - button "Locate m23 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r23
 - button "Copy":
   - img
@@ -619,8 +573,6 @@
 - button "include context for m24": Use
 - button "exclude context for m24": Skip
 - button "Locate m24 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r24
 - button "Copy":
   - img
@@ -644,8 +596,6 @@
 - button "include context for m25": Use
 - button "exclude context for m25": Skip
 - button "Locate m25 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r25
 - button "Copy":
   - img
@@ -669,8 +619,6 @@
 - button "include context for m26": Use
 - button "exclude context for m26": Skip
 - button "Locate m26 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r26
 - button "Copy":
   - img
@@ -694,8 +642,6 @@
 - button "include context for m27": Use
 - button "exclude context for m27": Skip
 - button "Locate m27 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r27
 - button "Copy":
   - img
@@ -719,8 +665,6 @@
 - button "include context for m28": Use
 - button "exclude context for m28": Skip
 - button "Locate m28 in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: r28
 - button "Copy":
   - img

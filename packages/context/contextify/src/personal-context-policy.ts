@@ -108,8 +108,9 @@ function recentStyleReversal(
   if (matching.length < 10) return null
   const recent = matching.slice(-5)
   const earlier = matching.slice(0, -5)
-  const recentMode = recent[0]?.mode
-  if (recentMode === undefined || !recent.every(edit => edit.mode === recentMode)) return null
+  // matching has at least ten dense entries, so slice(-5) always has a first item.
+  const recentMode = recent.reduce(first => first).mode
+  if (!recent.every(edit => edit.mode === recentMode)) return null
   const earlierIncludeRate = (1 + earlier.filter(edit => edit.mode === 'include').length)
     / (2 + earlier.length)
   if ((recentMode === 'include' && earlierIncludeRate > 0.3)
@@ -171,8 +172,9 @@ export function personalContextStyleAdvice(
     if (support < 2) return sum
     return sum + (rate >= 0.5 === (edit.mode === 'include') ? (edit.weight ?? 1) : 0)
   }, 0) }))
-  const axis = scored.sort((left, right) => right.correct - left.correct)[0]?.axis
-  if (axis === undefined) return null
+  // axes always contains at least source/topology/cell. Keep the first tied
+  // maximum just as the stable sort did, without an impossible empty fallback.
+  const axis = scored.reduce((best, next) => next.correct > best.correct ? next : best).axis
   const { rate, support } = styleRate(axis, {
     objective: '', content: '', mode: 'include', ...candidate,
   }, usable)

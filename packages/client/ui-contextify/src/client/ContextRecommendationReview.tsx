@@ -70,26 +70,26 @@ function ProposalReview({
   const run = (operation: () => Promise<void>): void => {
     void operation().catch(reportError)
   }
-  return <div className={css.sheet} role="dialog" aria-label="Context recommendation review">
+  return <div className={css.sheet} role="dialog" aria-label={t('copy.contextRecommendationReview')}>
     <div className={css.header}>
       <div>
-        <h3>Review Context recommendations</h3>
+        <h3>{t('copy.reviewContextRecommendations')}</h3>
         <span className={css.mode}>{t(proposal.mode === 'deep' ? 'mode.deep' : proposal.mode === 'fast' ? 'mode.fast' : 'mode.local')}</span>
-        <p>Choose which context changes to apply. Nothing changes until you confirm.</p>
+        <p>{t('copy.chooseWhichContextChangesToApplyNothingChanges')}</p>
       </div>
-      <button type="button" aria-label="Close recommendation review" onClick={() => { run(() => dismiss(keptCurrent)) }}>×</button>
+      <button type="button" aria-label={t('copy.closeRecommendationReview')} onClick={() => { run(() => dismiss(keptCurrent)) }}>×</button>
     </div>
-    {stale && <div className={css.stale} role="alert">The conversation or Context Plan changed. Dismiss and run Recommend again.</div>}
-    {route !== undefined && !routeDismissed && <section className={css.section} aria-label="Draft route recommendation">
-      <h4>Where this draft belongs</h4>
+    {stale && <div className={css.stale} role="alert">{t('copy.theConversationOrContextPlanChangedDismissAnd')}</div>}
+    {route !== undefined && !routeDismissed && <section className={css.section} aria-label={t('copy.draftRouteRecommendation')}>
+      <h4>{t('copy.whereThisDraftBelongs')}</h4>
       <p>{route.reason}</p>
       <div className={css.actions}>
         <button type="button" disabled={stale || pending} onClick={() => {
           run(async () => { await rejectRoute(route); setRouteDismissed(true) })
-        }}>Stay in this branch</button>
+        }}>{t('copy.stayInThisBranch')}</button>
         <button type="button" disabled={stale || pending} onClick={() => { run(() => acceptRoute(route)) }}>
-          {route.action === 'branch' ? 'Start a new branch'
-            : route.action === 'return' ? 'Return with draft' : 'Move draft to branch'}
+          {route.action === 'branch' ? t('copy.startANewBranch')
+            : route.action === 'return' ? t('copy.returnWithDraft') : t('copy.moveDraftToBranch')}
         </button>
       </div>
     </section>}
@@ -113,65 +113,66 @@ function ProposalReview({
         </div>
       </article>)}
     </section>}
-    <section className={css.section} aria-label="Current and proposed context versions">
-      <h4>Context replacement</h4>
+    <section className={css.section} aria-label={t('copy.currentAndProposedContextVersions')}>
+      <h4>{t('copy.contextReplacement')}</h4>
       <div className={css.versionSummary}>
-        <div><span>Current context</span><strong>{proposal.currentNodeIds.length} nodes</strong></div>
-        <div><span>Proposed context</span><strong>{proposedNodeIds.size} nodes</strong></div>
+        <div><span>{t('copy.currentContext')}</span><strong>{t('format.nodes', { count: proposal.currentNodeIds.length })}</strong></div>
+        <div><span>{t('copy.proposedContext')}</span><strong>{t('format.nodes', { count: proposedNodeIds.size })}</strong></div>
       </div>
       <div className={css.diffSummary}>
-        <span>{[...proposedNodeIds].filter(id => !currentNodeIds.has(id)).length} added</span>
-        <span>{proposal.currentNodeIds.filter(id => !proposedNodeIds.has(id)).length} removed</span>
+        <span>{t('format.added', { count: [...proposedNodeIds].filter(id => !currentNodeIds.has(id)).length })}</span>
+        <span>{t('format.removed', { count: proposal.currentNodeIds.filter(id => !proposedNodeIds.has(id)).length })}</span>
       </div>
-      {proposal.selection.length === 0 && <div className={css.empty}>The proposed context matches the current version.</div>}
+      {proposal.selection.length === 0 && <div className={css.empty}>{t('copy.theProposedContextMatchesTheCurrentVersion')}</div>}
       <div className={css.list}>
         {proposal.selection.map(item => <article className={css.item} key={`${item.action}:${item.nodeId}`}>
-          <span className={css.badge}>{keptCurrent.includes(item.nodeId) ? 'Keep current' : item.action === 'include' ? 'Added' : 'Removed'}</span>
+          <span className={css.badge}>{keptCurrent.includes(item.nodeId) ? t('copy.keepCurrent') : item.action === 'include' ? t('copy.added2') : t('copy.removed2')}</span>
           <strong>{nodes.get(item.nodeId)?.preview ?? item.nodeId}</strong>
           <p>{item.reason}</p>
           <div className={css.actions}>
             <button type="button" aria-pressed={keptCurrent.includes(item.nodeId)}
-              aria-label={(keptCurrent.includes(item.nodeId) ? 'Use proposed change for ' : 'Keep current context for ')
-                + (nodes.get(item.nodeId)?.preview ?? item.nodeId)}
+              aria-label={t(keptCurrent.includes(item.nodeId) ? 'format.useProposed' : 'format.keepCurrent',
+                { preview: nodes.get(item.nodeId)?.preview ?? item.nodeId })}
               disabled={stale || pending}
               onClick={() => { setKeptCurrent(current => current.includes(item.nodeId)
                 ? current.filter(id => id !== item.nodeId) : [...current, item.nodeId]) }}
-            >{keptCurrent.includes(item.nodeId) ? 'Use proposed change' : 'Keep current'}</button>
+            >{keptCurrent.includes(item.nodeId) ? t('copy.useProposedChange') : t('copy.keepCurrent')}</button>
           </div>
         </article>)}
       </div>
       {proposal.selection.length > 0 && <div className={css.actions}>
         <button type="button" disabled={stale || pending} onClick={() => { run(() => apply(keptCurrent)) }}>
-          {keptCurrent.length === 0 ? 'Apply proposed context'
-            : keptCurrent.length === proposal.selection.length ? 'Keep current context' : 'Apply selected changes'}
+          {keptCurrent.length === 0 ? t('copy.applyProposedContext')
+            : keptCurrent.length === proposal.selection.length ? t('copy.keepCurrentContext') : t('copy.applySelectedChanges')}
         </button>
       </div>}
     </section>
-    <section className={css.section} aria-label="Archive recommendations">
-      <h4>Archive candidates</h4>
-      {proposal.archive.length === 0 && <div className={css.empty}>No archive candidates suggested.</div>}
+    <section className={css.section} aria-label={t('copy.archiveRecommendations')}>
+      <h4>{t('copy.archiveCandidates')}</h4>
+      {proposal.archive.length === 0 && <div className={css.empty}>{t('copy.noArchiveCandidatesSuggested')}</div>}
       <div className={css.list}>
         {proposal.archive.filter(item => !kept.includes(item.nodeId)).map((item) => {
           const node = nodes.get(item.nodeId)
           const inbound = graph.edges.filter(edge => edge.target === item.nodeId).length
           const outbound = graph.edges.filter(edge => edge.source === item.nodeId).length
           return <article className={css.item} key={`archive:${item.nodeId}`}>
-            <span className={`${css.badge} ${css.warning}`}>Archive</span><strong>{node?.preview ?? item.nodeId}</strong>
+            <span className={`${css.badge} ${css.warning}`}>{t('copy.archive')}</span><strong>{node?.preview ?? item.nodeId}</strong>
             <p>{item.reason}</p>
-            {item.evidenceNodeIds.length > 0 && <p>Evidence: {item.evidenceNodeIds.map(id => nodes.get(id)?.preview ?? id).join(' · ')}</p>}
-            <p>{inbound} incoming · {outbound} outgoing · {node?.sessionIds.length ?? 0} Sessions{outbound > 1 ? ' · branch pivot' : ''}</p>
+            {item.evidenceNodeIds.length > 0 && <p>{t('format.evidence', { evidence: item.evidenceNodeIds.map(id => nodes.get(id)?.preview ?? id).join(' · ') })}</p>}
+            <p>{t('format.archiveRelations', { incoming: inbound, outgoing: outbound,
+              sessions: node?.sessionIds.length ?? 0, pivot: outbound > 1 ? t('copy.branchPivot') : '' })}</p>
             <div className={css.actions}>
-              <button type="button" disabled={pending} onClick={() => { setKept(current => [...current, item.nodeId]) }}>Keep original</button>
-              <button type="button" disabled={stale || pending} onClick={() => { setReviewing(item.nodeId) }}>Review archive</button>
+              <button type="button" disabled={pending} onClick={() => { setKept(current => [...current, item.nodeId]) }}>{t('copy.keepOriginal')}</button>
+              <button type="button" disabled={stale || pending} onClick={() => { setReviewing(item.nodeId) }}>{t('copy.reviewArchive')}</button>
             </div>
             {reviewing === item.nodeId && <div className={css.editor}>
               <div className={css.preview}>
-                <div><span>Before</span><p>{node?.preview ?? '(unavailable)'}</p></div>
-                <div><span>After</span><p>Empty placeholder</p></div>
+                <div><span>{t('copy.before')}</span><p>{node?.preview ?? t('copy.unavailable')}</p></div>
+                <div><span>{t('copy.after')}</span><p>{t('copy.emptyPlaceholder2')}</p></div>
               </div>
               <div className={css.actions}>
-                <button type="button" onClick={() => { setReviewing(null) }}>Cancel</button>
-                <button type="button" disabled={stale || pending} onClick={() => { run(() => confirmArchive(item)) }}>Archive node</button>
+                <button type="button" onClick={() => { setReviewing(null) }}>{t('copy.cancel')}</button>
+                <button type="button" disabled={stale || pending} onClick={() => { run(() => confirmArchive(item)) }}>{t('copy.archiveNode')}</button>
               </div>
             </div>}
           </article>

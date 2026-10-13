@@ -34,10 +34,14 @@ Context Map 为每个成功 Turn 保存一个最初用户输入节点和一个�
 <a id="run-from-source"></a>
 ### 从源码运行
 
-安装受支持的 Node.js 版本和 pnpm，然后运行：
+Context Steward 预览版位于 `codex/context-steward-runtime`（[PR #24](https://github.com/haichangcharles/dsh-context-map/pull/24)）。下面的命令会检出这一分支。
+
+安装 Node.js 22.x（至少 22.19）或 Node.js 24 及以上版本，以及 `package.json` 固定的 pnpm 11.7.0，然后运行：
+
+在 macOS 和 Linux 上，源码构建还需要可作为 `cc` 调用的 C11 编译器，以及包含开发头文件的 Node 安装。
 
 ```sh
-git clone https://github.com/haichangcharles/dsh-context-map.git
+git clone --branch codex/context-steward-runtime --single-branch https://github.com/haichangcharles/dsh-context-map.git
 cd dsh-context-map
 pnpm install
 pnpm run build

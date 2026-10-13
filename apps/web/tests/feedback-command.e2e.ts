@@ -15,7 +15,7 @@ import {
   compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, recordFixture, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
+import { restoreFullWidthChat, connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/feedback-command', import.meta.url))
 const FIXTURE = join(SNAPSHOT_DIR, 'session.v3.jsonl')
@@ -76,6 +76,16 @@ describe('web e2e: /feedback command acknowledgement', () => {
     // command row does not render while a fresh session is still blank) and
     // the replayed reply is on screen.
     await page.getByText('LIGHTHOUSE', { exact: true }).waitFor({ timeout: 15_000 })
+    // Host completion can precede the Context graph poll. Require both native
+    // messages' actual controls before the log-only command and ACK captures,
+    // rather than accept the first graph publication with only a user node.
+    for (const preview of [PROMPT, 'LIGHTHOUSE']) {
+      for (const mode of ['natural', 'include', 'exclude']) {
+        await page.getByRole('button', { name: `${mode} context for ${preview}`, exact: true })
+          .waitFor({ state: 'attached', timeout: 15_000 })
+      }
+      expect(await page.getByRole('button', { name: `Locate ${preview} in Context Map`, exact: true }).count()).toBe(1)
+    }
     const input = page.locator('[data-composer-input]').first()
     await input.fill('/feedback the diff view is unreadable')
     await input.press('Enter')
@@ -83,8 +93,10 @@ describe('web e2e: /feedback command acknowledgement', () => {
     expect(await page.getByText(/Anonymous user: [0-9a-f-]+\.$/i).count()).toBe(1)
     await expect.poll(() => input.textContent(), { timeout: 10_000 }).toBe('')
     await expect.poll(() => page.getByRole('button', { name: 'Add attachment' }).isEnabled(), { timeout: 10_000 }).toBe(true)
+    await restoreFullWidthChat(page)
     const snapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(ACK_EXPECTED, snapshot, MODE)
+    await restoreFullWidthChat(page)
     const expanded = await captureExpandedTurnProcessAria(
       page,
       '[class*="centerCol"]',

@@ -17,6 +17,10 @@
 - text: Reply with a one-sentence description of event sourcing, then stop. {{clock}}
 - button "Copy":
   - img
+- button "natural context for Reply with a one-sentence description of event sourcing, then stop." [disabled]: Auto
+- button "include context for Reply with a one-sentence description of event sourcing, then stop.": Use
+- button "exclude context for Reply with a one-sentence description of event sourcing, then stop.": Skip
+- button "Locate Reply with a one-sentence description of event sourcing, then stop. in Context Map": Map
 - button "Thought for a while" [expanded]:
   - text: Thought for a while
   - img
@@ -37,6 +41,10 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for Event sourcing is a pattern where all changes to an application's state are stored as an immutable, append-only sequence of events, rather than persisting only the current state, enabling full auditability, temporal queries, and event-drive" [disabled]: Auto
+- button "include context for Event sourcing is a pattern where all changes to an application's state are stored as an immutable, append-only sequence of events, rather than persisting only the current state, enabling full auditability, temporal queries, and event-drive": Use
+- button "exclude context for Event sourcing is a pattern where all changes to an application's state are stored as an immutable, append-only sequence of events, rather than persisting only the current state, enabling full auditability, temporal queries, and event-drive": Skip
+- button "Locate Event sourcing is a pattern where all changes to an application's state are stored as an immutable, append-only sequence of events, rather than persisting only the current state, enabling full auditability, temporal queries, and event-drive in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - button "Ran for {{duration}}":

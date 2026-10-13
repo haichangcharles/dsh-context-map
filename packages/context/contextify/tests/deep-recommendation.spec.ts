@@ -1,7 +1,7 @@
-import { mkdtemp, readFile, rm, stat, utimes } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
@@ -18,6 +18,19 @@ import {
 } from '../src/deep-recommendation.ts'
 import type { ContextFamilyGraph, ContextPlanSnapshot } from '../src/types.ts'
 import { validateRecommendation } from '../src/recommendation.ts'
+
+const statFailure = vi.hoisted(() => ({ path: '', active: false, cause: undefined as unknown, temporaryRoot: '' }))
+vi.mock('node:os', async (importOriginal) => {
+  const os = await importOriginal<typeof import('node:os')>()
+  return { ...os, tmpdir: () => statFailure.temporaryRoot || os.tmpdir() }
+})
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const fs = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...fs, async stat(...args: Parameters<typeof fs.stat>) {
+    if (statFailure.active && args[0] === statFailure.path) throw statFailure.cause
+    return await fs.stat(...args)
+  } }
+})
 
 const root = 'deep-root' as SessionId
 const sibling = 'deep-sibling' as SessionId
@@ -233,6 +246,10 @@ describe('Deep Context recommendation snapshot', () => {
         await expect(runDeepRecommendation({
           parent, snapshot: snapshot(), signal: new AbortController().signal, maxRequests,
         })).rejects.toThrow('request budget must be 1-10')
+      }
+      for (const timeoutMs of [0, -1, NaN, Infinity]) {
+        await expect(runDeepRecommendation({ parent, snapshot: snapshot(),
+          signal: new AbortController().signal, timeoutMs })).rejects.toThrow(/timeout/)
       }
       expect(children).toBe(0)
       expect(adapter.requests).toHaveLength(0)
@@ -474,4 +491,114 @@ describe('Deep Context recommendation snapshot', () => {
     } finally { await ctx.fiber.dispose() }
   })
 
+  it('preserves evidence metadata and source previews when exact content is unavailable', () => {
+    const web = { ...graph.nodes[2]!, sourceKind: 'web' as const, webAction: 'web_fetch' as const }
+    const value = buildDeepRecommendationSnapshot({ graph: { ...graph, nodes: [...graph.nodes, web] },
+      graphRevision: 'g', plan, objective: 'inspect sources', contents: {}, effectiveIncludedNodeIds: [] })
+    expect(value.nodes.at(-1)).toMatchObject({ text: web.preview, sourceKind: 'web', webAction: 'web_fetch' })
+    const { sessions: _sessions, ...legacy } = value
+    expect(JSON.parse(serializeDeepRecommendationSnapshot(legacy).split('\n')[0]!)).not.toHaveProperty('sessions')
+  })
+
+  it('rejects invalid cleanup retention before reading the temporary directory', async () => {
+    for (const retentionMs of [0, -1, NaN, Infinity]) {
+      await expect(cleanupStaleDeepSnapshots({ temporaryRoot: '/does-not-exist', retentionMs }))
+        .rejects.toThrow(/retention/)
+    }
+  })
+
+  it.each([
+    Object.assign(new Error('gone during inspection'), { code: 'ENOENT' }),
+    Object.assign(new Error('access denied'), { code: 'EACCES' }),
+    new Error('unexpected filesystem failure'), null, 'unexpected rejection',
+  ])('only suppresses disappearance during stale snapshot cleanup: %s', async (cause) => {
+    const temporaryRoot = await mkdtemp(join(tmpdir(), 'context-stale-boundary-'))
+    const directory = await mkdtemp(join(temporaryRoot, 'dsh-contextify-owned-'))
+    statFailure.path = directory
+    statFailure.cause = cause
+    statFailure.active = true
+    try {
+      const cleanup = cleanupStaleDeepSnapshots({ temporaryRoot, retentionMs: 1 })
+      if (typeof cause === 'object' && cause !== null && 'code' in cause && cause.code === 'ENOENT') {
+        await expect(cleanup).resolves.toBeUndefined()
+      } else {
+        await expect(cleanup).rejects.toBe(cause)
+      }
+    } finally {
+      statFailure.active = false
+      statFailure.path = ''
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('owns and removes the private snapshot on the Windows permission path', async () => {
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!
+    let directory = ''
+    try {
+      Object.defineProperty(process, 'platform', { ...platform, value: 'win32' })
+      await withDeepSnapshot(snapshot(), new AbortController().signal, async (location) => {
+        directory = location.directory
+        expect(await readFile(location.filePath, 'utf8')).toContain('context-tree')
+      })
+    } finally { Object.defineProperty(process, 'platform', platform) }
+    await expect(stat(directory)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('uses default cleanup settings without touching unrelated directories or prefix-named files', async () => {
+    const temporaryRoot = await mkdtemp(join(tmpdir(), 'context-cleanup-defaults-'))
+    const foreign = await mkdtemp(join(temporaryRoot, 'other-project-'))
+    const ownedFile = join(temporaryRoot, 'dsh-contextify-file')
+    await writeFile(ownedFile, 'not a directory')
+    statFailure.temporaryRoot = temporaryRoot
+    try {
+      await cleanupStaleDeepSnapshots()
+      expect((await stat(foreign)).isDirectory()).toBe(true)
+      expect(await readFile(ownedFile, 'utf8')).toBe('not a directory')
+    } finally {
+      statFailure.temporaryRoot = ''
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps the first valid submission when one model response contains duplicate submission calls', async () => {
+    const ctx = new Context()
+    await mountAgentLoopTestDependencies(ctx)
+    await ctx.plugin(AgentLoop, { agents: [] })
+    registerNoopDeepTools(ctx)
+    const first = toolCallResponse('first-submit', 'submit_context_recommendation', {
+      exclude: [], include: [], archive: [],
+    })
+    const second = toolCallResponse('second-submit', 'submit_context_recommendation', {
+      exclude: [{ nodeId: 'root:1', reason: 'duplicate must not replace the first result' }], include: [], archive: [],
+    })
+    const adapter = new MockAdapter([[...first.slice(0, -2),
+      ...second.map(chunk => 'index' in chunk ? { ...chunk, index: 1 } : chunk)]])
+    ctx.llm.registerAdapter(['mock'], adapter)
+    const parent = await ctx.agentLoop.create(root, { provider: 'mock', model: 'mock' })
+    try {
+      await expect(runDeepRecommendation({ parent, snapshot: snapshot(), signal: new AbortController().signal }))
+        .resolves.toEqual({ exclude: [], include: [], archive: [] })
+      expect(adapter.requests).toHaveLength(1)
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it('does not capture a failed submission and accepts a later valid correction within the budget', async () => {
+    const ctx = new Context()
+    await mountAgentLoopTestDependencies(ctx)
+    await ctx.plugin(AgentLoop, { agents: [] })
+    registerNoopDeepTools(ctx)
+    const adapter = new MockAdapter([
+      toolCallResponse('invalid-submit', 'submit_context_recommendation', {
+        exclude: [{ nodeId: 'root:1', reason: 'x'.repeat(501) }], include: [], archive: [],
+      }),
+      toolCallResponse('corrected-submit', 'submit_context_recommendation', { exclude: [], include: [], archive: [] }),
+    ])
+    ctx.llm.registerAdapter(['mock'], adapter)
+    const parent = await ctx.agentLoop.create(root, { provider: 'mock', model: 'mock' })
+    try {
+      await expect(runDeepRecommendation({ parent, snapshot: snapshot(), signal: new AbortController().signal }))
+        .resolves.toEqual({ exclude: [], include: [], archive: [] })
+      expect(adapter.requests).toHaveLength(2)
+    } finally { await ctx.fiber.dispose() }
+  })
 })

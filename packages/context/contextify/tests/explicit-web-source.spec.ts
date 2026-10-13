@@ -66,4 +66,16 @@ describe('explicit Web-source correction', () => {
     expect(explicitWebSourceExclusion('Ignore https://research.test/old-report; '
       + 'include https://research.test/other.', [source])).toBeNull()
   })
+  it('rejects malformed HTTP targets and non-HTTP or invalid persisted source URLs', () => {
+    for (const objective of ['Ignore https://%invalid.', 'Use https://%invalid.']) {
+      expect(explicitWebSourceExclusion(objective, [source])).toBeNull()
+      expect(explicitWebSourceInclusion(objective, [{ ...source, included: false }])).toBeNull()
+    }
+    for (const url of ['ftp://research.test/old-report', 'not a URL']) {
+      expect(explicitWebSourceExclusion('Ignore https://research.test/old-report.', [{ ...source, url }]))
+        .toBeNull()
+      expect(explicitWebSourceInclusion('Use https://research.test/old-report.',
+        [{ ...source, included: false, url }])).toBeNull()
+    }
+  })
 })

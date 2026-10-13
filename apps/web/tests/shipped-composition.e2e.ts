@@ -49,6 +49,7 @@ const EXPECTED_TOOLS = [
   'ralph',
   'read',
   'read_image',
+  'request_context_branch',
   'send_message',
   'skill',
   'subagent',

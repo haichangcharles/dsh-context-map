@@ -129,7 +129,6 @@ function installRecommendationSubmission(childCtx: Context): RecommendationCaptu
       render: () => [{ type: 'text', text: 'Context recommendation accepted.' }],
     },
     execute(args, exec) {
-      if (captured !== undefined) throw new Error('Context recommendation was already submitted')
       const decision = parseRecommendationDecisionText(JSON.stringify(args))
       staged.set(exec, decision)
       exec.concludeTurn()
@@ -197,7 +196,6 @@ export async function runDeepRecommendation(
       operation.abort(request.signal.reason)
     }
     request.signal.addEventListener('abort', abortFromCaller, { once: true })
-    if (request.signal.aborted) abortFromCaller()
     const timer = setTimeout(() => {
       operation.abort(timeoutReason)
     }, timeoutMs)

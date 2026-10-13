@@ -29,7 +29,7 @@ class AnswerAdapter extends LlmAdapter {
   }
 }
 
-it('leaves legacy answers on ordinary Contextify while recording new Sessions from their first request', async () => {
+it('leaves legacy answers on the ordinary surface compiler while recording new Sessions from their first request', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-contextify-lineage-rollout-'))
   const ctx = new Context()
   const adapter = new AnswerAdapter()
@@ -60,11 +60,11 @@ it('leaves legacy answers on ordinary Contextify while recording new Sessions fr
       }, { timeout: 10_000 })
     }
     await send(legacy, 'Earlier answer without read set', 1)
-    expect(ctx.contextCompiler.descriptor(legacy.session).id).toBe('contextify')
+    expect(ctx.contextCompiler.descriptor(legacy.session).id).toBe('surface')
 
     await ctx.plugin(ContextifyRevisionLineageRuntime)
     await send(legacy, 'Continue the old Session', 2)
-    expect(ctx.contextCompiler.descriptor(legacy.session).id).toBe('contextify')
+    expect(ctx.contextCompiler.descriptor(legacy.session).id).toBe('surface')
     expect(legacy.session.snapshotEvents().filter(event =>
       event.type === 'contextify/request-read-set')).toHaveLength(0)
 
@@ -118,10 +118,10 @@ it('lists selected sources and starts a source-bound worker while rejecting ordi
     const list = await ctx.tools.execute({ signal: new AbortController().signal,
       callId: ToolCallId('lineage-list'), name: 'list_context_sources', arguments: {}, agent: parent })
     expect(list.isError).toBe(false)
-    expect(JSON.parse(String(list.value))).toMatchObject({
-      sources: expect.arrayContaining([{ seq: source.seq, kind: 'human',
-        preview: 'Compare the policy pages' }]),
-    })
+    if (typeof list.value !== 'string') throw new Error('Source listing must return JSON text')
+    const listed: unknown = JSON.parse(list.value)
+    expect(listed).toHaveProperty('sources', expect.arrayContaining([{ seq: source.seq, kind: 'human',
+      preview: 'Compare the policy pages' }]))
 
     ctx.tools.register(defineTool({ name: 'subagent', description: 'ordinary delegation fixture',
       parameters: {}, output: { schema: { type: 'string' },
@@ -137,11 +137,13 @@ it('lists selected sources and starts a source-bound worker while rejecting ordi
       callId: ToolCallId('lineage-bound'), name: 'delegate_context_sources',
       arguments: { source_event_seqs: [source.seq] }, agent: parent })
     expect(delegated.isError).toBe(false)
-    expect(delegated.value).toMatchObject({ subagentId: expect.any(String) })
+    expect(delegated.value).toHaveProperty('subagentId', expect.any(String))
     expect(parent.session.snapshotEvents().filter(event =>
       event.type === 'contextify/delegation-slice').map(event => event.data.sourceEventSeqs))
       .toEqual([[source.seq]])
-    const childId = SessionId((delegated.value as { subagentId: string }).subagentId)
+    if (typeof delegated.value !== 'object' || delegated.value === null || !('subagentId' in delegated.value)
+      || typeof delegated.value.subagentId !== 'string') throw new Error('Delegation did not return a worker id')
+    const childId = SessionId(delegated.value.subagentId)
     await vi.waitFor(() => {
       expect(adapter.requests.some(request => request.sessionId === childId)).toBe(true)
     }, { timeout: 10_000 })

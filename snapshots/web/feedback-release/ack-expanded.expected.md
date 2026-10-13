@@ -17,6 +17,10 @@
 - text: Reply with the single word LIGHTHOUSE and stop. {{clock}}
 - button "Copy":
   - img
+- button "natural context for Reply with the single word LIGHTHOUSE and stop." [disabled]: Auto
+- button "include context for Reply with the single word LIGHTHOUSE and stop.": Use
+- button "exclude context for Reply with the single word LIGHTHOUSE and stop.": Skip
+- button "Locate Reply with the single word LIGHTHOUSE and stop. in Context Map": Map
 - button "Thought for a while" [expanded]:
   - text: Thought for a while
   - img

@@ -169,11 +169,12 @@ export function buildRecommendationInput(request: {
   })
   while (JSON.stringify(input).length > CONTEXT_RECOMMENDATION_MAX_CHARS) {
     const longest = input.nodes.reduce<ContextRecommendationInputNode | undefined>((current, candidate) =>
-      current === undefined || candidate.content.length > current.content.length ? candidate : current, undefined)
-    if (longest === undefined || longest.content.length <= 160) {
+      current === undefined || Array.from(candidate.content).length > Array.from(current.content).length
+        ? candidate : current, undefined)
+    if (longest === undefined || Array.from(longest.content).length <= 160) {
       throw new Error('Context recommendation topology exceeds the serialized input budget')
     }
-    const nextLength = Math.max(160, Math.floor(longest.content.length * 0.8))
+    const nextLength = Math.max(160, Math.floor(Array.from(longest.content).length * 0.8))
     input = Object.freeze({
       ...input,
       nodes: Object.freeze(input.nodes.map(node => node.id === longest.id

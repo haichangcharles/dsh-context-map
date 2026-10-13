@@ -21,3 +21,5 @@ Status: implemented
 ## Consequences
 
 贴底事件会立即读取滚动指标。历史阅读保留有界采样节奏，显式回到底部的滚动事件会清除任何待处理的离底采样。[聚焦测试](../../../../packages/client/ui-chat/tests/chat-view.client.spec.tsx) 覆盖 scrollend 前的收缩与增长、无需行测量的观察器增长、存在待处理采样时重新贴底、定时器与 scrollend 采样，以及卸载取消。[无密钥浏览器场景](../../../../apps/web/tests/chat-scroll-contract.e2e.ts) 覆盖长 transcript 中贴底发送、真实离底输入、流式输出与工具详情展开。
+
+[延后的布局跟随](2026-10-14-deferred-scroll-follow.zh.md) 单独处理读者从历史返回时被推迟的尺寸变化通知。它保留这里的贴底事件立即处理机制，以及对读者向上操作的保护。

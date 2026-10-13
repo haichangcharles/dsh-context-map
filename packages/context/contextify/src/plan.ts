@@ -1,3 +1,4 @@
+import assert from 'tiny-invariant'
 import { SessionSeq } from '@deepseek-ai/dsh-session'
 /** Pure revision history and model-message selection for native Contextify plans. */
 import type { Message } from '@deepseek-ai/dsh-llm'
@@ -331,7 +332,7 @@ function toolGroups(session: Session, natural: readonly number[]): ReadonlyMap<n
   return bySeq
 }
 
-function isCompactionCheckpoint(event: SessionEvent): boolean {
+function isCompactionCheckpoint(event: SessionEvent): event is SessionEvent & { sourceEventSeqs: SessionSeq[] } {
   return event.type === 'user/message' && event.data.source.kind === 'plugin'
     && event.data.source.plugin === 'compact' && event.sourceEventSeqs !== undefined
 }
@@ -341,9 +342,10 @@ function checkpointMessages(session: Session, checkpointSeq: number): number[] {
   const emitted = new Set<number>()
   const visit = (seq: number): void => {
     const event = session.eventAt(SessionSeq(seq))
-    if (event === undefined) throw new Error(`Contextify checkpoint source ${String(seq)} is unavailable`)
+    // Native Session provenance points only to earlier entries in a dense immutable log.
+    assert(event, `Contextify checkpoint source ${String(seq)} is unavailable`)
     if (isCompactionCheckpoint(event)) {
-      for (const sourceSeq of event.sourceEventSeqs ?? []) visit(sourceSeq)
+      for (const sourceSeq of event.sourceEventSeqs) visit(sourceSeq)
     } else if (session.deriveEventMessage(event) !== null && !emitted.has(seq)) {
       emitted.add(seq)
       result.push(seq)
@@ -380,10 +382,11 @@ function insertSnapshots(
 
 function selectedMessage(session: Session, seq: number): Message {
   const event = session.eventAt(SessionSeq(seq))
-  if (event === undefined) throw new Error(`Contextify selected missing event ${String(seq)}`)
+  // Natural entries and imported snapshots were validated before selection.
+  assert(event, `Contextify selected missing event ${String(seq)}`)
   if (event.type === 'context/compiler-snapshot') return event.data.message
   const message = session.deriveEventMessage(event)
-  if (message === null) throw new Error(`Contextify selected non-message event ${String(seq)}`)
+  assert(message, `Contextify selected non-message event ${String(seq)}`)
   return message
 }
 

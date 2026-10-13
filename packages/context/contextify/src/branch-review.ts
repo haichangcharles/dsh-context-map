@@ -114,11 +114,10 @@ export function buildBranchReviewInput(input: {
   })
 }
 
-function eventText(event: SessionEvent): string {
+function eventText(event: Extract<SessionEvent, { type: 'user/message' | 'assistant/message' }>): string {
   const message = event.type === 'user/message'
     ? event.data
-    : event.type === 'assistant/message' ? event.data.message : undefined
-  if (message === undefined) return ''
+    : event.data.message
   return message.content.flatMap(block => block.type === 'text' ? [block.text] : block.type === 'image' ? ['[Image]'] : [])
     .join('\n').slice(0, 2_000)
 }
@@ -144,12 +143,14 @@ export function completedTurnCandidate(
   }
   if (startSeq < 0) return null
   const within = events.slice(startSeq + 1, turnEndSeq)
-  const input = within.find(event => event.type === 'user/message'
+  const inputs = within.filter(event => event.type === 'user/message'
     && event.surfaceOp === 'append' && event.data.source.kind === 'user')
+  const input = inputs[0]
   const outputs = within.filter(event => event.type === 'assistant/message'
     && event.surfaceOp === 'append' && event.data.message.content.some(block => block.type === 'text' || block.type === 'image'))
   const output = outputs.at(-1)
-  if (input?.type !== 'user/message' || output?.type !== 'assistant/message') return null
+  // Relocating only a question/answer pair must never omit an in-Turn human correction.
+  if (input?.type !== 'user/message' || inputs.length !== 1 || output?.type !== 'assistant/message') return null
   return Object.freeze({
     sourceSessionId,
     turn: end.data.turn,

@@ -14,7 +14,7 @@ import {
 
 afterEach(cleanup)
 
-function scopeFixture() {
+function scopeFixture(language: 'en' | 'zh' = 'en') {
   let snapshot: SettingsScopeSnapshot<ContextifyPromptSettings> = {
     status: 'ready', value: CONTEXTIFY_CLIENT_DEFAULT_SETTINGS, base: CONTEXTIFY_CLIENT_DEFAULT_SETTINGS,
     user: {}, revision: 1, writable: true, mode: 'host',
@@ -36,12 +36,20 @@ function scopeFixture() {
       listener => scope.subscribe(listener),
       () => scope.getSnapshot(),
     )
-    return <ContextifyPromptSettingsView scope={scope} snapshot={current} t={stewardTestTranslator()} />
+    return <ContextifyPromptSettingsView scope={scope} snapshot={current} t={stewardTestTranslator(language)} />
   }
   return { Harness, set }
 }
 
 describe('ContextifyPromptSettingsView', () => {
+  it('renders complete Chinese prompt labels rather than assembling English fragments', () => {
+    const fixture = scopeFixture('zh')
+    render(<fixture.Harness />)
+    expect(screen.getByRole('button', { name: '保存归档指令' })).toBeTruthy()
+    expect(screen.getByLabelText('追加分支指令')).toBeTruthy()
+    expect(screen.getByLabelText('默认归档提示词')).toBeTruthy()
+  })
+
   it('keeps its browser-safe default mirror equal to the Host authority', () => {
     expect(CONTEXTIFY_CLIENT_DEFAULT_PROMPTS).toEqual(CONTEXTIFY_DEFAULT_PROMPTS)
     expect(CONTEXTIFY_CLIENT_DEFAULT_SETTINGS).toEqual(CONTEXTIFY_DEFAULT_SETTINGS)

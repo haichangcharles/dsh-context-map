@@ -131,6 +131,7 @@
     "@deepseek-ai/dsh-workflow": "workspace:^",
     "@deepseek-ai/dsh-workflow-worker-thread": "workspace:^",
     "@deepseek-ai/schemastery": "workspace:^",
-    "@deepseek-ai/dsh-context-compiler": "workspace:^"
+    "@deepseek-ai/dsh-context-compiler": "workspace:^",
+    "@deepseek-ai/dsh-contextify": "workspace:^"
   }
 }

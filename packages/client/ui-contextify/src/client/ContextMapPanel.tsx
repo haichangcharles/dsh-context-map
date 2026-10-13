@@ -15,7 +15,7 @@ import type { HostObservable, PropsLocale, PropsStore, SnapshotSelectorHook } fr
 import { projectUnarchivedContextFamily } from './archived-family.ts'
 import { ContextMapNode, type ContextMapNodeData, type ContextNodeMode } from './ContextMapNode.tsx'
 import {
-  effectiveContextIncluded, intersects, modeForEffectiveContext, reducePositionChanges, type CanvasPoint,
+  effectiveContextIncluded, intersects, effectiveContextMode, reducePositionChanges, type CanvasPoint,
 } from './canvas-interactions.ts'
 import { ContextMapMenu } from './ContextMapMenu.tsx'
 import { ContextRecommendationReview } from './ContextRecommendationReview.tsx'
@@ -75,6 +75,13 @@ export type ContextMapPanelProps =
 
 const nodeTypes = { contextMessage: ContextMapNode }
 const EMPTY_NODES: readonly ContextFamilyGraphNode[] = []
+const NODE_COPY_KEYS = [
+  'copy.rootSession', 'copy.branchSessionDepth', 'node.empty',
+  'node.role.user', 'node.role.assistant', 'node.role.tool', 'node.role.web', 'node.role.worker',
+  'copy.emptyPlaceholder', 'copy.message', 'copy.includeEmptyPlaceholderInContext',
+  'copy.includeInContext', 'copy.context', 'copy.suggestedInclude', 'copy.suggestedExclude',
+  'copy.archiveSuggested', 'copy.focusedExcerpt', 'copy.archived',
+] as const
 
 interface MarqueeState {
   readonly pointerId: number
@@ -103,11 +110,14 @@ function canEditNode(record: ContextFamilyGraphNode, active: boolean): boolean {
 export function ContextMapPanel({
   useContextify, useWorkspaces, useStore, actions, mapActions, t,
 }: ContextMapPanelProps) {
+  // The bound translator stays stable when the locale changes; memoized graph cards must refresh their copy.
+  const nodeCopyIdentity = NODE_COPY_KEYS.map(key => t(key)).join('\u001f')
   const snapshot = useContextify(value => value)
   const archivedSessionIds = useWorkspaces(value => value.archivedSessionIds)
   const selectedNodeIds = useStore(value => value.selectedNodeIds)
   const positionOverrides = useStore(value => value.positionOverrides)
   const [query, setQuery] = useState('')
+  const [searchFocusRevision, setSearchFocusRevision] = useState(0)
   const [resultIndex, setResultIndex] = useState(0)
   const [instance, setInstance] = useState<ReactFlowInstance | null>(null)
   const [interactionMode, setInteractionMode] = useState<'normal' | 'selection'>('normal')
@@ -157,7 +167,14 @@ export function ContextMapPanel({
   const activeSearchId = searchResultIds.length === 0
     ? undefined
     : searchResultIds[resultIndex % searchResultIds.length]
-  const focusTargetId = snapshot.focusedNodeId ?? activeSearchId
+  const focusSource = normalizedQuery === '' ? 'map' : 'search'
+  const focusTargetId = focusSource === 'search' ? activeSearchId : snapshot.focusedNodeId
+  const explicitFocusRequest = `${snapshot.focusRevision ?? 0}:${snapshot.focusedNodeId ?? ''}`
+  const lastExplicitFocus = useRef(explicitFocusRequest)
+  const handledFocus = useRef<{ map: string | undefined; search: string | undefined }>({ map: undefined, search: undefined })
+  const focusRequest = focusSource === 'search'
+    ? `${searchFocusRevision}:${resultIndex}:${focusTargetId ?? ''}` : explicitFocusRequest
+  const focusMeasured = focusTargetId !== undefined && measuredSizes[focusTargetId] !== undefined
   const measurementSignature = useMemo(() => Object.entries(measuredSizes)
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([id, size]) => `${id}:${size.width}x${size.height}`)
@@ -218,7 +235,7 @@ export function ContextMapPanel({
     if (graph === undefined) return
     const active = record.sessionIds.includes(graph.activeSessionId)
     if (!canEditNode(record, active)) return
-    const mode = modeForEffectiveContext(active, included)
+    const mode = effectiveContextMode(active, included)
     runMutation(record.id, () => mapActions.setNodeMode(record.owner, mode), mode)
   }, [graph, mapActions, runMutation])
 
@@ -233,6 +250,11 @@ export function ContextMapPanel({
     setMeasuredSizes(current => reconcileMeasuredSizes(current, records.map(record => record.id)))
   }, [records])
   useEffect(() => { setResultIndex(0) }, [normalizedQuery])
+  useEffect(() => {
+    if (lastExplicitFocus.current === explicitFocusRequest) return
+    lastExplicitFocus.current = explicitFocusRequest
+    if (snapshot.focusedNodeId !== undefined) setQuery('')
+  }, [explicitFocusRequest, snapshot.focusedNodeId])
   useEffect(() => {
     if (menu === null && !recommendationMenuOpen) return
     const closeOnEscape = (event: KeyboardEvent): void => {
@@ -256,23 +278,28 @@ export function ContextMapPanel({
     return () => { window.clearTimeout(timer) }
   }, [focusTargetId, graphMeasured, instance, measurementSignature, records.length])
   useEffect(() => {
-    if (!graphMeasured || instance === null || focusTargetId === undefined) return
+    if (!graphMeasured || instance === null || focusTargetId === undefined || !focusMeasured
+      || handledFocus.current[focusSource] === focusRequest) return
     initialFitCompleted.current = true
     const timer = window.setTimeout(() => {
+      handledFocus.current[focusSource] = focusRequest
       void instance.fitView({ nodes: [{ id: focusTargetId }], duration: 220, maxZoom: 1.2 })
     }, 300)
     return () => { window.clearTimeout(timer) }
-  }, [focusTargetId, graphMeasured, instance])
+  }, [focusTargetId, graphMeasured, instance, focusMeasured, focusRequest, focusSource])
   useEffect(() => () => {
     if (relayoutTimer.current !== undefined) window.clearTimeout(relayoutTimer.current)
   }, [])
+
+  const positionedNodes = useMemo(() => graph === undefined ? []
+    : layoutContextMap(graph.nodes, graph.edges, 'tree', measuredSizes), [graph, measuredSizes])
 
   const flowNodes = useMemo(() => {
     if (graph === undefined) return []
     const searchMatches = new Set(searchResultIds)
     const selected = new Set(selectedNodeIds)
     const sessions = new Map(graph.sessions.map(session => [session.id, session]))
-    return layoutContextMap(graph.nodes, graph.edges, 'tree', measuredSizes).map((node) => {
+    return positionedNodes.map((node) => {
       const record = node.data.record
       const session = sessions.get(record.owner.sessionId)
       const mode = optimisticModes[record.id] ?? modeOf(snapshot, record)
@@ -280,10 +307,11 @@ export function ContextMapPanel({
       const recommendation = recommendationByNode.get(record.id)
       const data: ContextMapNodeData = {
         record,
+        t,
         mode,
         included: effectiveContextIncluded(active, mode),
         pending: mutationPending || !canEditNode(record, active),
-        sessionLabel: session?.depth === 0 ? 'Root Session' : `Branch Session · depth ${String(session?.depth ?? 0)}`,
+        sessionLabel: session?.depth === 0 ? t('copy.rootSession') : t('copy.branchSessionDepth', { p0: String(session?.depth ?? 0) }),
         active,
         focused: snapshot.focusedNodeId === record.id || activeSearchId === record.id,
         searchMatch: searchMatches.has(record.id),
@@ -313,13 +341,15 @@ export function ContextMapPanel({
         ...node,
         data,
         selected: selected.has(node.id),
+        // Controlled snapshots retain dimensions; React Flow resets omitted measurements on adoption.
+        ...(measuredSizes[record.id] === undefined ? {} : { measured: measuredSizes[record.id] }),
         position: transientPositions[node.id] ?? positionOverrides[node.id] ?? node.position,
       }
     })
   }, [
-    actions, activeSearchId, graph, interactionMode, mutationPending, optimisticModes,
+    actions, activeSearchId, graph, positionedNodes, interactionMode, mutationPending, optimisticModes,
     measuredSizes, positionOverrides, recommendationByNode, searchResultIds, selectedNodeIds,
-    setEffectiveMode, snapshot, transientPositions,
+    setEffectiveMode, snapshot, transientPositions, t, nodeCopyIdentity,
   ])
 
   const flowEdges = useMemo((): Edge[] => (graph?.edges ?? []).map(edge => ({
@@ -355,12 +385,13 @@ export function ContextMapPanel({
       node: record.owner,
       mode: desired === 'natural'
         ? 'natural' as const
-        : modeForEffectiveContext(record.sessionIds.includes(graph.activeSessionId), desired),
+        : effectiveContextMode(record.sessionIds.includes(graph.activeSessionId), desired),
     }))
     runMutation('__batch__', () => mapActions.setNodeModes(mutations))
   }
   const stepSearch = (delta: -1 | 1): void => {
     if (searchResultIds.length === 0) return
+    setSearchFocusRevision(revision => revision + 1)
     setResultIndex(index => (index + delta + searchResultIds.length) % searchResultIds.length)
   }
   const relayout = (): void => {
@@ -382,16 +413,16 @@ export function ContextMapPanel({
   }
 
   return (
-    <section className={css.root} aria-label="Context Map">
+    <section className={css.root} aria-label={t('copy.contextMap')}>
       <header className={css.header}>
         <div>
-          <h2>Context Map</h2>
+          <h2>{t('copy.contextMap')}</h2>
           <p>{snapshot.view === undefined || graph === undefined
-            ? 'Loading context…'
-            : `${String(visibleSelectedCount)} / ${String(records.length)} in context`}</p>
+            ? t('copy.loadingContext')
+            : t('copy.inContext', { p0: String(visibleSelectedCount), p1: String(records.length) })}</p>
         </div>
         <div className={css.headerActions}>
-          <button type="button" aria-label="Context preferences" aria-expanded={policyOpen}
+          <button type="button" aria-label={t('copy.contextPreferences')} aria-expanded={policyOpen}
             onClick={() => {
               if (policyOpen) {
                 policyRequest.current += 1
@@ -400,48 +431,48 @@ export function ContextMapPanel({
                 setPolicyOpen(true)
                 loadPolicy()
               }
-            }}>Preferences</button>
-          <button type="button" className={css.iconButton} aria-label="Close Context Map" onClick={mapActions.close}>×</button>
+            }}>{t('copy.preferences')}</button>
+          <button type="button" className={css.iconButton} aria-label={t('copy.closeContextMap')} onClick={mapActions.close}>×</button>
         </div>
       </header>
       {graph !== undefined && graph.sessions.length > 1 && <details className={css.branchStates}>
-        <summary>{`Branches (${String(graph.sessions.length)}) · task lifecycle`}</summary>
+        <summary>{t('copy.branchesTaskLifecycle', { p0: String(graph.sessions.length) })}</summary>
         <ul>
           {graph.sessions.map((session) => {
-            const label = session.depth === 0 ? 'Mainline'
+            const label = session.depth === 0 ? t('copy.mainline')
               : records.find(node => node.owner.sessionId === session.id && node.role === 'user')
-                ?.preview.slice(0, 72) || `Branch ${String(session.id).slice(0, 8)}`
+                ?.preview.slice(0, 72) || t('copy.branch', { p0: String(session.id).slice(0, 8) })
             const state = session.workState ?? (session.id === graph.activeSessionId ? 'open' : 'parked')
             const active = session.id === graph.activeSessionId
             return <li key={session.id} data-work-session-id={session.id} data-work-state={state}>
               <span className={css.branchStateLabel} title={label}>{label}</span>
-              <span className={css.branchStateMeta}>{active ? 'Active' : 'Inactive'} · {state}</span>
+              <span className={css.branchStateMeta}>{active ? t('copy.active') : t('copy.inactive')} · {t(`lifecycle.state.${state}`)}</span>
               {!active && <button type="button" disabled={mutationPending}
                 aria-label={`${t('action.moveDraftHere')}: ${label}`} onClick={() => {
                   runMutation(`move:${session.id}`, () => mapActions.moveDraftHere(session.id))
                 }}>{t('action.moveDraftHere')}</button>}
               {state !== 'completed' && <button type="button" disabled={mutationPending}
-                aria-label={`Complete ${label}`} onClick={() => {
+                aria-label={t('copy.complete', { p0: label })} onClick={() => {
                   runMutation(`session:${session.id}`, () => mapActions.setWorkState(session.id, 'completed'))
-                }}>Complete</button>}
+                }}>{t('copy.complete2')}</button>}
               {state === 'completed' || state === 'parked' ? <button type="button" disabled={mutationPending}
-                aria-label={`Reopen ${label}`} onClick={() => {
+                aria-label={t('copy.reopen', { p0: label })} onClick={() => {
                   runMutation(`session:${session.id}`, () => mapActions.setWorkState(session.id, 'open'))
-                }}>Reopen</button> : <button type="button" disabled={mutationPending}
-                aria-label={`Park ${label}`} onClick={() => {
+                }}>{t('copy.reopen2')}</button> : <button type="button" disabled={mutationPending}
+                aria-label={t('copy.park', { p0: label })} onClick={() => {
                   runMutation(`session:${session.id}`, () => mapActions.setWorkState(session.id, 'parked'))
-                }}>Park</button>}
+                }}>{t('copy.park2')}</button>}
             </li>
           })}
         </ul>
       </details>}
-      {policyOpen && <section className={css.policyPanel} aria-label="Learned Context preferences">
+      {policyOpen && <section className={css.policyPanel} aria-label={t('copy.learnedContextPreferences')}>
         <div className={css.policyHeading}>
-          <strong>What the Agent learned</strong>
+          <strong>{t('copy.whatTheAgentLearned')}</strong>
           <div className={css.policyHeadingActions}>
-            <button type="button" aria-label="Refresh Context preferences"
-              disabled={policyState.phase === 'loading'} onClick={loadPolicy}>Refresh</button>
-            <button type="button" aria-label="Close Context preferences" onClick={() => {
+            <button type="button" aria-label={t('copy.refreshContextPreferences')}
+              disabled={policyState.phase === 'loading'} onClick={loadPolicy}>{t('copy.refresh')}</button>
+            <button type="button" aria-label={t('copy.closeContextPreferences')} onClick={() => {
               policyRequest.current += 1
               setPolicyOpen(false)
             }}>×</button>
@@ -453,32 +484,32 @@ export function ContextMapPanel({
           </div>
         </div>
         <p>{t('policy.resetHint')}</p>
-        <p>Only explicit Context choices count. These are adjustable action patterns, not personal facts. Refresh after Apply or Undo.</p>
-        {policyState.phase === 'loading' && <p>Loading reviewed choices…</p>}
+        <p>{t('copy.onlyExplicitContextChoicesCountTheseAreAdjustable')}</p>
+        {policyState.phase === 'loading' && <p>{t('copy.loadingReviewedChoices')}</p>}
         {policyState.phase === 'error' && <p role="alert">{policyState.error} <button type="button"
-          onClick={loadPolicy}>Retry</button></p>}
+          onClick={loadPolicy}>{t('copy.retry')}</button></p>}
         {policyState.phase === 'ready' && <>
           {reviewedSupport > 0 && <ul className={css.policyStats}>{([
-            ['Include evidence', policyState.profile.evidence],
-            ['Navigate', policyState.profile.destination],
-            ['Branch', policyState.profile.branch],
-            ['Return', policyState.profile.return],
-            ['Release context', policyState.profile.release],
+            ['evidence', policyState.profile.evidence],
+            ['destination', policyState.profile.destination],
+            ['branch', policyState.profile.branch],
+            ['return', policyState.profile.return],
+            ['release', policyState.profile.release],
           ] as const).filter(([, estimate]) => estimate.support > 0).map(([label, estimate]) => <li key={label}>
-            {`${label}: ${String(estimate.support)} effective reviews · ${String(Math.round(estimate.acceptRate * 100))}% smoothed acceptance`}
+            {t('copy.effectiveReviewsSmoothedAcceptance', { p0: t(`policy.stat.${label}`), p1: String(estimate.support), p2: String(Math.round(estimate.acceptRate * 100)) })}
           </li>)}</ul>}
           {policyState.profile.rules.length === 0
-            ? <p>{reviewedSupport >= 4 ? 'No stable action tendency yet.'
-              : reviewedSupport > 0 ? 'More confirmed choices are needed to infer a tendency.'
-                : 'No confirmed Context choices yet.'}</p>
+            ? <p>{reviewedSupport >= 4 ? t('copy.noStableActionTendencyYet')
+              : reviewedSupport > 0 ? t('copy.moreConfirmedChoicesAreNeededToInferA')
+                : t('copy.noConfirmedContextChoicesYet')}</p>
             : <ul>{policyState.profile.rules.map((rule, index) => <li key={`${rule.action}:${rule.sourceKind ?? 'all'}:${rule.activity ?? 'all'}:${index}`}>
               <strong>{rule.action === 'include' && rule.sourceKind === 'web'
-                ? 'Include Web sources' : `${rule.action[0]?.toUpperCase() ?? ''}${rule.action.slice(1)} ${rule.sourceKind ?? 'context'}`}
-              {rule.activity === undefined ? '' : ` during ${rule.activity}`}</strong>
-              <span>{rule.tendency === 'favor' ? 'Often accepted' : 'Often declined'} · {String(rule.support)} effective reviews</span>
+                ? t('copy.includeWebSources') : t('policy.rule', { action: t(`policy.action.${rule.action}`), source: t(`policy.kind.${rule.sourceKind ?? 'context'}`) })}
+              {rule.activity === undefined ? '' : t('copy.during', { p0: t(`policy.activity.${rule.activity}`) })}</strong>
+              <span>{t('policy.ruleSupport', { tendency: t(rule.tendency === 'favor' ? 'copy.oftenAccepted' : 'copy.oftenDeclined'), support: rule.support })}</span>
             </li>)}</ul>}
           {policyState.profile.destination.support + policyState.profile.branch.support
-            + policyState.profile.return.support === 0 && <p>No confirmed route choices yet</p>}
+            + policyState.profile.return.support === 0 && <p>{t('copy.noConfirmedRouteChoicesYet')}</p>}
           <details>
             <summary>{t('policy.evidence')}</summary>
             {policyState.evidence.length === 0 ? <p>{t('policy.emptyEvidence')}</p> : <ul>
@@ -496,33 +527,38 @@ export function ContextMapPanel({
       </section>}
       <div className={css.toolbar}>
         <label className={css.searchBox}>
-          <span className={css.visuallyHidden}>Search Context Map</span>
+          <span className={css.visuallyHidden}>{t('copy.searchContextMap')}</span>
           <input
-            aria-label="Search Context Map"
+            aria-label={t('copy.searchContextMap')}
             value={query}
-            placeholder="Search messages"
-            onChange={(event) => { setQuery(event.target.value) }}
+            placeholder={t('copy.searchMessages')}
+            onChange={(event) => { setQuery(event.target.value); setSearchFocusRevision(revision => revision + 1) }}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter') return
+              event.preventDefault()
+              setSearchFocusRevision(revision => revision + 1)
+            }}
           />
           <span>{searchResultIds.length === 0 ? '0 / 0' : `${String(resultIndex + 1)} / ${String(searchResultIds.length)}`}</span>
         </label>
-        <button type="button" aria-label="Previous search result" onClick={() => { stepSearch(-1) }}>↑</button>
-        <button type="button" aria-label="Next search result" onClick={() => { stepSearch(1) }}>↓</button>
+        <button type="button" aria-label={t('copy.previousSearchResult')} onClick={() => { stepSearch(-1) }}>↑</button>
+        <button type="button" aria-label={t('copy.nextSearchResult')} onClick={() => { stepSearch(1) }}>↓</button>
       </div>
-      <div className={css.toolbar} aria-label="Context Map actions">
+      <div className={css.toolbar} aria-label={t('copy.contextMapActions')}>
         <button
           type="button"
-          aria-label="Selection mode"
+          aria-label={t('copy.selectionMode')}
           aria-pressed={interactionMode === 'selection'}
           onClick={() => {
             setInteractionMode(mode => mode === 'normal' ? 'selection' : 'normal')
             actions.clearSelection()
           }}
-        >Select</button>
+        >{t('copy.select')}</button>
         <button
           type="button"
           disabled={instance === null || records.length === 0}
           onClick={relayout}
-        >Re-layout</button>
+        >{t('copy.reLayout')}</button>
         <div className={css.recommendationActions}>
           <button
             ref={recommendButtonRef}
@@ -536,11 +572,11 @@ export function ContextMapPanel({
               void mapActions.recommend('local').catch(() => {})
             }}
           >{snapshot.recommendation.phase === 'running'
-              ? snapshot.recommendation.mode === 'deep' ? 'Inspecting tree…' : 'Reviewing…'
-              : 'Recommend'}</button>
+              ? snapshot.recommendation.mode === 'deep' ? t('copy.inspectingTree') : t('copy.reviewing')
+              : t('copy.recommend')}</button>
           <button
             type="button"
-            aria-label="Recommendation mode"
+            aria-label={t('copy.recommendationMode')}
             aria-expanded={recommendationMenuOpen}
             disabled={mutationPending || snapshot.recommendation.phase === 'running' || graph === undefined}
             onClick={() => { setRecommendationMenuOpen(open => !open) }}
@@ -548,7 +584,7 @@ export function ContextMapPanel({
           {recommendationMenuOpen && <div
             className={css.recommendationMenu}
             role="menu"
-            aria-label="Recommendation mode"
+            aria-label={t('copy.recommendationMode')}
             data-opaque-surface="true"
           >
             <button type="button" role="menuitem" aria-label={t('mode.local')} onClick={() => {
@@ -580,20 +616,20 @@ export function ContextMapPanel({
         {snapshot.recommendation.phase === 'running' && snapshot.recommendation.mode === 'deep' && <button
           type="button"
           onClick={() => { void mapActions.cancelRecommendation().catch(() => {}) }}
-        >Cancel Deep review</button>}
+        >{t('copy.cancelDeepReview')}</button>}
         <span className={css.toolbarSpacer} />
-        <button type="button" disabled={mutationPending} onClick={() => { runMutation('__reset__', mapActions.reset) }}>Clear manual changes</button>
-        <button type="button" disabled={mutationPending || snapshot.view?.canUndo !== true} onClick={() => { runMutation('__undo__', mapActions.undo) }}>Undo</button>
-        <button type="button" disabled={mutationPending || snapshot.view?.canRedo !== true} onClick={() => { runMutation('__redo__', mapActions.redo) }}>Redo</button>
+        <button type="button" disabled={mutationPending} onClick={() => { runMutation('__reset__', mapActions.reset) }}>{t('copy.clearManualChanges')}</button>
+        <button type="button" disabled={mutationPending || snapshot.view?.canUndo !== true} onClick={() => { runMutation('__undo__', mapActions.undo) }}>{t('copy.undo')}</button>
+        <button type="button" disabled={mutationPending || snapshot.view?.canRedo !== true} onClick={() => { runMutation('__redo__', mapActions.redo) }}>{t('copy.redo')}</button>
       </div>
       {snapshot.error !== undefined && <div className={css.error} role="alert">{snapshot.error}</div>}
       {actionError !== null && <div className={css.error} role="alert">{actionError}</div>}
       {snapshot.recommendation.phase === 'error' && <div className={css.recommendationError} role="alert">
         <span>{snapshot.recommendation.error}</span>
-        <button type="button" aria-label="Dismiss recommendation error" onClick={() => {
+        <button type="button" aria-label={t('copy.dismissRecommendationError')} onClick={() => {
           mapActions.clearRecommendation()
           queueMicrotask(() => { recommendButtonRef.current?.focus() })
-        }}>Dismiss</button>
+        }}>{t('copy.dismiss')}</button>
       </div>}
       <div
         ref={canvasRef}
@@ -646,6 +682,12 @@ export function ContextMapPanel({
       >
         {graph !== undefined && (
           <ReactFlow
+            ariaLabelConfig={{
+              'controls.ariaLabel': t('canvas.controls'),
+              'controls.zoomIn.ariaLabel': t('canvas.zoomIn'),
+              'controls.zoomOut.ariaLabel': t('canvas.zoomOut'),
+              'controls.fitView.ariaLabel': t('canvas.fitView'),
+            }}
             nodes={flowNodes}
             edges={flowEdges}
             nodeTypes={nodeTypes}
@@ -669,8 +711,8 @@ export function ContextMapPanel({
             <Controls showInteractive={false} />
           </ReactFlow>
         )}
-        {snapshot.phase === 'loading' && <div className={css.empty}>Loading Context Map…</div>}
-        {snapshot.phase !== 'loading' && records.length === 0 && <div className={css.empty}>No message nodes yet.</div>}
+        {snapshot.phase === 'loading' && <div className={css.empty}>{t('copy.loadingContextMap')}</div>}
+        {snapshot.phase !== 'loading' && records.length === 0 && <div className={css.empty}>{t('copy.noMessageNodesYet')}</div>}
         {marqueeRect !== null && (
           <div
             className={css.marquee}
@@ -684,6 +726,7 @@ export function ContextMapPanel({
         )}
         {menu !== null && (
           <ContextMapMenu
+            t={t}
             point={menu.point}
             record={menu.record}
             mode={modeOf(snapshot, menu.record)}
@@ -737,16 +780,16 @@ export function ContextMapPanel({
           }}
           reportError={(cause) => { setActionError(cause instanceof Error ? cause.message : String(cause)) }}
         />}
-        {originalPreview !== null && <div className={css.originalDialog} role="dialog" aria-label="Original message">
-          <header><h3>Original message</h3><button type="button" aria-label="Close original message" onClick={() => { setOriginalPreview(null) }}>×</button></header>
+        {originalPreview !== null && <div className={css.originalDialog} role="dialog" aria-label={t('copy.originalMessage')}>
+          <header><h3>{t('copy.originalMessage')}</h3><button type="button" aria-label={t('copy.closeOriginalMessage')} onClick={() => { setOriginalPreview(null) }}>×</button></header>
           <p>{originalPreview}</p>
         </div>}
-        {excerptDialog !== null && <div className={css.originalDialog} role="dialog" aria-label="Keep text excerpt"
+        {excerptDialog !== null && <div className={css.originalDialog} role="dialog" aria-label={t('copy.keepTextExcerpt2')}
           data-opaque-surface="true" onPointerDown={(event) => { event.stopPropagation() }}>
-          <header><h3>Keep text excerpt</h3><button type="button" aria-label="Close text excerpt" onClick={() => { setExcerptDialog(null) }}>×</button></header>
-          <p>Select the exact text to retain in future model context. The full original stays in the Chat and can be restored.</p>
+          <header><h3>{t('copy.keepTextExcerpt2')}</h3><button type="button" aria-label={t('copy.closeTextExcerpt')} onClick={() => { setExcerptDialog(null) }}>×</button></header>
+          <p>{t('copy.selectTheExactTextToRetainInFuture')}</p>
           <textarea ref={excerptTextRef} className={css.excerptTextarea} readOnly value={excerptDialog.text}
-            aria-label="Original text for excerpt" />
+            aria-label={t('copy.originalTextForExcerpt')} />
           <button type="button" disabled={mutationPending} onClick={() => {
             const field = excerptTextRef.current
             if (field === null || field.selectionStart === field.selectionEnd) {
@@ -759,16 +802,16 @@ export function ContextMapPanel({
               await mapActions.focusNodeExcerpt(excerptDialog.record.owner, start, end)
               setExcerptDialog(null)
             })
-          }}>Keep selected text</button>
+          }}>{t('copy.keepSelectedText')}</button>
         </div>}
       </div>
       {interactionMode === 'selection' && selectedRecords.length > 0 && (
-        <div className={css.selectionBar} aria-label="Selected message actions">
-          <strong>{selectedRecords.length} selected</strong>
-          <button type="button" disabled={mutationPending} onClick={() => { batch(true) }}>Include in context</button>
-          <button type="button" disabled={mutationPending} onClick={() => { batch(false) }}>Exclude from context</button>
-          <button type="button" disabled={mutationPending} onClick={() => { batch('natural') }}>Restore automatic</button>
-          <button type="button" onClick={() => { actions.clearSelection() }}>Clear</button>
+        <div className={css.selectionBar} aria-label={t('copy.selectedMessageActions')}>
+          <strong>{t('format.selected', { count: selectedRecords.length })}</strong>
+          <button type="button" disabled={mutationPending} onClick={() => { batch(true) }}>{t('copy.includeInContext2')}</button>
+          <button type="button" disabled={mutationPending} onClick={() => { batch(false) }}>{t('copy.excludeFromContext')}</button>
+          <button type="button" disabled={mutationPending} onClick={() => { batch('natural') }}>{t('copy.restoreAutomatic')}</button>
+          <button type="button" onClick={() => { actions.clearSelection() }}>{t('copy.clear')}</button>
         </div>
       )}
     </section>

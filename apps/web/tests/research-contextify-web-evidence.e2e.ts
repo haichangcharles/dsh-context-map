@@ -17,6 +17,21 @@ import type {} from '@deepseek-ai/dsh-session-title'
 import { launchWebScaffold } from './scaffold.ts'
 import { connectFreshWorkspace } from './support.ts'
 
+function listedSources(value: unknown): readonly { seq: number; kind: string }[] {
+  if (typeof value !== 'string') throw new Error('Source listing must return JSON text')
+  const page: unknown = JSON.parse(value)
+  if (typeof page !== 'object' || page === null || !('sources' in page) || !Array.isArray(page.sources)) {
+    throw new Error('Source listing must contain an array of sources')
+  }
+  return page.sources.map((source: unknown) => {
+    if (typeof source !== 'object' || source === null || !('seq' in source) || !('kind' in source)
+      || typeof source.seq !== 'number' || typeof source.kind !== 'string') {
+      throw new Error('Listed source must contain a numeric sequence and string kind')
+    }
+    return { seq: source.seq, kind: source.kind }
+  })
+}
+
 it('edits a native Web result through the assembled Context Map and restores it with Undo', async () => {
   const scaffold = await launchWebScaffold()
   let browser: Browser | undefined
@@ -57,14 +72,11 @@ it('edits a native Web result through the assembled Context Map and restores it 
     agent.session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
     scaffold.ctx.sessionTitle.rename(agent.session, 'Web evidence check')
     const hostNodes = (await scaffold.ctx.contextify.familyPage(agent)).records
-    expect({
-      nodes: hostNodes.map(node => ({ sourceKind: node.sourceKind, preview: node.preview })),
-      result: agent.session.snapshotEvents().filter(event => event.type === 'tool/result')
-        .map(event => ({ surfaceOp: event.surfaceOp, callId: event.data.message.source.callId })),
-    }).toEqual({
-      nodes: expect.arrayContaining([{ sourceKind: 'web', preview: webText }]),
-      result: [{ surfaceOp: 'append', callId }],
-    })
+    expect(hostNodes.map(node => ({ sourceKind: node.sourceKind, preview: node.preview })))
+      .toContainEqual({ sourceKind: 'web', preview: webText })
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'tool/result')
+      .map(event => ({ surfaceOp: event.surfaceOp, callId: event.data.message.source.callId })))
+      .toEqual([{ surfaceOp: 'append', callId }])
 
     await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
     await connectFreshWorkspace(page, scaffold.workspaceCwd)
@@ -269,7 +281,7 @@ it('admits only source-valid worker reports through the optional assembled Web l
       callId: ToolCallId('research-list-sources'), name: 'list_context_sources',
       arguments: {}, agent: parent })
     expect(list.isError).toBe(false)
-    expect(JSON.parse(String(list.value)).sources).toEqual(expect.arrayContaining([
+    expect(listedSources(list.value)).toEqual(expect.arrayContaining([
       expect.objectContaining({ seq: a.seq, kind: 'web' }),
       expect.objectContaining({ seq: b.seq, kind: 'web' }),
     ]))
@@ -289,7 +301,9 @@ it('admits only source-valid worker reports through the optional assembled Web l
         callId: ToolCallId(callName), name: 'delegate_context_sources',
         arguments: { source_event_seqs: [seq] }, agent: parent })
       expect(result.isError).toBe(false)
-      return SessionId((result.value as { subagentId: string }).subagentId)
+      if (typeof result.value !== 'object' || result.value === null || !('subagentId' in result.value)
+        || typeof result.value.subagentId !== 'string') throw new Error('Delegation did not return a worker id')
+      return SessionId(result.value.subagentId)
     }
     const childA = await delegate(a.seq, 'research-delegate-a')
     const childB = await delegate(b.seq, 'research-delegate-b')
@@ -343,7 +357,7 @@ it('admits only source-valid worker reports through the optional assembled Web l
     const revisedList = await scaffold.ctx.tools.execute({ signal: new AbortController().signal,
       callId: ToolCallId('research-list-after-exclude'), name: 'list_context_sources',
       arguments: {}, agent: parent })
-    expect(JSON.parse(String(revisedList.value)).sources.map((item: { seq: number }) => item.seq))
+    expect(listedSources(revisedList.value).map(item => item.seq))
       .not.toContain(b.seq)
     const staleDelegation = await scaffold.ctx.tools.execute({ signal: new AbortController().signal,
       callId: ToolCallId('research-stale-delegate'), name: 'delegate_context_sources',

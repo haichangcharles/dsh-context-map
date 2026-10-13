@@ -1,4 +1,5 @@
 /** Shared observable bridge between Chat actions, Context Map, and Contextify Remote. */
+import { deepEqualJson } from '@deepseek-ai/dsh-util-values'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
   ContextBranchRelocationResult,
@@ -84,6 +85,8 @@ export interface ContextifyControllerSnapshot {
   readonly graph?: ContextFamilyGraph
   readonly graphRevision?: string
   readonly focusedNodeId?: string
+  /** UI-only request counter, allowing repeated Map focus on the same node. */
+  readonly focusRevision?: number
   readonly error?: string
   readonly recommendation: ContextRecommendationState
 }
@@ -138,7 +141,8 @@ export class ContextifyController {
    */
   focus(nodeId: string | undefined): void {
     const { focusedNodeId: _focusedNodeId, ...snapshot } = this.snapshot
-    this.publish({ ...snapshot, ...(nodeId === undefined ? {} : { focusedNodeId: nodeId }) })
+    this.publish({ ...snapshot, focusRevision: (this.snapshot.focusRevision ?? 0) + 1,
+      ...(nodeId === undefined ? {} : { focusedNodeId: nodeId }) })
   }
 
   /** Change one message's durable Context Plan mode.
@@ -393,7 +397,10 @@ export class ContextifyController {
 
   private async load(): Promise<void> {
     try {
-      const view = await this.transport.get()
+      const receivedView = await this.transport.get()
+      const previousPlan = this.snapshot.view?.plan
+      const view = previousPlan !== undefined && deepEqualJson(previousPlan, receivedView.plan)
+        ? Object.freeze({ ...receivedView, plan: previousPlan }) : receivedView
       const nodes = []
       let first: ContextFamilyGraphPage | undefined
       let after: number | undefined
@@ -405,13 +412,15 @@ export class ContextifyController {
         if (page.nextAfter === undefined) break
         after = page.nextAfter
       }
-      const graph: ContextFamilyGraph = Object.freeze({
+      const receivedGraph: ContextFamilyGraph = Object.freeze({
         rootSessionId: first.rootSessionId,
         activeSessionId: first.activeSessionId,
         sessions: Object.freeze([...first.sessions]),
         edges: Object.freeze([...first.edges]),
         nodes: Object.freeze(nodes),
       })
+      const graph = this.snapshot.graph !== undefined && deepEqualJson(this.snapshot.graph, receivedGraph)
+        ? this.snapshot.graph : receivedGraph
       const graphRevision = first.revision
       const recommendation = this.reconcileRecommendation(view, graph, graphRevision)
       this.publish(Object.freeze({
@@ -422,6 +431,7 @@ export class ContextifyController {
         graphRevision,
         recommendation,
         ...(this.snapshot.focusedNodeId === undefined ? {} : { focusedNodeId: this.snapshot.focusedNodeId }),
+        ...(this.snapshot.focusRevision === undefined ? {} : { focusRevision: this.snapshot.focusRevision }),
       }))
     } catch (cause) {
       this.publish(Object.freeze({
@@ -455,6 +465,8 @@ export class ContextifyController {
   }
 
   private publish(snapshot: ContextifyControllerSnapshot): void {
+    // Graph revision does not cover every view or recommendation field.
+    if (deepEqualJson(this.snapshot, snapshot)) return
     this.snapshot = Object.freeze(snapshot)
     for (const listener of [...this.listeners]) listener()
   }

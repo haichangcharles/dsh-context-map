@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-client-ui-contextify` contributes an interactive Context Map tab to the upstream right sidebar. The map and message-level Chat controls share one Session-scoped controller and operate on the same durable Context Plan.
+`dsh-client-ui-contextify` contributes an interactive Context Map tab to the upstream right sidebar. The map and message-level Chat controls share one Session-scoped controller and operate on the same durable Context Plan. The Start guide lists Context Map alongside Files; choosing an entry replaces the guide with that page.
 
 ## Table of Contents
 
@@ -20,9 +20,13 @@ English | [中文](README.zh.md)
 <a id="user-experience"></a>
 ## User experience
 
+Nonempty native Sessions, including ordinary forks, open the Map automatically. Addressed execution-detail subagents keep their own conversation controls and do not automatically open the native family Map.
+
 The right subpage renders the connected native Session family with React Flow in one fixed top-to-bottom tree; no alternate layout mode is exposed. Each genuine user input, native Web observation, worker report, and completed Turn's final visible assistant output is one card; copied Session prefixes are de-duplicated, while intermediate assistant steps, incomplete output, reasoning, and non-Web tool events stay out of the graph. Each card has one effective-context checkbox: checked means the message enters the next model request, and unchecked means it does not. Natural derives that result from the active Session path; changing the checkbox away from that result writes the corresponding Include or Exclude override, while changing it back removes the override. Off-path Web results can be included only when their native call provenance and text content are available; off-path worker results and unbound Web results stay disabled. Selection mode remains a separate canvas operation with additive click, a visible Shift-drag marquee, and batch actions. Dragged nodes follow the pointer continuously and persist their final position only after release. Canvas selection and dragged positions are viewing state only and do not affect model input.
 
 The first measured graph is framed once. Each React Flow card then reports its real bounding box back to Dagre, so the next rank starts below the prior card's actual bottom even for long outputs. After that, polling, font-driven remeasurement, and ordinary graph updates preserve the user's current pan and zoom; only search/Map focus requests deliberately move the viewport. `Re-layout` clears all manual drag positions, restores the deterministic tree coordinates, and frames the complete graph, providing an explicit recovery action when the canvas becomes difficult to read.
+
+Controls, accessibility names, and count templates use the typed Client locale. Switching language refreshes graph-card labels without translating conversation text, Agent-authored reasons, or saved action values. Measured card dimensions survive graph refreshes. Search waits for its target to be measured, and only a new search or Map request moves the viewport after the initial framing; unrelated card remeasurement preserves the current pan and zoom.
 
 Following the standalone canvas, node actions live in an opaque right-click menu: Locate in Chat, Branch from Here, Archive node, Restore automatic when a manual override exists, and Show original/Restore node after Archive. Branch calls Harness native `sessions.fork` at the message's completed Turn boundary, moves an unchanged unsent draft and its attachments into the empty child composer, records the successful manual fork and bounded transferred draft as a Context-policy choice, then opens the child. If the draft changed during the fork or the child cannot receive it, the current Session stays selected. Locate opens the owning native Session, switches to Chat, loads older history when required, and scrolls to and highlights the exact durable message. Batch mode includes, excludes, or restores multiple canvas-selected nodes in one plan revision. Clear manual changes removes every Include, Exclude, and Archive overlay without resetting graph layout; Undo and Redo operate on durable plan history.
 

@@ -13,6 +13,9 @@
     - button "Agent presets":
       - img
       - text: Agent presets
+    - button "Context Map prompts":
+      - img
+      - text: Context Map prompts
   - button "Open configuration file"
   - button "Close":
     - img

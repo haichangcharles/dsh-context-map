@@ -32,6 +32,7 @@
     "apps/web/tests/lifecycle-chrome.e2e.ts",
     "apps/web/tests/details-session-lifecycle.e2e.ts",
     "apps/web/tests/contextify-map.e2e.ts",
+    "apps/web/tests/contextify-graph-refresh.e2e.ts",
     "apps/web/tests/contextify-work-state.e2e.ts",
     "apps/web/tests/contextify-explicit-web-correction.e2e.ts",
     "apps/web/tests/contextify-draft-branch.e2e.ts",

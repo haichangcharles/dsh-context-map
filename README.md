@@ -34,10 +34,14 @@ For example, a planning branch may hold a supplier's six-week lead time. While e
 <a id="run-from-source"></a>
 ### Run from source
 
-Install a supported Node.js version and pnpm, then run:
+The Context Steward preview is on `codex/context-steward-runtime` ([PR #24](https://github.com/haichangcharles/dsh-context-map/pull/24)). The commands below check out that branch.
+
+Install Node.js 22.19 or newer in the 22.x line, or Node.js 24 or newer, and pnpm 11.7.0 (the version pinned in `package.json`), then run:
+
+On macOS and Linux, the source build also needs a C11 compiler available as `cc` and a Node installation that includes development headers.
 
 ```sh
-git clone https://github.com/haichangcharles/dsh-context-map.git
+git clone --branch codex/context-steward-runtime --single-branch https://github.com/haichangcharles/dsh-context-map.git
 cd dsh-context-map
 pnpm install
 pnpm run build

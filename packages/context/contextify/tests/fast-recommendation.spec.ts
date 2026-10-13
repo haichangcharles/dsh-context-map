@@ -387,4 +387,122 @@ describe('Fast Context recommendation routing', () => {
     expect(input.planExamples[0]?.choices.map(choice => choice.action)).toEqual(['exclude', 'include'])
     expect(input.planExamples[1]?.choices[0]?.content).toHaveLength(FAST_RECOMMENDATION_EXAMPLE_CHARS)
   })
+  it('rejects mandatory overrides beyond the bound before ranking optional sources', () => {
+    const graph = fixture(40)
+    expect(() => buildFastRecommendationInput({ graph, contents: {}, objective: '',
+      effectiveIncludedNodeIds: [], explicitIncludedNodeIds: graph.nodes.map(item => item.id),
+      explicitExcludedNodeIds: [] })).toThrow(/mandatory candidates/)
+  })
+
+  it('retains a bounded entry slate across several resumed branch pivots', () => {
+    const nodes = Array.from({ length: 40 }, (_, index) =>
+      node(`entry-${String(index)}`, index % 2 ? 'assistant' : 'user', 'unrelated entry', [active], index))
+    const sideNodes = [0, 10, 20].map(index => node(`side-${String(index)}`, 'user', 'unrelated side', [sibling], 100 + index))
+    const edges = nodes.slice(1).map((item, index) => ({ id: `chain-${String(index)}`,
+      source: nodes[index]!.id, target: item.id, sessionIds: [active] }))
+    for (const [index, side] of sideNodes.entries()) edges.push({ id: `pivot-${String(index)}`,
+      source: nodes[index * 10]!.id, target: side.id, sessionIds: [sibling] })
+    const graph = { ...fixture(), nodes: [...nodes, ...sideNodes], edges }
+    const input = buildFastRecommendationInput({ graph, contents: {}, objective: '',
+      effectiveIncludedNodeIds: nodes.map(item => item.id), explicitIncludedNodeIds: [], explicitExcludedNodeIds: [] })
+    expect(input.nodes.filter(item => item.reason === 'branch-entry')).toHaveLength(6)
+    expect(input.nodes.find(item => item.id === 'entry-21')?.reason).toBe('branch-entry')
+    const tight = buildFastRecommendationInput({ graph, contents: {}, objective: '',
+      effectiveIncludedNodeIds: nodes.map(item => item.id),
+      explicitIncludedNodeIds: nodes.slice(-20).map(item => item.id), explicitExcludedNodeIds: [] })
+    expect(tight.nodes.filter(item => item.reason === 'branch-entry')).toEqual([])
+  })
+
+  it('reserves off-path capacity when old matching requirements fill the active candidate slate', () => {
+    const nodes = Array.from({ length: 40 }, (_, index) => node(`old-${String(index)}`, 'user',
+      index < 16 && index % 4 === 0 ? 'camera budget' : 'camera budget correction', [active], index))
+    const graph = { ...fixture(), nodes, edges: [] }
+    for (const mandatory of [18, 19, 0]) {
+      const input = buildFastRecommendationInput({ graph, contents: {}, objective: 'camera budget',
+        effectiveIncludedNodeIds: nodes.map(item => item.id),
+        explicitIncludedNodeIds: nodes.slice(nodes.length - mandatory).map(item => item.id), explicitExcludedNodeIds: [] })
+      expect(input.nodes.length).toBeLessThanOrEqual(FAST_RECOMMENDATION_MAX_NODES)
+      expect(input.nodes.filter(item => item.reason === 'distant-active-candidate').length)
+        .toBeLessThanOrEqual(FAST_RECOMMENDATION_DISTANT_ACTIVE_LIMIT)
+      expect(input.nodes.some(item => item.reason === 'distant-active-candidate')).toBe(true)
+    }
+  })
+
+  it('abstains from lexical ranking on empty text and skips inconsistent plan examples', () => {
+    const graph = fixture()
+    const request = { graph, contents: { n7: '' }, objective: 'camera budget',
+      effectiveIncludedNodeIds: [], explicitIncludedNodeIds: [], explicitExcludedNodeIds: [] }
+    const input = buildFastRecommendationInput({ ...request, planExamples: [
+      { objective: 'camera budget', choices: [
+        { content: 'old', action: 'include', beforeIncluded: true, afterIncluded: false, onActiveBranch: true },
+        { content: 'new', action: 'include', beforeIncluded: false, afterIncluded: true, onActiveBranch: true },
+      ] },
+    ] })
+    expect(input.planExamples).toEqual([])
+    expect(input.nodes.find(item => item.id === 'n7')?.lexicalScore).toBe(0)
+  })
+
+  it('chooses recent equally relevant plan examples without leaking stale examples', () => {
+    const choices = [
+      { content: 'old', action: 'exclude' as const, beforeIncluded: true, afterIncluded: false, onActiveBranch: true },
+      { content: 'new', action: 'include' as const, beforeIncluded: false, afterIncluded: true, onActiveBranch: true },
+    ]
+    const input = buildFastRecommendationInput({ graph: fixture(), contents: {}, objective: 'camera budget',
+      effectiveIncludedNodeIds: [], explicitIncludedNodeIds: [], explicitExcludedNodeIds: [],
+      planExamples: [
+        { objective: 'camera budget extra', choices },
+        { objective: 'camera budget', choices },
+        { objective: 'camera budget', choices: choices.map(choice => ({ ...choice, content: `latest ${choice.content}` })) },
+      ] })
+    expect(input.planExamples).toHaveLength(2)
+    expect(input.planExamples.at(-1)?.choices[0]?.content).toBe('latest old')
+    expect(input.planExamples.some(example => example.objective === 'camera budget extra')).toBe(false)
+  })
+
+  it('keeps competing chat and Web evidence bounded when one branch is already represented', () => {
+    const base = fixture()
+    const web: ContextFamilyGraphNode = { ...node('web-policy', 'assistant', 'publisher policy', [sibling], 11),
+      sourceKind: 'web', role: 'tool', webAction: 'web_fetch' }
+    const orphan: ContextFamilyGraphNode = { ...web, id: 'partial-web', sessionIds: [] }
+    const graph = { ...base, nodes: [...base.nodes, web, orphan],
+      edges: [...base.edges, { id: 'uninspected-endpoint', source: 'n3', target: 'missing-node', sessionIds: [active] }] }
+    const input = buildFastRecommendationInput({ graph, contents: { n7: 'publisher policy' },
+      objective: 'publisher policy', effectiveIncludedNodeIds: [], explicitIncludedNodeIds: [],
+      explicitExcludedNodeIds: [] })
+    expect(input.nodes.find(item => item.id === web.id)?.webAction).toBe('web_fetch')
+    expect(input.nodes.find(item => item.id === orphan.id)?.graphDistance).toBeNull()
+    expect(input.nodes.some(item => item.id === 'missing-node')).toBe(false)
+  })
+
+  it('stops the reserved Web slate at four independent branches and tolerates missing depth metadata', () => {
+    const base = fixture()
+    const web = Array.from({ length: 5 }, (_, index): ContextFamilyGraphNode => ({
+      ...node(`independent-web-${String(index)}`, 'assistant', 'publisher policy',
+        [`uninspected-web-${String(index)}` as SessionId], index + 30),
+      role: 'tool', sourceKind: 'web', webAction: 'web_fetch',
+    }))
+    const input = buildFastRecommendationInput({ graph: { ...base, nodes: [...base.nodes, ...web] },
+      contents: {}, objective: 'publisher policy', effectiveIncludedNodeIds: [],
+      explicitIncludedNodeIds: [], explicitExcludedNodeIds: [] })
+    expect(input.nodes.filter(item => item.sourceKind === 'web')).toHaveLength(5)
+    expect(input.nodes.filter(item => item.sourceKind === 'web').every(item => item.sessionDepths.length === 0))
+      .toBe(true)
+    expect(input.nodes.length).toBeLessThanOrEqual(FAST_RECOMMENDATION_MAX_NODES)
+  })
+
+  it('keeps verified Web action and branch metadata on a displayed preference example', () => {
+    const input = buildFastRecommendationInput({ graph: fixture(), contents: {}, objective: 'policy',
+      effectiveIncludedNodeIds: [], explicitIncludedNodeIds: [], explicitExcludedNodeIds: [],
+      preferenceEdits: [{ objective: 'policy', content: 'verified prior page', mode: 'include',
+        sourceKind: 'web', webAction: 'web_fetch', onActiveBranch: false }] })
+    expect(input.preferenceExamples[0]).toMatchObject({ sourceKind: 'web', webAction: 'web_fetch', onActiveBranch: false })
+  })
+
+  it('marks a confirmed temporary exclusion as restorable without changing current selection', () => {
+    const input = buildFastRecommendationInput({ graph: fixture(), contents: {}, objective: 'return to the budget',
+      effectiveIncludedNodeIds: [], explicitIncludedNodeIds: [], explicitExcludedNodeIds: ['n9'],
+      reviewableExcludedNodeIds: ['n9'] })
+    expect(input.nodes.find(item => item.id === 'n9')).toMatchObject({ included: false, reviewableExcluded: true })
+    expect(input.nodes.find(item => item.id === 'n8')).not.toHaveProperty('reviewableExcluded')
+  })
 })

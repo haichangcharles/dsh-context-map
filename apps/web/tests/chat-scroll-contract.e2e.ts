@@ -285,8 +285,22 @@ async function openSeed(page: Page, fixture: ChatScrollFixture, tailMarker?: str
   await results.click()
   await page.getByRole('tab', { name: 'Chat', exact: true }).waitFor({ timeout: 30_000 })
   if (tailMarker !== undefined) {
-    await page.getByText(tailMarker, { exact: false }).last().waitFor({ timeout: 30_000 })
+    await page.locator('[data-conversation-scroll]').getByText(tailMarker, { exact: false }).last().waitFor({ timeout: 30_000 })
   }
+  await nextPaint(page)
+}
+
+/** Enter the reading surface through the actual auto-opened Map's close control. */
+async function closeMapForReading(page: Page): Promise<void> {
+  const column = page.locator('[data-rightbar-col]')
+  const map = column.locator('[data-dockkit-tab]').filter({ hasText: 'Context Map' })
+  await map.waitFor({ timeout: 15_000 })
+  await expect.poll(() => column.locator('[data-sidebar-right-open]').count()).toBe(1)
+  await map.hover()
+  await map.locator('[data-dockkit-tab-close]').click()
+  await expect.poll(() => column.locator('[data-sidebar-right-open]').count()).toBe(0)
+  const frame = page.locator('[class*="frame"]').first()
+  await frame.evaluate(async (node) => { await Promise.allSettled(node.getAnimations().map(animation => animation.finished)) })
   await nextPaint(page)
 }
 
@@ -593,6 +607,8 @@ describe('web e2e: long Chat scroll contract', () => {
       seeds: [{ fixture: HISTORY_FIXTURE, id: RAIL_SESSION_ID }],
     }, async (world) => {
       await openSeed(world.page, HISTORY_FIXTURE, HISTORY_FIXTURE.markers.assistant(HISTORY_FIXTURE.turns))
+      await closeMapForReading(world.page)
+      expect(await world.page.locator('[data-conversation-scroll]').evaluate(host => host.clientWidth)).toBeGreaterThan(900)
       await expectBottom(world.page)
 
       // The whole-log outline reaches the rail before any paging: one mark
@@ -760,8 +776,13 @@ describe('web e2e: long Chat scroll contract', () => {
         { fixture: RESTORE_FIXTURE_B, id: RESTORE_SESSION_B_ID },
       ],
     }, async (world) => {
-      await openSeed(
-        world.page,
+      // Each settled-session entry opens Map, which is fullscreen at 700px.
+      // Close it as a reader does before exercising the Chat-only geometry.
+      const openReadingSeed = async (fixture: ChatScrollFixture, tailMarker?: string): Promise<void> => {
+        await openSeed(world.page, fixture, tailMarker)
+        await closeMapForReading(world.page)
+      }
+      await openReadingSeed(
         RESTORE_FIXTURE_A,
         RESTORE_FIXTURE_A.markers.assistant(RESTORE_FIXTURE_A.turns),
       )
@@ -782,13 +803,11 @@ describe('web e2e: long Chat scroll contract', () => {
       await expectSameFlowTop(world.page, sessionAnchor, RESPONSIVE_REFLOW_TOLERANCE)
       const narrowSessionAnchor = await visibleFlowAnchor(world.page)
 
-      await openSeed(
-        world.page,
+      await openReadingSeed(
         RESTORE_FIXTURE_B,
         RESTORE_FIXTURE_B.markers.assistant(RESTORE_FIXTURE_B.turns),
       )
-      await openSeed(
-        world.page,
+      await openReadingSeed(
         RESTORE_FIXTURE_A,
       )
       await expectSameFlowTop(world.page, narrowSessionAnchor)
@@ -807,13 +826,11 @@ describe('web e2e: long Chat scroll contract', () => {
       await world.page.getByLabel('Trajectory timeline').waitFor({ timeout: 30_000 })
       await world.page.getByRole('tab', { name: 'Chat', exact: true }).click()
       await expectBottom(world.page)
-      await openSeed(
-        world.page,
+      await openReadingSeed(
         RESTORE_FIXTURE_B,
         RESTORE_FIXTURE_B.markers.assistant(RESTORE_FIXTURE_B.turns),
       )
-      await openSeed(
-        world.page,
+      await openReadingSeed(
         RESTORE_FIXTURE_A,
         RESTORE_FIXTURE_A.markers.assistant(RESTORE_FIXTURE_A.turns),
       )
@@ -904,6 +921,7 @@ describe('web e2e: long Chat scroll contract', () => {
       const readyPath = join(world.scaffold.workspaceCwd, TOOL_READY_FILE)
       const releasePath = join(world.scaffold.workspaceCwd, TOOL_RELEASE_FILE)
       await openSeed(world.page, INPUTS_FIXTURE, INPUTS_FIXTURE.markers.assistant(INPUTS_FIXTURE.turns))
+      await expect.poll(() => world.page.locator('[data-rightbar-col] [data-dockkit-tab-title]').allInnerTexts()).toEqual(['Context Map'])
       const backToBottom = world.page.getByRole('button', { name: 'Back to bottom', exact: true })
       const settled = world.scaffold.whenTurnSettled(60_000)
       let released = false

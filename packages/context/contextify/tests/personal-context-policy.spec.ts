@@ -299,9 +299,11 @@ describe('personal Context candidate routing', () => {
       const inspection = { meta: session.header, events: session.snapshotEvents(),
         inheritedEventCount: session.inheritedEventCount }
       const graph = projectSessionFamily({ activeSessionId: session.id, sessions: [inspection] })
-      expect(contextEditsFromFamily(graph, new Map([[session.id, inspection]])))
+      const edits = contextEditsFromFamily(graph, new Map([[session.id, inspection]]))
+      expect(edits).toHaveLength(1)
+      expect(edits[0]?.episodeId).toMatch(/^reviewed-web-action:\d+$/)
+      expect(edits.map(({ episodeId: _episodeId, ...edit }) => edit))
         .toEqual([{ objective: 'Compare the cited sources', content: 'Exploratory search results',
-          episodeId: expect.stringMatching(/^reviewed-web-action:\d+$/),
           mode: 'exclude', sourceKind: 'web', speakerRole: 'tool',
           webAction: 'web_search', onActiveBranch: true }])
     } finally { await ctx.fiber.dispose() }
@@ -510,9 +512,11 @@ describe('personal Context candidate routing', () => {
         [childId, { meta: { ...root.header, id: childId, parentSession: root.id },
           events, inheritedEventCount: events.length }],
       ])
-      expect(contextEditsFromFamily(graph, inspections))
+      const edits = contextEditsFromFamily(graph, inspections)
+      expect(edits).toHaveLength(1)
+      expect(edits[0]?.episodeId).toMatch(/^context-policy-root:\d+$/)
+      expect(edits.map(({ episodeId: _episodeId, ...edit }) => edit))
         .toEqual([{ objective: 'compare warranty coverage',
-          episodeId: expect.stringMatching(/^context-policy-root:\d+$/),
           content: 'vendor regional repair terms', mode: 'include',
           speakerRole: 'user', onActiveBranch: true }])
     } finally {

@@ -17,6 +17,10 @@
 - text: Use web_search once with queries ["DeepSeek Harness snapshot search","DeepSeek Harness multi-query search"]. Then reply exactly SEARCH_DONE and stop. {{clock}}
 - button "Copy":
   - img
+- button "natural context for Use web_search once with queries [\"DeepSeek Harness snapshot search\",\"DeepSeek Harness multi-query search\"]. Then reply exactly SEARCH_DONE and stop." [disabled]: Auto
+- button "include context for Use web_search once with queries [\"DeepSeek Harness snapshot search\",\"DeepSeek Harness multi-query search\"]. Then reply exactly SEARCH_DONE and stop.": Use
+- button "exclude context for Use web_search once with queries [\"DeepSeek Harness snapshot search\",\"DeepSeek Harness multi-query search\"]. Then reply exactly SEARCH_DONE and stop.": Skip
+- button "Locate Use web_search once with queries [\"DeepSeek Harness snapshot search\",\"DeepSeek Harness multi-query search\"]. Then reply exactly SEARCH_DONE and stop. in Context Map": Map
 - button "1 tool call" [expanded]:
   - text: 1 tool call
   - img

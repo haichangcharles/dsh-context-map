@@ -841,6 +841,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'agent', description: 'Live Agent whose Session owns the pending proposal.' }, { name: 'proposal', description: 'Exact reviewed proposal shown by the Client.' }, { name: 'uiOrigin', description: 'Optional Client-declared source of the dismissal.' }, { name: 'declinedNodeIds', description: 'Items explicitly kept current before the sheet closed.' }],
       },
       {
+        signature: 'requestExplicitBranch(agent: Agent, reason: string): void',
+        description: 'Convert one explicit model tool call into a post-Turn user confirmation.',
+        parameters: [{ name: 'agent', description: 'Live Agent whose direct human Turn owns the request.' }, { name: 'reason', description: 'Short explanation displayed in the user confirmation.' }],
+      },
+      {
         signature: '@Remote(\'prepareBranchSuggestion\') prepareBranchSuggestion(agent: Agent, suggestionId: string): ContextBranchRelocationPreparation',
         description: 'Validate a suggestion and return the exact native Host fork boundary.',
         parameters: [{ name: 'agent', description: 'Live idle Agent whose source Session owns the reviewed Turn.' }, { name: 'suggestionId', description: 'Durable suggestion identity returned by `get`.' }],

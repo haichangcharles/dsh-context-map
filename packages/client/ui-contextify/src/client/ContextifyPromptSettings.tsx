@@ -14,8 +14,8 @@ import css from './ContextifyPromptSettings.module.css'
 type PromptKind = 'context' | 'archive' | 'branch'
 const kinds: readonly PromptKind[] = ['context', 'archive', 'branch']
 
-function label(kind: PromptKind): string {
-  return `${kind.slice(0, 1).toUpperCase()}${kind.slice(1)}`
+function label(kind: PromptKind, t: PropsLocale<'contextifySteward'>['t']): string {
+  return t(`settings.kind.${kind}`)
 }
 
 export interface ContextifyPromptSettingsViewProps extends PropsLocale<'contextifySteward'> {
@@ -64,18 +64,18 @@ export function ContextifyPromptSettingsView({ scope, snapshot, t }: ContextifyP
     try { await scope.set(kind, section) } finally { setPending(null) }
   }
 
-  if (snapshot.status === 'loading') return <div className={css.state}>Loading Context Map prompts…</div>
+  if (snapshot.status === 'loading') return <div className={css.state}>{t('copy.loadingContextMapPrompts')}</div>
   if (snapshot.status !== 'ready') {
-    return <div className={css.state}>Prompt settings are unavailable in this deployment.</div>
+    return <div className={css.state}>{t('copy.promptSettingsAreUnavailableInThisDeployment')}</div>
   }
 
-  return <section className={css.root} aria-label="Context Map prompt settings">
+  return <section className={css.root} aria-label={t('copy.contextMapPromptSettings')}>
     <header>
-      <h2>Context Map prompts</h2>
-      <p>Package defaults stay visible and read-only. Add Profile rules, or explicitly override a base prompt.</p>
+      <h2>{t('copy.contextMapPrompts')}</h2>
+      <p>{t('copy.packageDefaultsStayVisibleAndReadOnlyAdd')}</p>
     </header>
     <label className={css.card}>
-      <span>Automatic Branch review</span>
+      <span>{t('copy.automaticBranchReview')}</span>
       <input
         type="checkbox"
         checked={drafts.automaticBranchReview}
@@ -88,7 +88,7 @@ export function ContextifyPromptSettingsView({ scope, snapshot, t }: ContextifyP
             .finally(() => { setPending(null) })
         }}
       />
-      <small>Off by default. When enabled, one invisible auxiliary model call reviews each completed Turn.</small>
+      <small>{t('copy.offByDefaultWhenEnabledOneInvisibleAuxiliary')}</small>
     </label>
     <label className={css.card}>
       <span>{t('settings.deepLimit')}</span>
@@ -110,65 +110,62 @@ export function ContextifyPromptSettingsView({ scope, snapshot, t }: ContextifyP
     </div>
     {settingsError !== null && <p role="alert">{settingsError}</p>}
     {kinds.map((kind) => {
-      const title = label(kind)
+      const title = label(kind, t)
       const draft = drafts[kind]
       const enabled = overrideEnabled.has(kind)
       return <article className={css.card} key={kind}>
         <h3>{title}</h3>
-        <label>Default prompt
-          <textarea aria-label={`Default ${title} prompt`} value={CONTEXTIFY_CLIENT_DEFAULT_PROMPTS[kind]} readOnly />
+        <label>{t('copy.defaultPrompt')}<textarea aria-label={t('copy.defaultPrompt2', { p0: title })} value={CONTEXTIFY_CLIENT_DEFAULT_PROMPTS[kind]} readOnly />
         </label>
-        <label>Additional instructions
-          <textarea
-            aria-label={`Additional ${title} instructions`}
-            value={draft.additional}
-            maxLength={16_000}
-            onChange={(event) => { update(kind, { additional: event.target.value }) }}
-          />
+        <label>{t('copy.additionalInstructions')}<textarea
+          aria-label={t('copy.additionalInstructions2', { p0: title })}
+          value={draft.additional}
+          maxLength={16_000}
+          onChange={(event) => { update(kind, { additional: event.target.value }) }}
+        />
         </label>
         <div className={css.actions}>
           <button
             type="button"
             disabled={!snapshot.writable || pending === kind}
             onClick={() => { void save(kind, draft) }}
-          >Save {title} instructions</button>
-          {!enabled && <button type="button" onClick={() => { setConfirming(kind) }}>Override default {title} prompt</button>}
+          >{t('settings.saveInstructions', { kind: title })}</button>
+          {!enabled && <button type="button" onClick={() => { setConfirming(kind) }}>{t('settings.overrideDefault', { kind: title })}</button>}
         </div>
         {enabled && <div className={css.override}>
-          <label>Custom base prompt
-            <textarea
-              aria-label={`Custom ${title} prompt`}
-              value={draft.override || CONTEXTIFY_CLIENT_DEFAULT_PROMPTS[kind]}
-              maxLength={16_000}
-              onChange={(event) => { update(kind, { override: event.target.value }) }}
-            />
+          <label>{t('copy.customBasePrompt')}<textarea
+            aria-label={t('copy.customPrompt', { p0: title })}
+            value={draft.override || CONTEXTIFY_CLIENT_DEFAULT_PROMPTS[kind]}
+            maxLength={16_000}
+            onChange={(event) => { update(kind, { override: event.target.value }) }}
+          />
           </label>
           <div className={css.actions}>
-            <button type="button" disabled={!snapshot.writable || pending === kind} onClick={() => { void save(kind, draft) }}>Save custom {title} prompt</button>
+            <button type="button" disabled={!snapshot.writable || pending === kind} onClick={() => { void save(kind, draft) }}>{t('settings.saveCustom', { kind: title })}</button>
             <button type="button" disabled={!snapshot.writable || pending === kind} onClick={() => {
               update(kind, { override: '' })
               setOverrideEnabled(current => new Set([...current].filter(value => value !== kind)))
               void save(kind, { ...draft, override: '' })
-            }}>Restore default {title} prompt</button>
+            }}>{t('settings.restoreDefault', { kind: title })}</button>
           </div>
         </div>}
         <details>
-          <summary>Effective prompt preview</summary>
+          <summary>{t('copy.effectivePromptPreview')}</summary>
           <pre>{effectiveClientPrompt(CONTEXTIFY_CLIENT_DEFAULT_PROMPTS[kind], draft)}</pre>
         </details>
       </article>
     })}
     {confirming !== null && <div className={css.dialogBackdrop}>
-      <div role="dialog" aria-label="Confirm prompt override" className={css.dialog}>
-        <h3>Override package default?</h3>
-        <p>This replaces the maintained base prompt for {label(confirming)} reviews. Additional instructions remain appended.</p>
+      <div role="dialog" aria-label={t('copy.confirmPromptOverride')} className={css.dialog}>
+        <h3>{t('copy.overridePackageDefault')}</h3>
+        <p>{t('settings.overrideExplanation', { kind: label(confirming, t) })}</p>
         <div className={css.actions}>
-          <button type="button" onClick={() => { setConfirming(null) }}>Cancel</button>
+          <button type="button" onClick={() => { setConfirming(null) }}>{t('copy.cancel')}</button>
           <button type="button" onClick={() => {
             setOverrideEnabled(current => new Set([...current, confirming]))
             update(confirming, { override: CONTEXTIFY_CLIENT_DEFAULT_PROMPTS[confirming] })
             setConfirming(null)
-          }}>Enable override</button>
+          }}>{t('copy.enableOverride')}</button>
         </div>
       </div>
     </div>}

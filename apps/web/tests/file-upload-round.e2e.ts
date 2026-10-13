@@ -18,7 +18,7 @@ import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, recordFixture, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
+import { restoreFullWidthChat, connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/file-upload-round', import.meta.url))
 const FIXTURE = fileURLToPath(new URL('../../../snapshots/web/file-upload-round/session.v3.jsonl', import.meta.url))
@@ -245,11 +245,13 @@ describe('web e2e: generic file upload through the real assembly', () => {
     await expect.poll(() => page.getByText('UPLOAD_ROUND_OK', { exact: false }).count(), { timeout: 15_000 })
       .toBeGreaterThanOrEqual(1)
     await page.getByTitle(FILE_NAME).first().waitFor({ timeout: 10_000 })
+    await restoreFullWidthChat(page)
     const snapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(UI_EXPECTED, snapshot, MODE)
   })
 
   it.skipIf(MODE === 'record')('keeps a mixed durable message in one ordered wrapping attachment flow', async () => {
+    await restoreFullWidthChat(page)
     const groups = page.locator('[data-message-attachments]')
     await expect.poll(() => groups.count(), { timeout: 10_000 }).toBe(1)
     const geometry = await groups.first().evaluate((element): HistoryAttachmentGeometry => {

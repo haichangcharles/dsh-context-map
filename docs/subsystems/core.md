@@ -1064,6 +1064,12 @@ Durable Context Plan mutations and native Session-family graph reads.
  */
 @Remote('dismissRecommendation') async dismissRecommendation(agent: Agent, proposal: ContextRecommendationProposal, uiOrigin?: 'contextify-client', declinedNodeIds?: readonly string[]): Promise<void>
 
+/** Convert one explicit model tool call into a post-Turn user confirmation.
+ * @param agent - Live Agent whose direct human Turn owns the request.
+ * @param reason - Short explanation displayed in the user confirmation.
+ */
+requestExplicitBranch(agent: Agent, reason: string): void
+
 /**
  * Validate a suggestion and return the exact native Host fork boundary.
  * @param agent - Live idle Agent whose source Session owns the reviewed Turn.

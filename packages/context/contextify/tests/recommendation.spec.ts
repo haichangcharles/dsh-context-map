@@ -258,4 +258,75 @@ describe('Contextify recommendation protocol', () => {
     }
   })
 
+  it.each([
+    ['missing JSON', 'plain explanation', /did not contain JSON/],
+    ['broken JSON', '{"include":}', /invalid JSON/],
+    ['foreign field', '{"override":true}', /unsupported/],
+    ['invalid reason type', '{"include":[{"nodeId":"root:1","reason":2}]}', /must be a string/],
+  ])('rejects a classifier response with %s', (_label, text, error) => {
+    expect(() => parseRecommendationDecisionText(text)).toThrow(error)
+  })
+
+  it('rejects foreign decision fields and duplicate archive requests before proposing edits', () => {
+    expect(() => validateRecommendation({ override: true }, validationContext)).toThrow(/unsupported/)
+    expect(() => validateRecommendation({ archive: [
+      { nodeId: 'root:1', reason: 'old' }, { nodeId: 'root:1', reason: 'old again' },
+    ] }, { ...validationContext, mode: 'deep' })).toThrow(/duplicated/)
+  })
+
+  it('projects absent content, unknown Session depth and multiple edges without inventing source text', () => {
+    const unknown = 'uninspected-session' as SessionId
+    const input = buildRecommendationInput({
+      graph: { ...graph, nodes: graph.nodes.map(node => ({ ...node, sessionIds: [root, unknown] })),
+        edges: [...graph.edges, { ...graph.edges[0]!, id: 'reverse', source: 'root:2', target: 'root:1' }] },
+      contents: {}, effectiveIncludedNodeIds: [],
+    })
+    expect(input.nodes.map(node => [node.content, node.sessionDepths])).toEqual([
+      ['old requirement', [0]], ['new answer', [0]],
+    ])
+    expect(input.nodes[0]?.incoming).toEqual(['root:2'])
+    expect(input.nodes[0]?.outgoing).toEqual(['root:2'])
+    expect(buildRecommendationInput({ graph: { ...graph, nodes: [], edges: [] },
+      contents: {}, effectiveIncludedNodeIds: [] }).nodes).toEqual([])
+  })
+
+  it('shrinks high-volume Unicode content while preserving the full graph and its serialized budget', () => {
+    const nodes = Array.from({ length: 120 }, (_, index) => ({ ...graph.nodes[0]!,
+      id: `budget:${String(index)}`, preview: '🧭'.repeat(1200) }))
+    const input = buildRecommendationInput({ graph: { ...graph, nodes, edges: [] },
+      contents: {}, effectiveIncludedNodeIds: [] })
+    expect(input.nodes).toHaveLength(nodes.length)
+    expect(JSON.stringify(input).length).toBeLessThanOrEqual(96_000)
+    expect(input.nodes.some(node => node.truncated)).toBe(true)
+    expect(input.nodes.every(node => !node.content.includes('\uFFFD'))).toBe(true)
+    expect(input.nodes.every(node => /^🧭*$/u.test(node.content))).toBe(true)
+  })
+
+  it('rejects oversized topology instead of dropping graph identities or edges', () => {
+    const nodes = Array.from({ length: 500 }, (_, index) => ({ ...graph.nodes[0]!,
+      id: `${'long-source-'.repeat(40)}${String(index)}`, preview: '' }))
+    expect(() => buildRecommendationInput({ graph: { ...graph, nodes, edges: [] },
+      contents: {}, effectiveIncludedNodeIds: [] })).toThrow(/topology/)
+    expect(() => buildRecommendationInput({ graph: { ...graph,
+      activeSessionId: 'x'.repeat(96_001) as SessionId, nodes: [], edges: [] },
+    contents: {}, effectiveIncludedNodeIds: [] })).toThrow(/topology/)
+  })
+
+  it('retains fan-out and fan-in topology in the bounded review projection', () => {
+    const third = { ...graph.nodes[1]!, id: 'root:3', owner: { sessionId: root, seq: 3 } }
+    const input = buildRecommendationInput({ graph: { ...graph, nodes: [...graph.nodes, third],
+      edges: [...graph.edges,
+        { id: 'to-third-a', source: 'root:1', target: third.id, sessionIds: [root] },
+        { id: 'to-third-b', source: 'root:2', target: third.id, sessionIds: [root] },
+      ] }, contents: {}, effectiveIncludedNodeIds: [] })
+    expect(input.nodes[0]?.outgoing).toEqual(['root:2', 'root:3'])
+    expect(input.nodes[2]?.incoming).toEqual(['root:1', 'root:2'])
+  })
+
+  it('retains typed Web sources in classifier-visible evidence metadata', () => {
+    const web = { ...graph.nodes[0]!, sourceKind: 'web' as const, webAction: 'web_fetch' as const }
+    const input = buildRecommendationInput({ graph: { ...graph, nodes: [web], edges: [] },
+      contents: {}, effectiveIncludedNodeIds: [] })
+    expect(input.nodes[0]).toMatchObject({ sourceKind: 'web', webAction: 'web_fetch' })
+  })
 })

@@ -59,16 +59,18 @@ function itemAtPointer(
 /** Scroll state the mask fades and follow logic read together. */
 interface RailScrollState {
   readonly top: number
+  readonly height: number
   readonly canScrollUp: boolean
   readonly canScrollDown: boolean
 }
 
-const RAIL_AT_REST: RailScrollState = { top: 0, canScrollUp: false, canScrollDown: false }
+const RAIL_AT_REST: RailScrollState = { top: 0, height: 0, canScrollUp: false, canScrollDown: false }
 
 function railScrollState(scroller: HTMLElement): RailScrollState {
   const top = scroller.scrollTop
   return {
     top,
+    height: scroller.clientHeight,
     canScrollUp: top > 1,
     canScrollDown: top < scroller.scrollHeight - scroller.clientHeight - 1,
   }
@@ -76,6 +78,7 @@ function railScrollState(scroller: HTMLElement): RailScrollState {
 
 function sameRailScrollState(left: RailScrollState, right: RailScrollState): boolean {
   return left.top === right.top
+    && left.height === right.height
     && left.canScrollUp === right.canScrollUp
     && left.canScrollDown === right.canScrollDown
 }
@@ -87,12 +90,16 @@ function TurnNavigatorRail({ items, activeTurn, busyTurn, onNavigate, t }: TurnN
   /** While the pointer works the rail, follow must not move it under the hand. */
   const pointerInsideRef = useRef(false)
   const previewId = useId()
+  const hasRail = items.length >= 2
 
-  const syncScrollState = (): void => {
+  const syncScrollState = (measureHeight = false): void => {
     const scroller = scrollerRef.current
     if (scroller === null) return
     const next = railScrollState(scroller)
-    setScrollState(current => sameRailScrollState(current, next) ? current : next)
+    setScrollState((current) => {
+      const measured = measureHeight ? next : { ...next, height: current.height }
+      return sameRailScrollState(current, measured) ? current : measured
+    })
   }
 
   // Frame resizes (band/composer changes) move the overflow edges without a
@@ -100,11 +107,11 @@ function TurnNavigatorRail({ items, activeTurn, busyTurn, onNavigate, t }: TurnN
   useEffect(() => {
     const scroller = scrollerRef.current
     if (scroller === null || typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(syncScrollState)
+    const observer = new ResizeObserver(() => { syncScrollState(true) })
     observer.observe(scroller)
     return () => { observer.disconnect() }
-  }, [])
-  useEffect(syncScrollState, [items.length])
+  }, [hasRail])
+  useEffect(() => { syncScrollState() }, [items.length])
 
   // Keep the active mark visible: centre it whenever it leaves the scrollport,
   // unless the reader's pointer is working the rail.
@@ -124,9 +131,9 @@ function TurnNavigatorRail({ items, activeTurn, busyTurn, onNavigate, t }: TurnN
       scroller.scrollTop = target
     }
     syncScrollState()
-  }, [activeTurn, items])
+  }, [activeTurn, items, scrollState.height])
 
-  if (items.length < 2) return null
+  if (!hasRail) return null
   const previewIndex = items.findIndex(item => item.turn === previewTurn)
   const preview = previewIndex < 0 ? undefined : items[previewIndex]
   const previewPosition = previewIndex < 0 ? undefined : itemPosition(previewIndex)

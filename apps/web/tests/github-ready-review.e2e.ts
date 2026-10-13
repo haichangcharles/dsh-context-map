@@ -19,7 +19,7 @@ import {
   webSnapshotMode,
   type WebScaffold,
 } from './scaffold.ts'
-import { saveFailureShot } from './support.ts'
+import { restoreFullWidthChat, saveFailureShot } from './support.ts'
 
 const MODE = webSnapshotMode()
 const OVERLAY = fileURLToPath(new URL('../../cli/config/examples/github-review/cordis.yml', import.meta.url))
@@ -190,6 +190,9 @@ describe.skipIf(MODE === 'record')('web e2e: GitHub ready-for-review', () => {
     if (await workspaceRow.getAttribute('aria-expanded') !== 'true') await workspaceRow.click()
     await page.getByText(TITLE, { exact: true }).click()
     await page.getByText(REPLY, { exact: true }).waitFor({ state: 'visible', timeout: 30_000 })
+    await restoreFullWidthChat(page)
+    await page.getByRole('treeitem').filter({ hasText: TITLE }).hover()
+    await page.getByRole('button', { name: `Session actions for ${TITLE}` }).waitFor()
     const tree = await captureStableAria(page, '[role="tree"][aria-label="Sessions"]', scaffold.workspaceCwd)
     const conversation = await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(EXPECTED, `${tree}\n\n---\n\n${conversation}`, MODE)

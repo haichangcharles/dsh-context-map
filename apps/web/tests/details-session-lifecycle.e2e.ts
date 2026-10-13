@@ -122,6 +122,29 @@ async function dragSidebar(page: Page, target: number): Promise<void> {
   await expect.poll(() => sidebarTrack(page)).toBe(target)
 }
 
+/** A reader closes the default Map and resumes the existing pane's selected page. */
+async function closeDefaultMap(page: Page, previous?: Awaited<ReturnType<typeof paneSnapshot>>, collapse = true): Promise<void> {
+  const column = page.locator('[data-rightbar-col]')
+  const map = column.locator('[data-dockkit-tab]').filter({ hasText: 'Context Map' })
+  await map.waitFor({ timeout: 15_000 })
+  await map.hover()
+  await map.locator('[data-dockkit-tab-close]').click()
+  if (previous !== undefined) {
+    const panes = column.locator('[data-dockkit-pane]')
+    const ordered = previous.map((pane, index) => ({ pane, index }))
+      .toSorted((left, right) => Number(left.pane.active) - Number(right.pane.active))
+    for (const { pane, index } of ordered) {
+      const selected = pane.tabs.find(tab => tab.selected)
+      if (selected?.title === undefined) throw new Error('retained pane has no selected page')
+      await panes.nth(index).locator('[data-dockkit-tab]').filter({ has: page.getByText(selected.title, { exact: true }) }).click()
+    }
+  }
+  if (collapse && await column.locator('[data-sidebar-right-open]').count() > 0) {
+    await column.locator('[data-sidebar-right-toggle]').click()
+  }
+  await appFrame(page).evaluate(async (frame) => { await Promise.allSettled(frame.getAnimations().map(animation => animation.finished)) })
+}
+
 describe.skipIf(MODE === 'record')('web e2e: details panel follows the current Session lifecycle', () => {
   let scaffold: WebScaffold
   let browser: Browser
@@ -159,8 +182,9 @@ describe.skipIf(MODE === 'record')('web e2e: details panel follows the current S
     await input.fill(PROMPT)
     await input.press('Enter')
     await settled
-    await page.getByText('LIGHTHOUSE', { exact: true }).waitFor({ timeout: 15_000 })
+    await page.locator('[data-conversation-scroll]').getByText('LIGHTHOUSE', { exact: true }).waitFor({ timeout: 15_000 })
 
+    await closeDefaultMap(page)
     await expect.poll(() => detailsTrack(page), { timeout: 5_000 }).toBe(0)
     expect(await page.getByText('Details', { exact: true }).isVisible()).toBe(false)
     await compareOrRefreshGolden(HANDLES_EXPECTED, await handleSnapshot(page), MODE)
@@ -180,7 +204,8 @@ describe.skipIf(MODE === 'record')('web e2e: details panel follows the current S
     await page.reload({ waitUntil: 'load' })
     acknowledgeReloadConnectionLoss(tripwire, warningStart)
     await appFrame(page).waitFor({ timeout: 30_000 })
-    await page.getByText('LIGHTHOUSE', { exact: true }).waitFor({ timeout: 15_000 })
+    await page.locator('[data-conversation-scroll]').getByText('LIGHTHOUSE', { exact: true }).waitFor({ timeout: 15_000 })
+    await closeDefaultMap(page)
     await expect.poll(() => detailsTrack(page), { timeout: 5_000 }).toBe(0)
     expect(await page.getByText('Details', { exact: true }).isVisible()).toBe(false)
 
@@ -191,7 +216,8 @@ describe.skipIf(MODE === 'record')('web e2e: details panel follows the current S
 
     const original = page.locator('[role="treeitem"][aria-selected]').filter({ hasText: 'Reply with the single word' }).first()
     await original.click()
-    await page.getByText('LIGHTHOUSE', { exact: true }).waitFor({ timeout: 15_000 })
+    await page.locator('[data-conversation-scroll]').getByText('LIGHTHOUSE', { exact: true }).waitFor({ timeout: 15_000 })
+    await closeDefaultMap(page)
     await expect.poll(() => detailsTrack(page), { timeout: 5_000 }).toBe(0)
     expect(await page.getByText('Details', { exact: true }).isVisible()).toBe(false)
 
@@ -203,7 +229,8 @@ describe.skipIf(MODE === 'record')('web e2e: details panel follows the current S
     const seeded = ungroupedRow.locator('..').locator('[role="treeitem"][aria-selected]')
     await expect.poll(() => seeded.count()).toBe(1)
     await seeded.click()
-    await page.getByText('DONE', { exact: true }).waitFor({ timeout: 15_000 })
+    await page.locator('[data-conversation-scroll]').getByText('DONE', { exact: true }).waitFor({ timeout: 15_000 })
+    await closeDefaultMap(page)
     await expect.poll(() => detailsTrack(page), { timeout: 5_000 }).toBe(0)
 
     const viewport = page.viewportSize()
@@ -213,14 +240,16 @@ describe.skipIf(MODE === 'record')('web e2e: details panel follows the current S
     const panes = column.locator('[data-dockkit-pane]')
     const normalWidth = Math.round(viewport.width * 0.45)
     const normalColumns = [280, viewport.width - 280 - normalWidth, normalWidth]
+    const retained: { a?: Awaited<ReturnType<typeof paneSnapshot>>; b?: Awaited<ReturnType<typeof paneSnapshot>> } = {}
     const checkpoints: string[] = ['# Recorded-session Sidebar states']
     const checkpoint = async (label: string): Promise<void> => {
       checkpoints.push(`## ${label}\n\n\`\`\`json\n${JSON.stringify(await sidebarSnapshot(page), null, 2)}\n\`\`\``)
     }
-    const select = async (row: Locator, reply: string): Promise<void> => {
+    const select = async (row: Locator, reply: string, collapse = true): Promise<void> => {
       await row.click()
       await expect.poll(() => row.getAttribute('aria-selected')).toBe('true')
-      await page.getByText(reply, { exact: true }).waitFor({ timeout: 15_000 })
+      await page.locator('[data-conversation-scroll]').getByText(reply, { exact: true }).waitFor({ timeout: 15_000 })
+      await closeDefaultMap(page, reply === 'LIGHTHOUSE' ? retained.a : retained.b, collapse)
     }
     const open = async (): Promise<void> => {
       await page.locator('[data-sidebar-right-expand]').click()
@@ -229,6 +258,8 @@ describe.skipIf(MODE === 'record')('web e2e: details panel follows the current S
       // The panel's slide completes independently of the frame's grid tracks.
       await expect.poll(() => panel.evaluate(element => getComputedStyle(element).transform))
         .toBe('none')
+      const guide = column.locator('[data-sidebar-right-guide]:visible [data-sidebar-right-guide-entry="files"]')
+      if (await guide.count() > 0) await guide.first().click()
     }
     const close = async (): Promise<void> => {
       await column.locator('[data-sidebar-right-toggle]').click()
@@ -256,17 +287,18 @@ describe.skipIf(MODE === 'record')('web e2e: details panel follows the current S
     await expect.poll(() => split.isDisabled()).toBe(false)
     await split.click()
     await expect.poll(() => panes.count()).toBe(2)
+    await panes.nth(1).locator('[data-sidebar-right-guide-entry="files"]').click()
     await panes.first().locator('[data-dockkit-tab]').filter({ hasText: 'Files' }).click()
     await expect.poll(() => panes.first().locator('[data-files-state="tree"]').count()).toBe(1)
-    const retainedA = await paneSnapshot(page)
-    expect(retainedA.map(pane => pane.tabs.map(tab => tab.title))).toEqual([['Files', 'Start'], ['Files']])
+    retained.a = await paneSnapshot(page)
+    expect(retained.a.map(pane => pane.tabs.map(tab => tab.title))).toEqual([['Files', 'Start'], ['Files']])
     await checkpoint('A normal: two panes')
 
     await column.locator('[data-sidebar-right-mode="fullscreen"]').click()
     await expect.poll(() => panel.boundingBox()).toEqual({ x: 0, y: 0, ...viewport })
     expect(await columns(page)).toEqual(normalColumns)
     expect(await sidebarSnapshot(page)).toMatchObject({ mode: 'fullscreen', resizeHandleWidth: 0, coversViewport: true })
-    expect(await paneSnapshot(page)).toEqual(retainedA)
+    expect(await paneSnapshot(page)).toEqual(retained.a)
     await checkpoint('A manual fullscreen: underlying columns retained')
 
     // Closing the fullscreen panel exposes Session navigation without changing
@@ -286,18 +318,18 @@ describe.skipIf(MODE === 'record')('web e2e: details panel follows the current S
     // The child listing crosses the same Remote as the root listing above.
     await column.locator('[data-files-row="loading"]').waitFor({ state: 'hidden', timeout: 15_000 })
     expect(await column.locator('[data-files-row="failed"]').count()).toBe(0)
-    const retainedB = await paneSnapshot(page)
-    expect(retainedB.map(pane => pane.tabs.map(tab => tab.title))).toEqual([['Files']])
+    retained.b = await paneSnapshot(page)
+    expect(retained.b.map(pane => pane.tabs.map(tab => tab.title))).toEqual([['Files']])
     await close()
     await checkpoint('B closed: independent pane and expanded workspace directory')
 
     await select(original, 'LIGHTHOUSE')
     await expect.poll(() => detailsTrack(page)).toBe(0)
     expect(await panel.getAttribute('data-sidebar-right-panel')).toBe('fullscreen')
-    expect(await paneSnapshot(page)).toEqual(retainedA)
+    expect(await paneSnapshot(page)).toEqual(retained.a)
     await open()
     await expect.poll(() => panel.boundingBox()).toEqual({ x: 0, y: 0, ...viewport })
-    expect(await paneSnapshot(page)).toEqual(retainedA)
+    expect(await paneSnapshot(page)).toEqual(retained.a)
     await checkpoint('A restored: manual fullscreen, tabs, and panes')
     await column.locator('[data-sidebar-right-mode="push"]').click()
     await expect.poll(async () => (await sidebarSnapshot(page)).panelContentWidth, { timeout: 5_000 }).toBe(normalWidth)
@@ -305,16 +337,16 @@ describe.skipIf(MODE === 'record')('web e2e: details panel follows the current S
     await select(seeded, 'DONE')
     await expect.poll(() => detailsTrack(page)).toBe(0)
     expect(await panel.getAttribute('data-sidebar-right-panel')).toBe('push')
-    expect(await paneSnapshot(page)).toEqual(retainedB)
+    expect(await paneSnapshot(page)).toEqual(retained.b)
     await open()
     await expect.poll(() => workspaceDirectory.getAttribute('aria-expanded')).toBe('true')
-    expect(await paneSnapshot(page)).toEqual(retainedB)
+    expect(await paneSnapshot(page)).toEqual(retained.b)
     await checkpoint('B restored: normal mode and Files directory state')
     await close()
-    await select(original, 'LIGHTHOUSE')
+    await select(original, 'LIGHTHOUSE', false)
     await expect.poll(() => columns(page)).toEqual(normalColumns)
     expect(await column.locator('[data-sidebar-right-open]').count()).toBe(1)
-    expect(await paneSnapshot(page)).toEqual(retainedA)
+    expect(await paneSnapshot(page)).toEqual(retained.a)
     await checkpoint('A restored: expanded normal panel')
 
     try {
@@ -324,7 +356,7 @@ describe.skipIf(MODE === 'record')('web e2e: details panel follows the current S
       await dragSidebar(page, 420)
       await expect.poll(() => columns(page)).toEqual([420, 604, 0])
       expect(await column.locator('[data-sidebar-right-open]').count()).toBe(0)
-      expect(await paneSnapshot(page)).toEqual(retainedA)
+      expect(await paneSnapshot(page)).toEqual(retained.a)
       await checkpoint('A capacity-closed: wide left preference protected')
       await page.setViewportSize(viewport)
       await expect.poll(() => columns(page)).toEqual([420, viewport.width - 420, 0])
@@ -342,7 +374,7 @@ describe.skipIf(MODE === 'record')('web e2e: details panel follows the current S
       await expect.poll(() => column.locator('[data-sidebar-right-open]').count()).toBe(0)
       await page.setViewportSize(viewport)
       await expect.poll(() => columns(page)).toEqual([420, viewport.width - 420, 0])
-      expect(await paneSnapshot(page)).toEqual(retainedA)
+      expect(await paneSnapshot(page)).toEqual(retained.a)
       expect(await panel.getAttribute('data-sidebar-right-panel')).toBe('push')
       expect(await column.locator('[data-sidebar-right-open]').count()).toBe(0)
       await checkpoint('A automatic fullscreen exited: widening does not reopen')

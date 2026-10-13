@@ -75,7 +75,7 @@ function lexicalScore(objective: ReadonlySet<string>, content: string): number {
   let intersection = 0
   for (const token of objective) if (candidate.has(token)) intersection += 1
   const union = objective.size + candidate.size - intersection
-  return union === 0 ? 0 : intersection / union
+  return intersection / union
 }
 
 function distancesFromActive(graph: ContextFamilyGraph): ReadonlyMap<string, number> {
@@ -86,20 +86,18 @@ function distancesFromActive(graph: ContextFamilyGraph): ReadonlyMap<string, num
     adjacency.get(edge.target)?.push(edge.source)
   }
   const distance = new Map<string, number>()
-  const queue: string[] = []
+  const queue: Array<{ id: string; distance: number }> = []
   for (const node of graph.nodes) {
     if (!node.sessionIds.includes(graph.activeSessionId)) continue
     distance.set(node.id, 0)
-    queue.push(node.id)
+    queue.push({ id: node.id, distance: 0 })
   }
-  for (let index = 0; index < queue.length; index += 1) {
-    const current = queue[index]
-    if (current === undefined) continue
-    const nextDistance = (distance.get(current) ?? 0) + 1
-    for (const next of adjacency.get(current) ?? []) {
+  for (const current of queue) {
+    const nextDistance = current.distance + 1
+    for (const next of adjacency.get(current.id) ?? []) {
       if (distance.has(next)) continue
       distance.set(next, nextDistance)
-      queue.push(next)
+      queue.push({ id: next, distance: nextDistance })
     }
   }
   return distance
@@ -179,7 +177,7 @@ function planExamples(
  * @returns A graph-ordered packet containing mandatory and ranked candidates only.
  */
 export function buildFastRecommendationInput(request: FastRecommendationRequest): FastRecommendationInput {
-  const graphOrder = new Map(request.graph.nodes.map((node, index) => [node.id, index]))
+  const orderedNodes = request.graph.nodes.map((node, order) => ({ node, order }))
   const included = new Set(request.effectiveIncludedNodeIds)
   const explicit = new Set([...request.explicitIncludedNodeIds, ...request.explicitExcludedNodeIds])
   const reviewableExcluded = new Set(request.reviewableExcludedNodeIds ?? [])
@@ -230,14 +228,15 @@ export function buildFastRecommendationInput(request: FastRecommendationRequest)
 
   const distantActiveLimit = Math.min(FAST_RECOMMENDATION_DISTANT_ACTIVE_LIMIT,
     Math.max(0, FAST_RECOMMENDATION_MAX_NODES - selected.size - FAST_RECOMMENDATION_OFF_PATH_LIMIT))
-  const distantActive = activeNodes
-    .filter(node => !selected.has(node.id) && included.has(node.id))
-    .map(node => ({
+  const distantActive = orderedNodes
+    .filter(({ node }) => node.sessionIds.includes(request.graph.activeSessionId)
+      && !selected.has(node.id) && included.has(node.id))
+    .map(({ node, order }) => ({
       node,
       score: lexicalScore(objectiveTokens, request.contents[node.id] ?? node.preview)
         + personalContextCandidateBonus(request.objective, request.contents[node.id] ?? node.preview,
           request.rankingEdits ?? request.preferenceEdits ?? [], true, node.sourceKind, node.webAction),
-      order: graphOrder.get(node.id) ?? Number.MAX_SAFE_INTEGER,
+      order,
     }))
     .filter(candidate => candidate.score > 0)
     .sort((left, right) => right.score - left.score || right.order - left.order)
@@ -247,14 +246,15 @@ export function buildFastRecommendationInput(request: FastRecommendationRequest)
     if (admitted.size >= distantActiveLimit) break
     const anchorText = request.contents[anchor.node.id] ?? anchor.node.preview
     const anchorTokens = lexicalTokens(anchorText)
-    const later = activeNodes
-      .filter(node => !selected.has(node.id) && included.has(node.id)
+    const later = orderedNodes
+      .filter(({ node, order }) => node.sessionIds.includes(request.graph.activeSessionId)
+        && !selected.has(node.id) && included.has(node.id)
         && !admitted.has(node.id) && node.role === anchor.node.role
-        && (graphOrder.get(node.id) ?? 0) > anchor.order)
-      .map(node => ({
+        && order > anchor.order)
+      .map(({ node, order }) => ({
         node,
         score: lexicalScore(anchorTokens, request.contents[node.id] ?? node.preview),
-        order: graphOrder.get(node.id) ?? Number.MAX_SAFE_INTEGER,
+        order,
       }))
       .filter(candidate => candidate.score >= 0.2)
       .sort((left, right) => right.score - left.score || right.order - left.order)[0]
@@ -267,18 +267,18 @@ export function buildFastRecommendationInput(request: FastRecommendationRequest)
   }
   for (const id of admitted) selected.set(id, 'distant-active-candidate')
 
-  const offPath = request.graph.nodes
-    .filter(node => !node.sessionIds.includes(request.graph.activeSessionId)
+  const offPath = orderedNodes
+    .filter(({ node }) => !node.sessionIds.includes(request.graph.activeSessionId)
       && (node.sourceKind === undefined || node.sourceKind === 'chat'
         || (node.sourceKind === 'web' && node.webAction !== undefined))
       && !selected.has(node.id))
-    .map(node => ({
+    .map(({ node, order }) => ({
       node,
       score: lexicalScore(objectiveTokens, request.contents[node.id] ?? node.preview)
         + personalContextCandidateBonus(request.objective, request.contents[node.id] ?? node.preview,
           request.rankingEdits ?? request.preferenceEdits ?? [], false, node.sourceKind, node.webAction),
       distance: distance.get(node.id) ?? null,
-      order: graphOrder.get(node.id) ?? Number.MAX_SAFE_INTEGER,
+      order,
     }))
     .sort((left, right) => right.score - left.score
       || (left.distance ?? Number.MAX_SAFE_INTEGER) - (right.distance ?? Number.MAX_SAFE_INTEGER)

@@ -143,13 +143,19 @@ export function contextPolicyObservationsFromFamily(
         && event.data.mutations.length === 1) {
         const mutation = event.data.mutations[0]
         const mode = mutation?.mode
-        if (mutation === undefined || (mode !== 'include' && mode !== 'exclude')) continue
+        if (mutation === undefined || (mode !== 'include' && mode !== 'exclude' && mode !== 'natural')
+          || (mode === 'natural' && !nodes.has(mutation.nodeId))) continue
         const targetNodeId = mutation.nodeId
         const sourceKind = sourceKinds.get(targetNodeId)
         const target = nodes.get(targetNodeId)
+        // Natural restores native membership: active material is included again,
+        // while an off-path Include is released. Unknown targets supply no label.
+        const action = mode === 'natural'
+          ? (target?.sessionIds.includes(inspection.meta.id) ? 'include' : 'release')
+          : mode === 'include' ? 'include' : 'release'
         const changedState = stateByPlanRevision.get(event.data.afterPlanRevision)
         observed.push({ sessionId: inspection.meta.id, seq: event.seq,
-          observation: Object.freeze({ action: mode === 'include' ? 'include' : 'release',
+          observation: Object.freeze({ action,
             choice: 'accept', origin: 'manual-action', branchDepth, at: event.time, weight: 1,
             targetNodeId,
             ...(target === undefined ? {} : {

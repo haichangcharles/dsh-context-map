@@ -21,6 +21,10 @@
 - text: "Use only Cordis tools. First call cordis_inspect_self with no arguments. Then call cordis_define with plugin kind \"new\", idPrefix \"snap\", name \"snapshot noop\", purpose \"does nothing, for the snapshot\", code.host exactly \"return { name: \\\"snapshot-noop\\\", apply(ctx) {} }\" and code.client exactly \"return { inject: [\\\"slots\\\"], apply(ctx) { ctx.slots.register({ name: \\\"shell.overlay\\\", id: \\\"snapshot-probe\\\" }, () => React.createElement(\\\"div\\\", { \\\"data-snapshot-probe\\\": \\\"loaded\\\" })) } }\". Read its returned pluginId and packageId, then call cordis_run with those exact IDs and mode \"run\". After the run request returns, reply exactly CORDIS_UI_READY and stop. {{clock}}"
 - button "Copy":
   - img
+- 'button "natural context for Use only Cordis tools. First call cordis_inspect_self with no arguments. Then call cordis_define with plugin kind \"new\", idPrefix \"snap\", name \"snapshot noop\", purpose \"does nothing, for the snapshot\", code.host exactly \"return { name: \\\"sn" [disabled]': Auto
+- 'button "include context for Use only Cordis tools. First call cordis_inspect_self with no arguments. Then call cordis_define with plugin kind \"new\", idPrefix \"snap\", name \"snapshot noop\", purpose \"does nothing, for the snapshot\", code.host exactly \"return { name: \\\"sn"': Use
+- 'button "exclude context for Use only Cordis tools. First call cordis_inspect_self with no arguments. Then call cordis_define with plugin kind \"new\", idPrefix \"snap\", name \"snapshot noop\", purpose \"does nothing, for the snapshot\", code.host exactly \"return { name: \\\"sn"': Skip
+- 'button "Locate Use only Cordis tools. First call cordis_inspect_self with no arguments. Then call cordis_define with plugin kind \"new\", idPrefix \"snap\", name \"snapshot noop\", purpose \"does nothing, for the snapshot\", code.host exactly \"return { name: \\\"sn in Context Map"': Map
 - button "3 tool calls" [expanded]:
   - text: 3 tool calls
   - img
@@ -71,6 +75,10 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for CORDIS_UI_READY" [disabled]: Auto
+- button "include context for CORDIS_UI_READY": Use
+- button "exclude context for CORDIS_UI_READY": Skip
+- button "Locate CORDIS_UI_READY in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - button "Ran for {{duration}}":
@@ -87,6 +95,10 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for The Cordis Plugin is running." [disabled]: Auto
+- button "include context for The Cordis Plugin is running.": Use
+- button "exclude context for The Cordis Plugin is running.": Skip
+- button "Locate The Cordis Plugin is running. in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - button "Ran for {{duration}}":
@@ -95,6 +107,10 @@
 - text: {{clock}} Use only Cordis tools. Call cordis_stop with pluginId "snap-1". After it succeeds, reply exactly CORDIS_UI_DONE and stop. {{clock}}
 - button "Copy":
   - img
+- button "natural context for Use only Cordis tools. Call cordis_stop with pluginId \"snap-1\". After it succeeds, reply exactly CORDIS_UI_DONE and stop." [disabled]: Auto
+- button "include context for Use only Cordis tools. Call cordis_stop with pluginId \"snap-1\". After it succeeds, reply exactly CORDIS_UI_DONE and stop.": Use
+- button "exclude context for Use only Cordis tools. Call cordis_stop with pluginId \"snap-1\". After it succeeds, reply exactly CORDIS_UI_DONE and stop.": Skip
+- button "Locate Use only Cordis tools. Call cordis_stop with pluginId \"snap-1\". After it succeeds, reply exactly CORDIS_UI_DONE and stop. in Context Map": Map
 - button "1 tool call" [expanded]:
   - text: 1 tool call
   - img
@@ -109,6 +125,10 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for CORDIS_UI_DONE" [disabled]: Auto
+- button "include context for CORDIS_UI_DONE": Use
+- button "exclude context for CORDIS_UI_DONE": Skip
+- button "Locate CORDIS_UI_DONE in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - button "Ran for {{duration}}":

@@ -70,6 +70,11 @@ async function ensureSeedOpen(page: Page): Promise<void> {
     await chat.waitFor({ timeout: 15_000 })
   }
   await chat.click()
+  const map = page.getByRole('region', { name: 'Context Map', exact: true })
+  if (await map.count() > 0) {
+    await map.getByRole('button', { name: 'Close Context Map', exact: true }).click()
+    await page.getByRole('button', { name: 'Open right sidebar', exact: true }).waitFor()
+  }
   await page.getByText('FIRST_DONE', { exact: true }).waitFor({ timeout: 15_000 })
   if (await search.inputValue() !== '') {
     await search.fill('')
@@ -409,7 +414,8 @@ describe('web e2e: navigation & panes over a rich seeded session', () => {
     await fileLink.click()
     await expect.poll(() => frame.getAttribute('data-rightbar-collapsed'), { timeout: 5_000 }).toBe(null)
     const column = page.locator('[data-rightbar-col]')
-    await expect.poll(() => column.locator('[data-dockkit-tab-title]').allTextContents(), { timeout: 5_000 }).toEqual(['nav-a.md'])
+    await expect.poll(() => column.locator('[data-dockkit-tab-title]').allTextContents(), { timeout: 5_000 }).toEqual(['Context Map', 'nav-a.md'])
+    expect(await column.locator('[data-textpreview-state="text"]').count()).toBe(1)
     // Put the column back so later cases start from the default frame.
     await column.locator('[data-sidebar-right-toggle]').click()
     await expect.poll(() => frame.getAttribute('data-rightbar-collapsed'), { timeout: 5_000 }).toBe('true')

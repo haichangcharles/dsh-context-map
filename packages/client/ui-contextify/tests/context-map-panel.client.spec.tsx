@@ -12,11 +12,11 @@ import {
 import {
   ContextifyController, type ContextifyControllerSnapshot, type ContextifyTransport,
 } from '../src/client/controller.ts'
-import { stewardTestTranslator } from './test-locale.client.ts'
+import { stewardTestLocale, stewardTestTranslator } from './test-locale.client.ts'
 import { createContextMapStore } from '../src/client/store.ts'
 import { ContextMessageAction } from '../src/client/ContextMessageAction.tsx'
 import {
-  effectiveContextIncluded, intersects, modeForEffectiveContext, reducePositionChanges,
+  effectiveContextIncluded, intersects, effectiveContextMode, reducePositionChanges,
 } from '../src/client/canvas-interactions.ts'
 import { CONTEXT_MAP_RANK_GAP } from '../src/client/layout.ts'
 
@@ -135,6 +135,7 @@ function mount(
   snapshot = fixture(),
   overrides: Partial<ContextMapActions> = {},
   archivedSessionIds: readonly SessionId[] = [],
+  language: 'en' | 'zh' = 'en',
 ) {
   let currentSnapshot = snapshot
   const listeners = new Set<() => void>()
@@ -187,7 +188,9 @@ function mount(
     close: vi.fn(),
     ...overrides,
   }
-  const view = render(
+  const locale = stewardTestLocale(language)
+  const t = locale.bind('contextifySteward')
+  const panel = () => (
     <div style={{ width: 720, height: 680 }}>
       <ContextMapPanel
         useContextify={bindSnapshotSelector(source)}
@@ -195,11 +198,13 @@ function mount(
         useStore={bindSnapshotSelector(store)}
         actions={store.actions}
         mapActions={mapActions}
-        t={stewardTestTranslator()}
+        t={t}
       />
-    </div>,
+    </div>
   )
+  const view = render(panel())
   return {
+    setLanguage: (language: 'en' | 'zh') => { locale.setLocale(language); view.rerender(panel()) },
     view, store, mapActions, snapshot,
     publishSnapshot: (next: ContextifyControllerSnapshot) => {
       currentSnapshot = next
@@ -209,6 +214,31 @@ function mount(
 }
 
 describe('ContextMapPanel', () => {
+  it('updates memoized graph card labels when the language changes without changing the graph', async () => {
+    const h = mount()
+    expect(await screen.findByLabelText('User message: root requirement')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Zoom In' })).toBeTruthy()
+    h.setLanguage('zh')
+    expect(await screen.findByLabelText('用户消息：root requirement')).toBeTruthy()
+    expect(await screen.findByRole('button', { name: '放大' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '缩小' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '适配图视图' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Zoom In' })).toBeNull()
+    expect(screen.queryByLabelText('User message: root requirement')).toBeNull()
+    expect(h.mapActions.setNodeModes).not.toHaveBeenCalled()
+  })
+
+  it('localizes graph controls and ARIA names while preserving conversation text', async () => {
+    const { mapActions } = mount(fixture(), {}, [], 'zh')
+    expect(screen.getByRole('region', { name: 'Context Map' })).toBeTruthy()
+    expect(await screen.findByLabelText('用户消息：root requirement')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '推荐' }))
+    expect(mapActions.recommend).toHaveBeenCalledWith('local')
+    fireEvent.click(screen.getByText('分支（2）· 任务生命周期'))
+    expect(screen.getByRole('button', { name: '暂停 branch follow-up' })).toBeTruthy()
+    expect(screen.getByText('当前分支 · 进行中')).toBeTruthy()
+  })
+
   it('offers Local review by default and reserves model review for explicit modes', () => {
     const { mapActions } = mount()
     fireEvent.click(screen.getByRole('button', { name: 'Recommend' }))
@@ -587,6 +617,67 @@ describe('ContextMapPanel', () => {
     })
   })
 
+  it('does not refocus a searched node when other cards are remeasured', async () => {
+    mount()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search Context Map' }),
+      { target: { value: 'branch follow-up' } })
+    act(() => { flowHarness.onNodesChange?.([{ id: 'child:8', type: 'dimensions',
+      dimensions: { width: 224, height: 116 } }]) })
+    await waitFor(() => { expect(flowHarness.fitView).toHaveBeenCalledWith({
+      nodes: [{ id: 'child:8' }], duration: 220, maxZoom: 1.2,
+    }) })
+    flowHarness.fitView.mockClear()
+    act(() => { flowHarness.onNodesChange?.([{ id: 'root:1', type: 'dimensions',
+      dimensions: { width: 224, height: 350 } }]) })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 360)) })
+    expect(flowHarness.fitView).not.toHaveBeenCalled()
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Search Context Map' }), { key: 'Enter' })
+    await waitFor(() => { expect(flowHarness.fitView).toHaveBeenCalledTimes(1) })
+  })
+
+  it('lets a new search supersede an earlier explicit Map focus', async () => {
+    mount({ ...fixture(), focusedNodeId: 'root:1', focusRevision: 1 })
+    act(() => { flowHarness.onNodesChange?.([
+      { id: 'root:1', type: 'dimensions', dimensions: { width: 224, height: 116 } },
+      { id: 'child:8', type: 'dimensions', dimensions: { width: 224, height: 116 } },
+    ]) })
+    await waitFor(() => { expect(flowHarness.fitView).toHaveBeenCalledWith({
+      nodes: [{ id: 'root:1' }], duration: 220, maxZoom: 1.2,
+    }) })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search Context Map' }),
+      { target: { value: 'branch follow-up' } })
+    await waitFor(() => { expect(flowHarness.fitView).toHaveBeenLastCalledWith({
+      nodes: [{ id: 'child:8' }], duration: 220, maxZoom: 1.2,
+    }) })
+  })
+
+  it('keeps measured cards visible when a fresh graph snapshot replaces controlled nodes', async () => {
+    const h = mount()
+    const card = (await screen.findByLabelText('User message: branch follow-up')).closest('.react-flow__node')
+    act(() => { flowHarness.onNodesChange?.([{ id: 'child:8', type: 'dimensions',
+      dimensions: { width: 224, height: 116 } }]) })
+    await waitFor(() => { expect(card).toHaveProperty('style.visibility', 'visible') })
+    act(() => { h.publishSnapshot({ ...fixture(), graph: { ...fixture().graph!,
+      nodes: fixture().graph!.nodes.map(record => ({ ...record })),
+    } }) })
+    expect(card).toHaveProperty('style.visibility', 'visible')
+  })
+
+  it('waits for the search destination measurement and fits it when its dimensions arrive', async () => {
+    mount()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search Context Map' }),
+      { target: { value: 'branch follow-up' } })
+    act(() => { flowHarness.onNodesChange?.([{ id: 'root:1', type: 'dimensions',
+      dimensions: { width: 224, height: 116 } }]) })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 360)) })
+    expect(flowHarness.fitView).not.toHaveBeenCalled()
+    act(() => { flowHarness.onNodesChange?.([{ id: 'child:8', type: 'dimensions',
+      dimensions: { width: 224, height: 116 } }]) })
+    await waitFor(() => { expect(flowHarness.fitView).toHaveBeenCalledWith({
+      nodes: [{ id: 'child:8' }], duration: 220, maxZoom: 1.2,
+    }) })
+  })
+
   it('fits the first measured graph once without resetting the viewport after refresh remeasurement', async () => {
     const h = mount()
     expect(await screen.findByLabelText('User message: root requirement')).toBeTruthy()
@@ -950,10 +1041,10 @@ describe('canvas interaction rules', () => {
   })
 
   it('removes a manual override when the checkbox returns to its automatic result', () => {
-    expect(modeForEffectiveContext(true, true)).toBe('natural')
-    expect(modeForEffectiveContext(true, false)).toBe('exclude')
-    expect(modeForEffectiveContext(false, false)).toBe('natural')
-    expect(modeForEffectiveContext(false, true)).toBe('include')
+    expect(effectiveContextMode(true, true)).toBe('natural')
+    expect(effectiveContextMode(true, false)).toBe('exclude')
+    expect(effectiveContextMode(false, false)).toBe('natural')
+    expect(effectiveContextMode(false, true)).toBe('include')
   })
 
   it('detects rectangles that overlap at an edge', () => {
@@ -989,6 +1080,7 @@ describe('ContextMessageAction', () => {
     const locate = vi.fn()
     render(
       <ContextMessageAction
+        t={stewardTestTranslator()}
         seq={8}
         useContextify={bindSnapshotSelector({ getSnapshot: () => snapshot, subscribe: () => () => {} })}
         setNodeMode={setNodeMode}

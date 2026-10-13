@@ -17,6 +17,10 @@
 - text: /user-invoke-demo and confirm the fixture wiring {{clock}}
 - button "Copy":
   - img
+- button "natural context for /user-invoke-demo and confirm the fixture wiring" [disabled]: Auto
+- button "include context for /user-invoke-demo and confirm the fixture wiring": Use
+- button "exclude context for /user-invoke-demo and confirm the fixture wiring": Skip
+- button "Locate /user-invoke-demo and confirm the fixture wiring in Context Map": Map
 - button "Thought for a while" [expanded]:
   - text: Thought for a while
   - img

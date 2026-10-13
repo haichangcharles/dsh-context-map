@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-10-14-complete-human-turn-relocation.md
+2026-10-14-complete-human-turn-relocation.md: 7656a244cadd132a61f734e81f4f604d95011c3d
+2026-10-14-complete-human-turn-relocation.zh.md: 19bcd07ce6e7491063103376cd9a6b0b69a69ee7

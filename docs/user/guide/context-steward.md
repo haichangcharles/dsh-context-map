@@ -30,6 +30,8 @@ For example, research the launch date in one branch and draft a community websit
 
 Use **Branch** for a separate task. Use **Move draft here** to transfer the unchanged unsent draft to an existing branch; the operation rejects a changed draft or a destination that already has a draft. The control requires a nonempty unsent draft. **Locate** only inspects a message and supplies no preference label. A route recommendation can separately propose Navigate to an existing branch or Return through native ancestry.
 
+If you add a correction while an answer is running, the completed question/answer pair is not offered for relocation: that would omit your correction. Native Branch and Branch from here still preserve the complete conversation prefix.
+
 <a id="review-agent-advice"></a>
 ## Review Agent advice
 

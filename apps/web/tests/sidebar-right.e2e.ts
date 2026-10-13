@@ -126,13 +126,43 @@ async function ensureExpanded(page: Page, column: Locator): Promise<void> {
   await column.locator('[data-sidebar-right-open]').waitFor({ timeout: 10_000 })
 }
 
+/** Resolve the multi-entry default through the shipped guide's real replacement action. */
+async function chooseFilesFromGuide(root: Locator, language: 'en' | 'zh' = 'en'): Promise<void> {
+  const start = language === 'zh' ? '开始' : 'Start'
+  const files = language === 'zh' ? '文件' : 'Files'
+  await expect.poll(() => tabTitles(root)).toEqual([start])
+  const guide = root.locator('[data-sidebar-right-guide]')
+  await expect.poll(() => guide.locator('[data-sidebar-right-guide-entry]').evaluateAll(entries =>
+    entries.map(entry => entry.getAttribute('data-sidebar-right-guide-entry')).sort())).toEqual(['context-map', 'files'])
+  await expect.poll(() => guide.locator('[data-sidebar-right-guide-entry="context-map"]').innerText())
+    .toBe(language === 'zh'
+      ? 'Context Map\n查看分支并管理对话 Context'
+      : 'Context Map\nInspect branches and control conversation context')
+  await guide.locator('[data-sidebar-right-guide-entry="files"]').click()
+  await expect.poll(() => tabTitles(root)).toEqual([files])
+  await root.locator('[data-files-state="tree"]').waitFor({ state: 'visible' })
+}
+
+/** Observe the settled-session auto-open before closing its last tab through the strip. */
+async function collapseAutoOpenedMap(page: Page): Promise<Locator> {
+  const column = page.locator('[data-rightbar-col]')
+  await expect.poll(() => tabTitles(column), { timeout: 15_000 }).toEqual(['Context Map'])
+  await expect.poll(() => column.locator('[data-sidebar-right-open]').count()).toBe(1)
+  const map = column.locator('[data-dockkit-tab]').filter({ hasText: 'Context Map' })
+  await map.hover()
+  await map.locator('[data-dockkit-tab-close]').click()
+  await expect.poll(() => column.locator('[data-sidebar-right-open]').count()).toBe(0)
+  await expandOf(page).waitFor({ timeout: 15_000 })
+  expect(await page.locator('[class*="frame"]').first().getAttribute('data-rightbar-collapsed')).toBe('true')
+  return column
+}
+
 /** Reload the session's transient sidebar state before an independent gesture case. */
 async function resetSidebar(page: Page): Promise<Locator> {
   await page.reload({ waitUntil: 'load' })
-  const column = page.locator('[data-rightbar-col]')
-  await expandOf(page).waitFor({ timeout: 15_000 })
+  const column = await collapseAutoOpenedMap(page)
   await ensureExpanded(page, column)
-  await expect.poll(async () => await tabTitles(column)).toEqual(['Files'])
+  await chooseFilesFromGuide(column)
   await width(column)
   return column
 }
@@ -323,14 +353,16 @@ describe('web e2e: shipped right Sidebar', () => {
       expect(answered).toBe(true)
     })
 
-    it('starts collapsed behind a header button and squeezes the conversation when opened', async () => {
+    it('opens Context Map on entry and squeezes the conversation when the user reopens the collapsed sidebar', async () => {
       onTestFailed(() => saveFailureShot(page, 'web-e2e-sidebar-right'))
+      await page.reload({ waitUntil: 'load' })
+      await collapseAutoOpenedMap(page)
       const frame = page.locator('[class*="frame"]').first()
       const column = page.locator('[data-rightbar-col]')
       const conversation = page.locator('[class*="centerCol"]').first()
       const expand = expandOf(page)
 
-      // Collapsed default: no track, the panel sits off the frame's edge, and
+      // Closing the auto-opened Map leaves no track; the panel sits off the edge, and
       // the only way in is the header button — on the same row as the other
       // header utilities, at its far right.
       await expand.waitFor({ timeout: 15_000 })
@@ -377,6 +409,8 @@ describe('web e2e: shipped right Sidebar', () => {
       expect(await chrome.count()).toBe(1)
       expect(await chrome.locator('[data-sidebar-right-mode]').count()).toBe(1)
       expect(await chrome.locator('[data-sidebar-right-toggle]').count()).toBe(1)
+
+      await chooseFilesFromGuide(column)
 
       // One centre line across the strip: chip text, split, and the two panel
       // controls all sit at the same height. The add control joins the check below.
@@ -694,7 +728,7 @@ describe('web e2e: shipped right Sidebar', () => {
 
     it('opens content once, splits, and floats it outside the column', async () => {
       onTestFailed(() => saveFailureShot(page, 'web-e2e-sidebar-right-content'))
-      const column = page.locator('[data-rightbar-col]')
+      const column = await resetSidebar(page)
       const panes = column.locator('[data-dockkit-pane]')
       const floats = page.locator('[data-sidebar-right-float-host] [data-dockkit-float]')
 
@@ -754,6 +788,7 @@ describe('web e2e: shipped right Sidebar', () => {
       // Split, then dock-drag: the kit's gestures drive the store's actions.
       await panes.first().locator('[data-dockkit-split-button]').click()
       await expect.poll(async () => await panes.count()).toBe(2)
+      await chooseFilesFromGuide(panes.nth(1))
       await dragTo(
         page,
         column.locator('[data-dockkit-tab]').filter({ hasText: SAMPLE_NAME }).first(),
@@ -802,8 +837,9 @@ describe('web e2e: shipped right Sidebar', () => {
         await settled.click()
         await expect.poll(async () => await settled.getAttribute('aria-selected')).toBe('true')
         const frame = fx.locator('[class*="frame"]').first()
-        const column = fx.locator('[data-rightbar-col]')
+        const column = await collapseAutoOpenedMap(fx)
         await ensureExpanded(fx, column)
+        await chooseFilesFromGuide(column)
         await width(column)
         await fx.getByRole('button', { name: `Open ${SAMPLE_NAME}` }).click()
         await column.locator('[data-textpreview-state="text"]').waitFor({ timeout: 15_000 })
@@ -831,6 +867,12 @@ describe('web e2e: shipped right Sidebar', () => {
 
         await settled.click()
         await expect.poll(async () => await settled.getAttribute('aria-selected')).toBe('true')
+        // Re-entering a settled Session opens Map in the active pane. Closing
+        // that new tab leaves every pre-existing pane, tab and local view intact.
+        await expect.poll(() => tabTitles(column), { timeout: 15_000 }).toEqual([...before.titles, 'Context Map'])
+        const map = column.locator('[data-dockkit-tab]').filter({ hasText: 'Context Map' })
+        await map.hover()
+        await map.locator('[data-dockkit-tab-close]').click()
         await expect.poll(records, { timeout: 15_000 }).toEqual(before)
         expect(await column.locator('[data-sidebar-right-open]').count()).toBe(1)
         expect(await wrap.getAttribute('aria-pressed')).toBe('false')
@@ -870,6 +912,7 @@ describe('web e2e: shipped right Sidebar', () => {
       if (await panes.count() < 2) {
         await first.locator('[data-dockkit-split-button]').click()
         await expect.poll(async () => await panes.count()).toBe(2)
+        await chooseFilesFromGuide(panes.nth(1))
       }
       const moving = first.locator('[data-dockkit-tab]').first()
       const title = await moving.locator('[data-dockkit-tab-title]').innerText()
@@ -966,7 +1009,7 @@ describe('web e2e: shipped right Sidebar', () => {
       // Any other tab standing alone closes together with the column. Open the
       // sample file, close the guide (an ordinary close with two tabs), then
       // close the file: the column collapses in the same gesture, and the
-      // settle rule reseeds the current default, so reopening shows Files.
+      // settle rule reseeds Start; its Files entry replaces the guide in place.
       await page.getByRole('button', { name: `Open ${SAMPLE_NAME}` }).click()
       await expect.poll(async () => await tabTitles(column)).toEqual(['Start', SAMPLE_NAME])
       await column.locator('[data-dockkit-tab]').first().hover()
@@ -976,32 +1019,43 @@ describe('web e2e: shipped right Sidebar', () => {
       await column.locator('[data-dockkit-tab-close]').first().click()
       await expect.poll(async () => await column.locator('[data-sidebar-right-open]').count()).toBe(0)
       await expandOf(page).click()
-      await expect.poll(async () => await tabTitles(column)).toEqual(['Files'])
+      await chooseFilesFromGuide(column)
       expect(await column.locator('[data-files-state="tree"]').count()).toBe(1)
 
       expect(tripwire.pageErrors).toEqual([])
       expect(tripwire.warnings).toEqual([])
     }, 90_000)
 
-    it('§9.7 returns to the default surface after a reload', async () => {
+    it('§9.7 resets transient layout and opens Context Map after a reload', async () => {
       onTestFailed(() => saveFailureShot(page, 'web-e2e-sidebar-right-reload'))
+      const column = await resetSidebar(page)
+      await page.getByRole('button', { name: `Open ${SAMPLE_NAME}` }).click()
+      await column.locator('[data-dockkit-split-button]').first().click()
+      await expect.poll(() => column.locator('[data-dockkit-pane]').count()).toBe(2)
+      await expect.poll(() => tabTitles(column)).toEqual(['Files', SAMPLE_NAME, 'Start'])
       await page.reload({ waitUntil: 'load' })
       await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
       const frame = page.locator('[class*="frame"]').first()
-      const column = page.locator('[data-rightbar-col]')
       await column.waitFor({ state: 'attached', timeout: 15_000 })
-      // The surface is view state, not durable session data: a reload zeroes it
-      // back to the collapsed default. Expected behaviour, not a defect.
-      await expect.poll(async () => await frame.getAttribute('data-rightbar-collapsed')).toBe('true')
-      await expect.poll(async () => await expandOf(page).count()).toBe(1)
-      expect(await column.locator('[data-sidebar-right-open]').count()).toBe(0)
+      // Pane layout is transient. The settled-session plugin opens its single
+      // default Map after remount; previous Files, preview and split are gone.
+      await expect.poll(() => tabTitles(column), { timeout: 15_000 }).toEqual(['Context Map'])
+      await expect.poll(() => frame.getAttribute('data-rightbar-collapsed')).toBe(null)
+      await expect.poll(() => expandOf(page).count()).toBe(0)
+      expect(await column.locator('[data-sidebar-right-open]').count()).toBe(1)
+      expect(await column.locator('[data-dockkit-pane]').count()).toBe(1)
+      expect(await page.locator('[data-sidebar-right-float-host] [data-dockkit-float]').count()).toBe(0)
+      expect(await column.locator('[data-textpreview-state="text"]').count()).toBe(0)
+      expect(tripwire.pageErrors).toEqual([])
+      expect(tripwire.warnings).toEqual([])
     })
 
     it('opens a context menu on right-click that the strip cannot clip', async () => {
       onTestFailed(() => saveFailureShot(page, 'web-e2e-sidebar-right-menu'))
-      const column = page.locator('[data-rightbar-col]')
+      const column = await collapseAutoOpenedMap(page)
 
       await ensureExpanded(page, column)
+      await chooseFilesFromGuide(column)
       await expect.poll(async () => await column.locator('[data-dockkit-tab]').count()).toBeGreaterThan(0)
       await column.locator('[data-dockkit-add-tab]').click()
       await expect.poll(async () => await tabTitles(column)).toEqual(['Files', 'Start'])
@@ -1047,10 +1101,10 @@ describe('web e2e: shipped right Sidebar', () => {
         // no session header and so no expand button. The settled session is the
         // second row of the tree; pick it the way a user would.
         await zhPage.getByRole('treeitem', { name: /Show the right sidebar\./u }).first().click()
-        const column = zhPage.locator('[data-rightbar-col]')
+        const column = await collapseAutoOpenedMap(zhPage)
         await expandOf(zhPage).waitFor({ timeout: 20_000 })
         await expandOf(zhPage).click()
-        await expect.poll(async () => await tabTitles(column)).toEqual(['文件'])
+        await chooseFilesFromGuide(column, 'zh')
         await column.locator('[data-dockkit-add-tab]').click()
 
         const guide = column.locator('[data-sidebar-right-guide]')

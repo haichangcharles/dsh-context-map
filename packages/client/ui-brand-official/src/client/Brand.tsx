@@ -1,18 +1,20 @@
+import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
+import './locales.ts'
 import type { SidebarBrandMarkOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import css from './Brand.module.css'
 
-type OfficialBrandMarkProps = SidebarBrandMarkOwnerProps
+type OfficialBrandMarkProps = SidebarBrandMarkOwnerProps & PropsLocale<'contextMapBrand'>
 
 /**
  * Render the DSH Context Map mark with the presentation requested by its host surface.
  * @param props - Host-supplied mark presentation.
  * @returns the product's conversation-graph mark.
  */
-export function OfficialBrandMark({ size }: OfficialBrandMarkProps) {
+export function OfficialBrandMark({ size, t }: OfficialBrandMarkProps) {
   return (
     <svg
       role="img"
-      aria-label="DSH Context Map"
+      aria-label={t('name')}
       width={size}
       height={size}
       viewBox="0 0 24 24"
@@ -30,6 +32,6 @@ export function OfficialBrandMark({ size }: OfficialBrandMarkProps) {
  * Render the DSH Context Map name without its independently slotted mark.
  * @returns the product name.
  */
-export function OfficialBrandName() {
-  return <span className={css.name}>DSH Context Map</span>
+export function OfficialBrandName({ t }: PropsLocale<'contextMapBrand'>) {
+  return <span className={css.name}>{t('name')}</span>
 }

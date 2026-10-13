@@ -98,6 +98,8 @@ export function projectUnarchivedContextFamily(
       id: session.id,
       ...(parentSessionId === undefined ? {} : { parentSessionId }),
       seedLength: session.seedLength,
+      ...(session.workState === undefined ? {} : { workState: session.workState }),
+      ...(session.workStateSource === undefined ? {} : { workStateSource: session.workStateSource }),
       depth: depthOf(session.id),
       tipNodeId,
     })]
