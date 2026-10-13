@@ -354,6 +354,53 @@ describe('BashTerminalBackend startup rollback', () => {
     await session.close('test complete')
   })
 
+  it('retains owned startup marker evidence while a quiet bridge waits for delayed prompt text', async () => {
+    vi.useFakeTimers()
+    const ctx = new Context()
+    const controller = new AbortController()
+    const output = new PassThrough()
+    const outcome = Promise.withResolvers<{ exitCode: number | null; signal: NodeJS.Signals | null }>()
+    const writes: string[] = []
+    let published = false
+    let created: LocalPtySession | undefined
+    try {
+      await ctx.plugin(EmptySandbox)
+      await ctx.plugin(SessionProjectionRegistry)
+      await ctx.plugin(SandboxPolicyService, { mode: 'danger-full-access', workspaceRoot: '/workspace' })
+      const terminal: SubprocessTerminalHandle = {
+        pid: 123, output, done: outcome.promise,
+        write: async (text) => { writes.push(text) },
+        inspectForeground: async () => ({ processGroupId: 123, inputWaiting: false }),
+        signalForeground: async () => 123,
+        async terminate() { output.end(); outcome.resolve({ exitCode: null, signal: 'SIGTERM' }) },
+      }
+      const backend = new BashTerminalBackend(ctx,
+        { ...config(), shellDialect: 'pwsh', shellPath: 'pwsh', timeoutMs: 500 }, async () => terminal)
+      const spawning = backend.spawn(spec(agent(ctx), controller.signal)).then((session) => {
+        published = true
+        created = session
+      }, () => {})
+      await vi.advanceTimersByTimeAsync(0)
+      expect(writes).toEqual([ENCODING_PREAMBLE + PWSH_PROMPT_SETUP + '\r'])
+      output.write(Buffer.from('\x1b]133;D;0\x07'))
+      await vi.advanceTimersByTimeAsync(100)
+      expect(published).toBe(false)
+      output.write(Buffer.from('dsh> '))
+      await vi.advanceTimersByTimeAsync(20)
+      expect(published).toBe(true)
+      expect(created?.motd).toContain('dsh> ')
+      controller.abort(new Error('test finished'))
+      await spawning
+    } finally {
+      controller.abort(new Error('test finished'))
+      output.end()
+      outcome.resolve({ exitCode: null, signal: 'SIGTERM' })
+      await created?.close('test finished')
+      await ctx.fiber.dispose()
+      vi.useRealTimers()
+    }
+  })
+
   it('bootstraps a pwsh dialect through the prompt function and scrubs bash-only env', async () => {
     const ctx = new Context()
     await ctx.plugin(EmptySandbox)
@@ -363,6 +410,7 @@ describe('BashTerminalBackend startup rollback', () => {
     let sent: TerminalSendRequest | undefined
     const session = {
       motd: '',
+      controlledPromptReady: true,
       startSend: (request: TerminalSendRequest) => {
         sent = request
         return {
@@ -392,7 +440,12 @@ describe('BashTerminalBackend startup rollback', () => {
     expect(spawned?.env?.PROMPT_COMMAND).toBeUndefined()
   })
 
-  it('keeps waiting for stdin_read when the first settled output only echoes the prompt literal', async () => {
+  it.each([
+    ["function prompt { 'dsh> ' }\n", 'inferred_idle'],
+    ['', 'inferred_idle'],
+    ['', 'stdin_read'],
+    ['PS startup> ', 'stdin_read'],
+  ] as const)('keeps waiting for its controlled prompt after startup output %j (%s)', async (initialViewport, initialReason) => {
     const ctx = new Context()
     await ctx.plugin(EmptySandbox)
     await ctx.plugin(SessionProjectionRegistry)
@@ -400,13 +453,14 @@ describe('BashTerminalBackend startup rollback', () => {
     const sends: TerminalSendRequest[] = []
     const session = {
       motd: '',
+      get controlledPromptReady() { return sends.length > 1 },
       startSend: (request: TerminalSendRequest) => {
         sends.push(request)
         const second = sends.length > 1
         return {
           done: Promise.resolve({
-            viewport: second ? 'dsh> ' : "function prompt { 'dsh> ' }\n",
-            waitReason: second ? 'stdin_read' as const : 'inferred_idle' as const,
+            viewport: second ? 'dsh> ' : initialViewport,
+            waitReason: second ? 'stdin_read' as const : initialReason,
             sessionStatus: { kind: 'running' as const }, truncated: false,
           }),
           readOutput: () => ({ delta: '', truncated: false }),
@@ -513,6 +567,7 @@ describe('BashTerminalBackend startup rollback', () => {
     const sends: TerminalSendRequest[] = []
     const session = {
       motd: '',
+      controlledPromptReady: true,
       startSend: (request: TerminalSendRequest) => {
         sends.push(request)
         return {

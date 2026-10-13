@@ -14,6 +14,8 @@ Status: implemented
 
 [Bubblewrap 准备脚本](../../../../scripts/prepare-ci-bubblewrap.sh)通过已认证的 APT 索引把当前发行版软件包下载到运行器的私有目录，不执行系统包事务就解包，并且只在功能性隔离探测通过后公布二进制路径。私有索引目录避免并行 job 共享锁；更新钩子通过[APT 文档规定的指令](https://manpages.ubuntu.com/manpages/jammy/man5/apt.conf.5.html)清除，避免获取索引时写入全局缓存。运行器清理负责解包后的二进制；脚本清理负责移除获取阶段的元数据。
 
+默认关闭的 `runtime_diagnostics` dispatch 输入在 Linux 与 Windows 上选择原生生命周期、提示符与投影缓存测试，并清空所有提供方凭证。此类选定的插桩运行不代表完整覆盖率。普通事件仍运行完整回放 job 与仓库覆盖率检查；只有显式诊断 dispatch 才省略完整回放。
+
 ## 考虑过的替代方案
 
 **每次 push 后取消付费运行。** 取消会与设置和模型执行竞态，并且需要持续监控。触发器与凭证检查在自动模型调用开始前就阻止它们。

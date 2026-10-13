@@ -228,6 +228,14 @@ export class LocalPtySession implements TerminalBackendSession {
   }
 
   /**
+   * Whether the current send observed the owned OSC marker and exact printable prompt.
+   * @returns True only after both parts of the controlled prompt have arrived.
+   */
+  get controlledPromptReady(): boolean {
+    return this.promptSeen && this.promptTextSeen
+  }
+
+  /**
    * Capture startup output through the same readiness contract as later sends.
    * @param signal - optional cancellation while the shell reaches its first prompt.
    * @returns Resolves after startup readiness; rejects on exit or readiness timeout.
@@ -248,7 +256,13 @@ export class LocalPtySession implements TerminalBackendSession {
     }
   }
 
-  startSend(request: TerminalSendRequest): TerminalSendOperation {
+  /**
+   * Start input or continue observing one startup readiness boundary.
+   * @param request - Input and submission intent for the tracked operation.
+   * @param preserveReadiness - Retain prompt evidence across an empty startup observation.
+   * @returns The tracked send operation.
+   */
+  startSend(request: TerminalSendRequest, preserveReadiness = false): TerminalSendOperation {
     if (this.closing) throw new Error('PTY session is closing')
     if (this.statusValue.kind === 'exited') throw new Error('PTY session has exited')
     if (this.active !== undefined) {
@@ -267,7 +281,8 @@ export class LocalPtySession implements TerminalBackendSession {
       () => { this.interrupt(operation) },
     )
     this.active = operation
-    this.resetReadinessEvidence()
+    const observing = preserveReadiness && request.text.length === 0 && !request.submit
+    if (!observing) this.resetReadinessEvidence()
 
     if (request.signal !== undefined) {
       const onAbort = (): void => { operation.cancel() }

@@ -240,6 +240,14 @@ describe('web e2e: message IconActions and clocks on settled history', () => {
       expect(scaffold.ctx.agents.list().every(agent => agent.status !== 'running')).toBe(true)
     } finally {
       await input.fill('')
+      // fill() acknowledges the DOM gesture before the editor/controller may
+      // publish the empty draft. This shared-page test must settle that state
+      // before the following strict transcript/composer snapshot.
+      await expect.poll(() => input.textContent(), { timeout: 10_000 }).toBe('')
+      await expect.poll(() => page.getByRole('button', { name: 'Review context for draft', exact: true }).count(),
+        { timeout: 10_000 }).toBe(0)
+      await expect.poll(() => page.getByRole('button', { name: 'Send message', exact: true }).isDisabled(),
+        { timeout: 10_000 }).toBe(true)
     }
   })
 

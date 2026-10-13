@@ -8,9 +8,9 @@
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { afterAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, describe, expect, it, onTestFailed, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import type { ShellRunResult, CollectedOutput } from '@deepseek-ai/dsh-shell'
+import type { ShellRunResult, CollectedOutput, ShellProcess } from '@deepseek-ai/dsh-shell'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { SANDBOX_UNAVAILABLE, SandboxProvider, SandboxUnavailableError } from '@deepseek-ai/dsh-sandbox'
 import type { ConfinedArgv, SandboxExecutionPolicy, SandboxMode, SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
@@ -660,9 +660,47 @@ describe('background sandbox facts', () => {
   })
 
   it('disposal kills wrapped background jobs (inherited HMR safety)', async () => {
+    const startedAt = performance.now()
+    const stages: { event: string; elapsedMs: number }[] = []
+    const mark = (event: string): void => {
+      stages.push({ event, elapsedMs: Math.round(performance.now() - startedAt) })
+    }
+    const state: { context?: Context; task?: ShellProcess } = {}
+    onTestFailed(() => {
+      // Fixed stage names and states only; never print command or environment data.
+      console.error(JSON.stringify({ diagnostic: 'sandbox-immediate-disposal', stages,
+        rootFiberState: state.context?.fiber.state, processStatus: state.task?.status }))
+    })
+    mark('setup:start')
     const { ctx, bash } = await setup()
+    state.context = ctx
+    mark('setup:ready')
+    const spawn = ctx.subprocess.spawn.bind(ctx.subprocess)
+    vi.spyOn(ctx.subprocess, 'spawn').mockImplementation((spec) => {
+      mark('spawn:start')
+      const handle = spawn(spec)
+      mark('spawn:returned')
+      const terminate = handle.terminate.bind(handle)
+      const waitForExit = handle.waitForExit.bind(handle)
+      vi.spyOn(handle, 'terminate').mockImplementation(() => {
+        mark('terminate:start')
+        try { terminate() } finally { mark('terminate:return') }
+      })
+      vi.spyOn(handle, 'waitForExit').mockImplementation((signal) => {
+        mark('range-wait:start')
+        const waiting = waitForExit(signal)
+        void waiting.then(() => { mark('range-wait:resolved') }, () => { mark('range-wait:rejected') })
+        return waiting
+      })
+      void handle.done.then(() => { mark('direct-done:resolved') }, () => { mark('direct-done:rejected') })
+      return handle
+    })
     const task = bash.start(bash.resolve({ command: 'sleep 30' }))
+    state.task = task
+    mark('shell-start:returned')
+    mark('root-dispose:start')
     await ctx.fiber.dispose()
+    mark('root-dispose:resolved')
     expect(task.status).toBe('killed')
   })
 })

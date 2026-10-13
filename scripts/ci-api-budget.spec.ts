@@ -11,10 +11,10 @@ interface Workflow { on: Record<string, unknown>; jobs: Record<string, Job> }
 function workflow(name: string): Workflow {
   return load(readFileSync(resolve(root, '.github/workflows', name), 'utf8')) as Workflow
 }
-function permits(expression: string | undefined, event: string, realApi: boolean): boolean {
+function permits(expression: string | undefined, event: string, realApi: boolean, runtimeDiagnostics = false): boolean {
   if (expression === undefined) return true
   return runInNewContext(expression.trim().replace(/^\$\{\{|\}\}$/g, ''), {
-    github: { event_name: event }, inputs: { real_api: realApi }, runner: { os: 'Linux' },
+    github: { event_name: event }, inputs: { real_api: realApi, runtime_diagnostics: runtimeDiagnostics }, runner: { os: 'Linux' },
   }, { timeout: 1000 }) as boolean
 }
 function assertManualCostOnly(condition: string | undefined): void {
@@ -34,7 +34,13 @@ describe('CI model API budget', () => {
       real_api: { type: 'boolean', default: false },
     })
     const keyless = e2e.jobs.e2e!
-    expect(keyless.if).toBeUndefined()
+    for (const event of ['pull_request', 'push']) {
+      for (const diagnostics of [false, true]) {
+        expect(permits(keyless.if, event, false, diagnostics)).toBe(true)
+      }
+    }
+    expect(permits(keyless.if, 'workflow_dispatch', false)).toBe(true)
+    expect(permits(keyless.if, 'workflow_dispatch', false, true)).toBe(false)
     expect(JSON.stringify(keyless)).not.toContain('secrets.')
     expect(keyless.steps).toContainEqual(expect.objectContaining({ env: { DSH_SNAPSHOT: 'replay' }, run: 'pnpm run test:snapshot' }))
     expect(keyless.steps).toContainEqual(expect.objectContaining({
@@ -42,6 +48,27 @@ describe('CI model API budget', () => {
     }))
     assertManualCostOnly(e2e.jobs['real-api']?.if)
     assertManualCostOnly(e2e.jobs['python-real-api']?.if)
+  })
+
+  it('isolates explicit native diagnostics from ordinary replay and all provider credentials', () => {
+    const e2e = workflow('e2e.yml')
+    expect((e2e.on.workflow_dispatch as { inputs: unknown }).inputs).toMatchObject({
+      runtime_diagnostics: { type: 'boolean', default: false },
+    })
+    const diagnostic = e2e.jobs['runtime-diagnostics']!
+    for (const event of ['pull_request', 'push', 'workflow_call', 'schedule']) {
+      expect(permits(diagnostic.if, event, false, true)).toBe(false)
+    }
+    expect(permits(diagnostic.if, 'workflow_dispatch', false)).toBe(false)
+    expect(permits(diagnostic.if, 'workflow_dispatch', false, true)).toBe(true)
+    expect(JSON.stringify(diagnostic)).not.toContain('secrets.')
+    expect(diagnostic).toMatchObject({
+      env: { DEEPSEEK_API_KEY: '', SILICONFLOW_API_KEY: '', OPENAI_API_KEY: '', TYPESAFE_API_KEY: '', JEV_API_KEY: '' },
+    })
+    const selected = diagnostic.steps!.find(step => step.run?.includes('--testTimeout=90000 --coverage'))
+    expect(selected?.env).toEqual({ DSH_COVERAGE_PARTITION_MODE: '1' })
+    expect(diagnostic.steps!.some(step => step.run?.includes('tests/sandbox.spec.ts'))).toBe(true)
+    expect(diagnostic.steps!.some(step => step.run?.includes('tests/local.spec.ts'))).toBe(true)
   })
 
   it('never passes a model credential or opt-in into automatic Python runtime CI', () => {

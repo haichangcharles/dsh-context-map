@@ -14,6 +14,8 @@ Automatic model API validation spends money on every eligible PR or push. Instal
 
 [Bubblewrap preparation](../../../../scripts/prepare-ci-bubblewrap.sh) downloads the current distribution package using authenticated APT indices into a private runner directory, extracts it without a system package transaction, and publishes its binary only after a functional confinement probe. Private index directories avoid locks shared by simultaneous jobs; update hooks are cleared with the [documented APT directive](https://manpages.ubuntu.com/manpages/jammy/man5/apt.conf.5.html) so index acquisition does not write global caches. Runner cleanup owns the extracted binary; script cleanup removes acquisition metadata.
 
+The default-false `runtime_diagnostics` dispatch input selects native lifecycle, prompt, and projection-cache tests on Linux and Windows with every provider credential cleared. That selected, instrumented run does not represent exhaustive coverage. Ordinary events still run the complete replay job and repository coverage lanes; only an explicit diagnostic dispatch omits full replay.
+
 ## Alternatives considered
 
 **Cancel each paid run after push.** Cancellation races setup and model execution and requires continuous monitoring. The trigger and credential guards prevent automatic model calls before they start.

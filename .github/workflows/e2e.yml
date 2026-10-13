@@ -10,6 +10,11 @@ on:
         type: boolean
         required: false
         default: false
+      runtime_diagnostics:
+        description: Run only keyless native lifecycle and prompt diagnostics
+        type: boolean
+        required: false
+        default: false
   push:
     branches: [main, master]
   pull_request:
@@ -26,6 +31,7 @@ env:
 
 jobs:
   e2e:
+    if: github.event_name != 'workflow_dispatch' || !inputs.runtime_diagnostics
     runs-on: ubuntu-latest
     name: e2e
     timeout-minutes: 45
@@ -56,6 +62,59 @@ jobs:
         env:
           DSH_SNAPSHOT: replay
         run: pnpm run test:web:built
+
+  runtime-diagnostics:
+    if: github.event_name == 'workflow_dispatch' && inputs.runtime_diagnostics
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    name: keyless native runtime diagnostics / ${{ matrix.os }}
+    timeout-minutes: 10
+    env:
+      DEEPSEEK_API_KEY: ''
+      SILICONFLOW_API_KEY: ''
+      OPENAI_API_KEY: ''
+      TYPESAFE_API_KEY: ''
+      JEV_API_KEY: ''
+      DSH_COVERAGE_MAX_WORKERS: '2'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Enable Windows symlink support
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: >-
+          reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
+          /t REG_DWORD /f /v "AllowDevelopmentWithoutDevLicense" /d "1"
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install immutable dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Prepare Linux native sandbox
+        if: runner.os == 'Linux'
+        run: bash scripts/prepare-ci-bubblewrap.sh
+      - name: Build host native addon
+        run: pnpm run build:native-system
+      - name: Diagnose native lifecycle and owned-prompt readiness
+        # This is a selected, instrumented diagnostic, not the repository
+        # coverage verdict. The ordinary exhaustive lane stays unchanged.
+        env:
+          DSH_COVERAGE_PARTITION_MODE: '1'
+        run: >-
+          pnpm exec vitest run
+          packages/shell/bash-sandbox/tests/sandbox.spec.ts
+          packages/terminal/terminal-bash/tests/local.spec.ts
+          packages/session/session-projection-cache/tests/fixtures.spec.ts
+          --testNamePattern='disposal kills wrapped background jobs|bootstraps a persistent pwsh|archived version recovery'
+          --testTimeout=90000 --coverage
+          --coverage.include='packages/subprocess/subprocess-local/src/**'
+          --coverage.reportsDirectory=coverage/runtime-diagnostics
 
   real-api:
     if: github.event_name == 'workflow_dispatch' && inputs.real_api

@@ -16,7 +16,7 @@ import {
   assertFixtureInventory, captureExpandedTurnProcessAria, captureStableAria, compareOrRefreshGolden,
   launchWebScaffold, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, newEnglishPage, restoreFullWidthChat, saveFailureShot } from './support.ts'
+import { connectFreshWorkspace, newEnglishPage, restoreFullWidthChat, saveFailureShot, waitForMessageContextControls } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/queue-actions', import.meta.url))
 const FIXTURE = fileURLToPath(new URL('../../../snapshots/web/live-interactions/session.v3.jsonl', import.meta.url))
@@ -105,6 +105,10 @@ describe('web e2e: queue row actions', () => {
     await input.fill(ACTIVE_PROMPT)
     await input.press('Enter')
     await expect.poll(() => existsSync(readyFile), { timeout: 15_000 }).toBe(true)
+    // Native user admission precedes asynchronous graph publication. Wait before
+    // parking the prompt response and observing Sending/Queue snapshots, whose
+    // strict goldens include the active user's four Context actions.
+    await waitForMessageContextControls(page, 1)
     await restoreFullWidthChat(page)
 
     const admitted = page.waitForResponse('**/api/session/prompt')

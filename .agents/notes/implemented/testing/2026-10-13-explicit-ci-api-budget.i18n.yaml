@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/testing/2026-10-13-explicit-ci-api-budget.md
-2026-10-13-explicit-ci-api-budget.md: c65e9c897a7e8aa06e4557b4ad2a7b8a65b34cde
-2026-10-13-explicit-ci-api-budget.zh.md: be68be9085fb318c0ef52a685bde067a8913c09f
+2026-10-13-explicit-ci-api-budget.md: a12826a4314780706bc50b69a48df3811397a857
+2026-10-13-explicit-ci-api-budget.zh.md: c309ad486c2ca671cdecb43cc6cb256ba9e3d88d
