@@ -1506,23 +1506,39 @@ export function taskkillArgs(rootPid: number, descendants: number[]): string[][]
   return [rootPid, ...descendants].map(pid => ['/PID', String(pid), '/T', '/F'])
 }
 
-/** Breadth-first walk of the pid/ppid rows starting at `root`. */
-function collectDescendants(root: number, rows: Array<[number, number]>): number[] {
+/**
+ * Collect each reachable descendant once in process-table breadth-first order.
+ * A process-table snapshot may contain duplicate rows or PID back-edges; neither
+ * may rediscover the root or grow the walk beyond its unique observed PIDs.
+ * @param root - Direct child whose descendants are wanted; excluded from the result.
+ * @param rows - Observed PID/parent-PID pairs, retained in their original order.
+ * @returns Unique reachable descendant PIDs, without mutating the input table.
+ */
+export function collectDescendants(root: number, rows: Array<[number, number]>): number[] {
   const byParent = new Map<number, number[]>()
   for (const [pid, ppid] of rows) {
     const children = byParent.get(ppid) ?? []
     children.push(pid)
     byParent.set(ppid, children)
   }
-  const result: number[] = []
-  const queue = byParent.get(root) ?? []
+  // Own the queue instead of aliasing the root's adjacency list. Mark before
+  // enqueue so cycles and duplicate parents cannot grow even the pending list.
+  const queue: number[] = []
+  const seen = new Set([root])
+  const enqueue = (pid: number): void => {
+    if (seen.has(pid)) return
+    seen.add(pid)
+    queue.push(pid)
+  }
+  for (const pid of byParent.get(root) ?? []) enqueue(pid)
   for (let index = 0; index < queue.length; index += 1) {
     const pid = queue[index]
     if (pid === undefined) continue
-    result.push(pid)
-    queue.push(...(byParent.get(pid) ?? []))
+    // Append individually: a wide ordinary tree must not hit the engine's
+    // function-argument limit through Array.push(...children).
+    for (const child of byParent.get(pid) ?? []) enqueue(child)
   }
-  return result
+  return queue
 }
 
 /**
