@@ -46,7 +46,7 @@ kind: "package-reference"
 
 ### 运行终端会话
 
-`spawnTerminal` 分配真实 PTY 并桥接 UTF-8 文本；你可以检查当前前台进程组并向其发送信号，还可以等待一次 `terminate()` 操作。在受支持的 Linux 宿主上，原始终端 argv 直接在 user-systemd scope 内运行；node-pty PID、会话 leader、控制终端、前台 `inputWaiting` 与就绪状态保持不变，而 scope 会拥有已重新设定父进程或调用 `setsid` 的后代。在 fallback 宿主上，清理会保留根进程树和可观察会话中的精确身份，但无法重新发现每个已经逃逸的后代。Linux 的精确输入等待要求前台线程的 fd 0 标识 shell 的控制终端，且线程当前的 syscall 正在等待该 fd；如果内核拒绝 syscall 探测，上层 PTY 后端会改用空闲推断。在 Windows 上，SIGINT 以 Ctrl-C 输入写入投递，SIGTSTP 与 SIGHUP 不受支持，拆卸会通过进程表验证 shell 已终止，因为被外部终止的 shell 可能永远不会触发 PTY 退出通知。
+`spawnTerminal` 分配真实 PTY 并桥接 UTF-8 文本；你可以检查当前前台进程组并向其发送信号，还可以等待一次 `terminate()` 操作。在受支持的 Linux 宿主上，原始终端 argv 直接在 user-systemd scope 内运行；node-pty PID、会话 leader、控制终端、前台 `inputWaiting` 与就绪状态保持不变，而 scope 会拥有已重新设定父进程或调用 `setsid` 的后代。在 fallback 宿主上，清理会保留根进程树和可观察会话中的精确身份，但无法重新发现每个已经逃逸的后代。Linux 的精确输入等待要求前台线程的 fd 0 标识 shell 的控制终端，且线程当前的 syscall 正在等待该 fd；前台事实根据真实 inspector 与 syscall ABI 声明 `stdinWaitSupported`：受支持 Linux ABI 为 true，不支持的 ABI、macOS 与 Windows 为 false。暂时被拒绝的 syscall 探测只让 `inputWaiting` 为 false，不改变能力。普通发送保留空闲推断；PowerShell 初始启动在能力为 true 或未知时要求精确正向证据。在 Windows 上，SIGINT 以 Ctrl-C 输入写入投递，SIGTSTP 与 SIGHUP 不受支持，拆卸会通过进程表验证 shell 已终止，因为被外部终止的 shell 可能永远不会触发 PTY 退出通知。
 
 ### 关闭行为
 

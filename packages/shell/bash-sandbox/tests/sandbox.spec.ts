@@ -725,57 +725,67 @@ describe('background sandbox facts', () => {
     expect(task.sandbox).toEqual({ mode: 'read-only', denied: false, enforcement: 'full' })
   })
 
-  it('disposal kills wrapped background jobs (inherited HMR safety)', async () => {
-    const startedAt = performance.now()
-    nativeTrace.events = []
-    nativeTrace.startedAt = startedAt
-    onTestFinished(() => { nativeTrace.active = false })
-    const stages: { event: string; elapsedMs: number }[] = []
-    const mark = (event: string): void => {
-      stages.push({ event, elapsedMs: Math.round(performance.now() - startedAt) })
-    }
-    const state: { context?: Context; task?: ShellProcess; fallbackWarning?: () => boolean } = {}
-    onTestFailed(() => {
-      // Fixed stage names and states only; never print command or environment data.
-      console.error(JSON.stringify({ diagnostic: 'sandbox-immediate-disposal', stages,
-        rootFiberState: state.context?.fiber.state, processStatus: state.task?.status,
-        fallback: state.fallbackWarning?.(), native: nativeTrace.events }))
-      nativeTrace.active = false
-    })
-    mark('setup:start')
-    const { ctx, bash } = await setup()
-    state.context = ctx
-    const fallbackWarning = vi.spyOn(ctx.logger, 'warn')
-    state.fallbackWarning = () => fallbackWarning.mock.calls.some(([message]) =>
-      String(message).startsWith('subprocess-local is using weaker process-tree containment'))
-    mark('setup:ready')
-    nativeTrace.active = true
-    const spawn = ctx.subprocess.spawn.bind(ctx.subprocess)
-    vi.spyOn(ctx.subprocess, 'spawn').mockImplementation((spec) => {
-      mark('spawn:start')
-      const handle = spawn(spec)
-      mark('spawn:returned')
-      const terminate = handle.terminate.bind(handle)
-      const waitForExit = handle.waitForExit.bind(handle)
-      vi.spyOn(handle, 'terminate').mockImplementation(() => {
-        mark('terminate:start')
-        try { terminate() } finally { mark('terminate:return') }
+  const runtimeDiagnostics = process.env['DSH_RUNTIME_DIAGNOSTICS'] === '1'
+  // Independent bounded trials are diagnostic samples, never retries of a failed assertion.
+  for (const trial of runtimeDiagnostics ? [1, 2, 3] : [1]) {
+    it(`disposal kills wrapped background jobs (inherited HMR safety)${trial === 1 ? '' : ` [trial ${String(trial)}]`}`, async () => {
+      const startedAt = performance.now()
+      nativeTrace.events = []
+      nativeTrace.startedAt = startedAt
+      const stages: { event: string; elapsedMs: number }[] = []
+      const mark = (event: string): void => {
+        stages.push({ event, elapsedMs: Math.round(performance.now() - startedAt) })
+      }
+      const state: { context?: Context; task?: ShellProcess; fallbackWarning?: () => boolean; reported: boolean } = { reported: false }
+      const report = (): void => {
+        if (state.reported) return
+        state.reported = true
+        // Fixed stage names and states only; never print command or environment data.
+        process.stderr.write(`${JSON.stringify({ diagnostic: 'sandbox-immediate-disposal', trial, stages,
+          rootFiberState: state.context?.fiber.state, processStatus: state.task?.status,
+          fallback: state.fallbackWarning?.(), native: nativeTrace.events })}\n`)
+      }
+      onTestFailed(() => { report(); nativeTrace.active = false })
+      onTestFinished(() => {
+        if (runtimeDiagnostics) report()
+        nativeTrace.active = false
       })
-      vi.spyOn(handle, 'waitForExit').mockImplementation((signal) => {
-        mark('range-wait:start')
-        const waiting = waitForExit(signal)
-        void waiting.then(() => { mark('range-wait:resolved') }, () => { mark('range-wait:rejected') })
-        return waiting
+      mark('setup:start')
+      const { ctx, bash } = await setup()
+      state.context = ctx
+      const fallbackWarning = vi.spyOn(ctx.logger, 'warn')
+      state.fallbackWarning = () => fallbackWarning.mock.calls.some(([message]) =>
+        String(message).startsWith('subprocess-local is using weaker process-tree containment'))
+      mark('setup:ready')
+      nativeTrace.active = true
+      const spawn = ctx.subprocess.spawn.bind(ctx.subprocess)
+      vi.spyOn(ctx.subprocess, 'spawn').mockImplementation((spec) => {
+        mark('spawn:start')
+        const handle = spawn(spec)
+        mark('spawn:returned')
+        const terminate = handle.terminate.bind(handle)
+        const waitForExit = handle.waitForExit.bind(handle)
+        vi.spyOn(handle, 'terminate').mockImplementation(() => {
+          mark('terminate:start')
+          try { terminate() } finally { mark('terminate:return') }
+        })
+        vi.spyOn(handle, 'waitForExit').mockImplementation((signal) => {
+          mark('range-wait:start')
+          const waiting = waitForExit(signal)
+          void waiting.then(() => { mark('range-wait:resolved') }, () => { mark('range-wait:rejected') })
+          return waiting
+        })
+        void handle.done.then(() => { mark('direct-done:resolved') }, () => { mark('direct-done:rejected') })
+        return handle
       })
-      void handle.done.then(() => { mark('direct-done:resolved') }, () => { mark('direct-done:rejected') })
-      return handle
+      const task = bash.start(bash.resolve({ command: 'sleep 30' }))
+      state.task = task
+      mark('shell-start:returned')
+      mark('root-dispose:start')
+      await ctx.fiber.dispose()
+      mark('root-dispose:resolved')
+      expect(task.status).toBe('killed')
+      if (runtimeDiagnostics) report()
     })
-    const task = bash.start(bash.resolve({ command: 'sleep 30' }))
-    state.task = task
-    mark('shell-start:returned')
-    mark('root-dispose:start')
-    await ctx.fiber.dispose()
-    mark('root-dispose:resolved')
-    expect(task.status).toBe('killed')
-  })
+  }
 })

@@ -54,6 +54,8 @@ export interface ProcessSnapshot {
 
 /** Injectable OS process operations used by one local PTY session. */
 export interface ProcessInspector {
+  /** Whether exact stdin-wait inspection is supported; omitted for unknown providers. */
+  readonly stdinWaitSupported?: boolean
   foregroundPgid(shellPid: number): number | undefined
   /**
    * Report whether the foreground group waits on the terminal shell's stdin.
@@ -425,6 +427,8 @@ function processTree(entries: ProcessTreeEntry[], rootPid: number): ProcessIdent
 }
 
 class LinuxProcessInspector extends PosixProcessInspector {
+  get stdinWaitSupported(): boolean { return linuxSyscallTables(this.arch) !== undefined }
+
   constructor(
     private readonly arch: NodeJS.Architecture,
     internals: ProcessInspectorInternals,
@@ -494,6 +498,8 @@ function macProcessTable(internals: ProcessInspectorInternals): ProcessRow[] {
 }
 
 class MacProcessInspector extends PosixProcessInspector {
+  readonly stdinWaitSupported = false
+
   foregroundPgid(shellPid: number): number | undefined {
     try {
       const value = Number(this.internals.exec('/bin/ps', ['-o', 'tpgid=', '-p', String(shellPid)]).trim())

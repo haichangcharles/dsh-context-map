@@ -187,6 +187,7 @@ export class LocalPtySession implements TerminalBackendSession {
   private promptTail = ''
   private shellPgid: number | undefined
   private initializing = false
+  private requireStartupStdinRead = false
   private lastOutputAt = Date.now()
   private closing = false
   private closePromise: Promise<void> | undefined
@@ -238,10 +239,12 @@ export class LocalPtySession implements TerminalBackendSession {
   /**
    * Capture startup output through the same readiness contract as later sends.
    * @param signal - optional cancellation while the shell reaches its first prompt.
+   * @param requireStdinRead - Require exact initial readiness unless the provider explicitly lacks stdin-wait support.
    * @returns Resolves after startup readiness; rejects on exit or readiness timeout.
    */
-  async initialize(signal?: AbortSignal): Promise<void> {
+  async initialize(signal?: AbortSignal, requireStdinRead = false): Promise<void> {
     this.initializing = true
+    this.requireStartupStdinRead = requireStdinRead
     try {
       const operation = this.startSend({ text: '', submit: false, ...signal !== undefined ? { signal } : {} })
       const result = await operation.done
@@ -252,6 +255,7 @@ export class LocalPtySession implements TerminalBackendSession {
       signal?.throwIfAborted()
       throw error
     } finally {
+      this.requireStartupStdinRead = false
       this.initializing = false
     }
   }
@@ -325,8 +329,9 @@ export class LocalPtySession implements TerminalBackendSession {
     }
     try {
       if (this.active !== operation || this.closing || this.interrupting === operation) return
-      operation.setInitialForeground(foreground)
       const input = `${request.text}${request.submit ? '\r' : ''}`
+      // Observing without input does not require departure from the already-owned stdin wait.
+      operation.setInitialForeground(input.length === 0 ? undefined : foreground)
       if (input.length > 0 && !operation.cancelRequested) {
         this.resetReadinessEvidence()
         const write = this.terminal.write(input)
@@ -522,7 +527,8 @@ export class LocalPtySession implements TerminalBackendSession {
       // on waiting for shell ownership instead of letting a child marker suppress
       // readiness until the absolute timeout.
       const handoffGrace = this.promptSeen ? this.config.handoffGraceMs : 0
-      if (startupHasOutput && idleFor >= this.config.idleSilenceMs + handoffGrace) {
+      const allowsStartupSilence = !this.requireStartupStdinRead || foreground?.stdinWaitSupported === false
+      if (allowsStartupSilence && startupHasOutput && idleFor >= this.config.idleSilenceMs + handoffGrace) {
         this.settleActive('inferred_idle')
       }
     } catch (error: unknown) {

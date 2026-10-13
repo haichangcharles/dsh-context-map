@@ -79,6 +79,7 @@ jobs:
       TYPESAFE_API_KEY: ''
       JEV_API_KEY: ''
       DSH_COVERAGE_MAX_WORKERS: '2'
+      DSH_RUNTIME_DIAGNOSTICS: '1'
     steps:
       - uses: actions/checkout@v6
         with:
@@ -109,9 +110,11 @@ jobs:
         run: >-
           pnpm exec vitest run
           packages/shell/bash-sandbox/tests/sandbox.spec.ts
+          packages/subprocess/subprocess-local/tests/local.spec.ts
           packages/terminal/terminal-bash/tests/local.spec.ts
+          packages/shell/tool-pwsh-persistent/tests/loader-composition.spec.ts
           packages/session/session-projection-cache/tests/fixtures.spec.ts
-          --testNamePattern='disposal kills wrapped background jobs|bootstraps a persistent pwsh|archived version recovery'
+          --testNamePattern='disposal kills wrapped background jobs|disposal kills still-running processes and awaits their exit|bootstraps a persistent pwsh|preserves cwd and environment across calls|archived version recovery'
           --testTimeout=90000 --coverage
           --coverage.include='packages/subprocess/subprocess-local/src/**'
           --coverage.reportsDirectory=coverage/runtime-diagnostics

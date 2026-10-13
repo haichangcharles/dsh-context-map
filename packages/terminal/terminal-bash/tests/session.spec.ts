@@ -540,6 +540,20 @@ describe('LocalPtySession readiness and output', () => {
     expect(operation.cancel()).toBe(false)
   })
 
+  it('observes an existing stdin wait without requiring departure when no input is sent', async () => {
+    vi.useFakeTimers()
+    const terminal = new FakeTerminal()
+    const inspector = new FakeInspector()
+    const session = makeSession(terminal, inspector, config())
+    await initialize(session, terminal)
+
+    inspector.waiting = true
+    const operation = session.startSend({ text: '', submit: false })
+    await vi.advanceTimersByTimeAsync(20)
+    expect(terminal.writes).toEqual([])
+    expect((await operation.done).waitReason).toBe('stdin_read')
+  })
+
   it('does not reuse a pre-write stdin wait as post-write readiness', async () => {
     vi.useFakeTimers()
     const terminal = new FakeTerminal()

@@ -310,7 +310,7 @@ describe('E2B terminal allocation', () => {
 
     await terminal.write('echo ok\r')
     expect(fake.inputs.at(-1)?.data.toString()).toBe('echo ok\r')
-    await expect(terminal.inspectForeground()).resolves.toEqual({ processGroupId: 456, inputWaiting: false })
+    await expect(terminal.inspectForeground()).resolves.toEqual({ processGroupId: 456, inputWaiting: false, stdinWaitSupported: false })
     await expect(terminal.signalForeground('SIGINT')).resolves.toBe(456)
     expect(fake.commands).toContain('kill -INT -- -456')
 

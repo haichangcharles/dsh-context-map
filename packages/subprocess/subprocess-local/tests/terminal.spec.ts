@@ -54,6 +54,7 @@ class FakePty {
 }
 
 class FakeInspector implements ProcessInspector {
+  stdinWaitSupported?: boolean
   pgid: number | undefined = 456
   waiting = false
   /** The shell's own row, present like the real /proc- and ps-backed scans; tests recycle or drop it. */
@@ -413,20 +414,23 @@ describe('LocalTerminalHandle', () => {
     const pty = new FakePty()
     const inspector = new FakeInspector()
     inspector.waiting = true
+    inspector.stdinWaitSupported = true
     const handle = makeHandle(pty, inspector, 10)
     const chunks: Buffer[] = []
     handle.output.on('data', (chunk: Buffer) => { chunks.push(chunk) })
 
+    expect(handle.running).toBe(true)
     pty.emitData('hello €')
     await handle.write('input\r')
     expect(pty.writes).toEqual(['input\r'])
-    expect(await handle.inspectForeground()).toEqual({ processGroupId: 456, inputWaiting: true })
+    expect(await handle.inspectForeground()).toEqual({ processGroupId: 456, inputWaiting: true, stdinWaitSupported: true })
     expect(inspector.stdinChecks).toEqual([[456, 123]])
     expect(await handle.signalForeground('SIGINT')).toBe(456)
     expect(inspector.groups).toEqual([[456, 'SIGINT']])
 
     pty.emitExit(7, 9)
     pty.emitExit(0)
+    expect(handle.running).toBe(false)
     expect(await handle.done).toEqual({ exitCode: null, signal: 'SIGKILL' })
     await handle.terminate()
     expect(Buffer.concat(chunks).toString('utf8')).toBe('hello €')
@@ -823,7 +827,7 @@ describe('process-table read amplification', () => {
     const handle = new LocalTerminalHandle(new FakePty().asPty(), inspector, 10, 'darwin')
     tableReads.length = 0
     const foreground = await handle.inspectForeground()
-    expect(foreground).toEqual({ processGroupId: 456, inputWaiting: false })
+    expect(foreground).toEqual({ processGroupId: 456, inputWaiting: false, stdinWaitSupported: false })
     return tableReads.length
   }
 

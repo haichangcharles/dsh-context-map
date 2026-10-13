@@ -6180,7 +6180,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SubprocessTerminalForeground',
-    declaration: 'export interface SubprocessTerminalForeground {\n    processGroupId: number;\n    inputWaiting: boolean;\n}',
+    declaration: 'export interface SubprocessTerminalForeground {\n    processGroupId: number;\n    inputWaiting: boolean;\n    stdinWaitSupported?: boolean;\n}',
   },
   {
     name: 'SubprocessTerminalHandle',

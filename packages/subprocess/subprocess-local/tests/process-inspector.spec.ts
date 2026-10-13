@@ -166,6 +166,7 @@ describe('Linux process inspector', () => {
     fake.files.set('/proc/100/task/100/syscall', 'running')
     fake.files.set('/proc/101/task/101/syscall', '-1 0x0')
     fake.files.set('/proc/101/task/102/syscall', syscall(0, 0))
+    expect(inspector.stdinWaitSupported).toBe(true)
     expect(inspector.isStdinWaiting(77, 100)).toBe(true)
     fake.files.set('/proc/101/task/102/syscall', syscall(63, 0))
     expect(inspector.isStdinWaiting(77, 100)).toBe(true)
@@ -223,6 +224,7 @@ describe('Linux process inspector', () => {
     fake.links.set('/proc/100/task/100/fd/0', '/dev/pts/1')
     fake.devices.set('/proc/100/task/100/fd/0', { character: true, rdev: 99 })
     fake.files.set('/proc/100/task/100/syscall', syscall(0, 2))
+    expect(createProcessInspector('linux', 'mips', fake.internals).stdinWaitSupported).toBe(false)
     expect(createProcessInspector('linux', 'mips', fake.internals).isStdinWaiting(77, 100)).toBe(false)
     expect(createProcessInspector('linux', 'x64', fake.internals).isStdinWaiting(77, 100)).toBe(false)
 
@@ -287,6 +289,7 @@ describe('macOS process inspector', () => {
     fake.setTpgid('55\n')
     fake.setPs(' 10 1 Mon Jul 21 10:00:00 2026\n 11 10 Mon Jul 21 10:00:01 2026\n 12 11 Mon Jul 21 10:00:02 2026\n 13 99 Mon Jul 21 10:00:03 2026\nmalformed\n')
     const inspector = createProcessInspector('darwin', 'arm64', fake.internals)
+    expect(inspector.stdinWaitSupported).toBe(false)
     expect(inspector.foregroundPgid(10)).toBe(55)
     expect(inspector.isStdinWaiting(55, 10)).toBe(false)
     const observed = inspector.snapshot()

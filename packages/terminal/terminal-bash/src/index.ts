@@ -123,6 +123,9 @@ async function startupSession(
       await session.initialize(signal)
       return
     }
+    // Complete the initial console negotiation before typing; early Enter can be
+    // consumed by startup cursor negotiation instead of submitting the command.
+    await session.initialize(signal, true)
     // pwsh cannot install its prompt from the environment. Write the prompt
     // function through the session, pin UTF-8 output before user input, and
     // require backend stdin_read plus the owned marker and exact printable

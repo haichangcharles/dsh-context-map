@@ -121,9 +121,11 @@ export class LocalTerminalHandle implements SubprocessTerminalHandle {
     this.descendants(this.inspector.snapshot())
     const processGroupId = this.inspector.foregroundPgid(this.pid)
     if (processGroupId === undefined) return undefined
+    const stdinWaitSupported = this.inspector.stdinWaitSupported
     return {
       processGroupId,
       inputWaiting: this.inspector.isStdinWaiting(processGroupId, this.pid),
+      ...stdinWaitSupported === undefined ? {} : { stdinWaitSupported },
     }
   }
 

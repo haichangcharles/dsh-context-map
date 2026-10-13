@@ -361,6 +361,7 @@ export class E2BTerminalHandle implements SubprocessTerminalHandle {
         // E2B exposes process-table commands but not the /proc memory access
         // needed to prove a specific syscall is waiting on fd 0.
         inputWaiting: false,
+        stdinWaitSupported: false,
       }
     } catch (error: unknown) {
       if (error instanceof CommandExitError && (error.exitCode === 1 || this.topLevelExited)) return undefined

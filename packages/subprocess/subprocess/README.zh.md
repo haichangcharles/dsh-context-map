@@ -66,7 +66,7 @@ const output = handle.collected.stdout?.readFrom(0)
 
 ### 运行终端会话
 
-对于交互式程序，`spawnTerminal` 分配真实 PTY：写入文本、读取 UTF-8 输出、检查当前前台进程组并向其发送信号，以及等待一次 `terminate()`，让提供方仍可观察到的每个会话成员完全停稳。就绪状态、scrollback 与提示符策略仍归 PTY 消费方所有。
+对于交互式程序，`spawnTerminal` 分配真实 PTY：写入文本、读取 UTF-8 输出、检查当前前台进程组并向其发送信号，以及等待一次 `terminate()`，让提供方仍可观察到的每个会话成员完全停稳。前台事实包含可选的 `stdinWaitSupported`：true 声明支持精确输入等待探测，false 声明不支持，省略则能力未知；单次 `inputWaiting` 为 false 不代表缺少能力。就绪状态、scrollback 与提示符策略仍归 PTY 消费方所有。
 
 ### 每个子进程起步时的环境
 

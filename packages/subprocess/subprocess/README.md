@@ -66,7 +66,7 @@ Termination and waiting use one provider-managed range. `terminate()` starts the
 
 ### Running a terminal session
 
-For interactive programs, `spawnTerminal` allocates a real PTY: write text, read UTF-8 output, inspect and signal the current foreground process group, and await one `terminate()` that settles every session member the provider can still observe. Readiness, scrollback, and prompt policy stay with the PTY consumer.
+For interactive programs, `spawnTerminal` allocates a real PTY: write text, read UTF-8 output, inspect and signal the current foreground process group, and await one `terminate()` that settles every session member the provider can still observe. Foreground facts include optional `stdinWaitSupported`: true declares exact input-wait inspection support, false declares it unavailable, and omission leaves capability unknown; a false `inputWaiting` observation alone does not declare lack of support. Readiness, scrollback, and prompt policy stay with the PTY consumer.
 
 ### Environment every child starts from
 

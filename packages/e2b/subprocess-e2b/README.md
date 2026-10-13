@@ -147,7 +147,7 @@ These limits define when the provider is a poor fit or needs special operational
 - **Numeric process identities are not reuse-fenced** — E2B exposes numeric PID/PGID input, signalling, and cleanup operations but no atomic identity-bound alternative; replacement is deferred until E2B adds an identity primitive or a failure demonstrates a narrower protocol.
 - **The initial environment probe inherits sandbox defaults** — E2B merges command overrides with default environment entries, so the probe cannot blank unknown credential-shaped names before enumerating them; this POC therefore does not support secrets in sandbox-default environment variables.
 - **E2B exposes no signal fact** — an adapter-requested `SIGTERM` or `SIGKILL` is reported only when no wrapper-published direct exit code wins; every unrequested SDK exit remains an exit code, including values equal to `128 + signal`.
-- **Exact terminal stdin-wait inspection is unavailable** — E2B exposes the foreground process group but not the syscall evidence needed to prove it is waiting on fd 0, so the generic PTY backend falls back to controlled prompt markers and bounded silence.
+- **Exact terminal stdin-wait inspection is unavailable** — E2B exposes the foreground process group but not the syscall evidence needed to prove it is waiting on fd 0, and explicitly reports `stdinWaitSupported: false`, so the generic PTY backend falls back to controlled prompt markers and bounded silence.
 - **Linux utility and E2B transport semantics are assumed** — there is no Windows, escaped-session recovery, or network-partition fidelity layer.
 
 <a id="dev-note"></a>

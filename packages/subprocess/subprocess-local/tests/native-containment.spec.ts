@@ -244,7 +244,7 @@ while :; do sleep 60; done
       expect(top.ttyNumber).not.toBe(0)
 
       const foreground = await waitForInputReadiness(handle)
-      expect(foreground).toEqual({ processGroupId: handle.pid, inputWaiting: true })
+      expect(foreground).toEqual({ processGroupId: handle.pid, inputWaiting: true, stdinWaitSupported: true })
       await handle.write('continue\n')
       await output.waitFor('PTY_INPUT=continue')
 
