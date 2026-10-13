@@ -102,7 +102,7 @@ jobs:
       # Partitioning replaces the instrumented share; this budget gives the
       # exempt-heavy gate two workers on both hosted and failover runners.
       DSH_COVERAGE_MAX_WORKERS: ${{ (vars.DSH_CI_LINUX_RUNNER != '' || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted') && '6' || '2' }}
-      DSH_COVERAGE_PARTITIONS: ${{ (vars.DSH_CI_LINUX_RUNNER != '' || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted') && '4' || '1' }}
+      DSH_COVERAGE_PARTITIONS: ${{ (vars.DSH_CI_LINUX_RUNNER != '' || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted') && '4' || '2' }}
       DSH_GATE_CONCURRENCY: ${{ (vars.DSH_CI_LINUX_RUNNER != '' || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted') && '3' || '2' }}
       # A gate failure aborts the sibling gate instead of waiting out its
       # multi-minute instrumented run.
@@ -489,7 +489,7 @@ jobs:
     timeout-minutes: 120
     env:
       DSH_COVERAGE_MAX_WORKERS: ${{ (vars.DSH_CI_WINDOWS_RUNNER != '' || vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted') && '6' || '2' }}
-      DSH_COVERAGE_PARTITIONS: ${{ (vars.DSH_CI_WINDOWS_RUNNER != '' || vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted') && '4' || '1' }}
+      DSH_COVERAGE_PARTITIONS: ${{ (vars.DSH_CI_WINDOWS_RUNNER != '' || vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted') && '4' || '2' }}
       DSH_COVERAGE_TEST_TIMEOUT_MS: '90000'
       DSH_GATE_CONCURRENCY: ${{ (vars.DSH_CI_WINDOWS_RUNNER != '' || vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted') && '3' || '2' }}
       # A gate failure aborts the sibling gate instead of waiting out its

@@ -12,6 +12,8 @@ Fork 能成功构建，却可能因为没有上游账户凭证或组织运行器
 
 [必需的 PR CI](../../../../.github/workflows/ci.yml)默认使用标准托管 Linux 和 Windows 运行器，并限制 worker 与覆盖率分区数量。`DSH_CI_LINUX_RUNNER` 和 `DSH_CI_WINDOWS_RUNNER` 选择已配置的大型池；显式 failover 保留现有 self-hosted 路由。Master standby job 只针对已配置的 failover 池运行。所有必需 PR 构建、覆盖率、快照、benchmark 和原生平台检查仍保留。[API 预算策略](../testing/2026-10-13-explicit-ci-api-budget.zh.md)独立阻止自动模型消费。
 
+覆盖率协调器要求至少两个分区。托管运行器使用两个分区与两个 worker 的预算；已配置大型池保留四个分区。首轮 Linux、Windows CI 在执行测试前暴露了错误的单分区默认值。配置回归测试现在把各运行器表达式的结果交给真实协调器解析器检查，覆盖托管、自定义池与 failover 配置。覆盖率阈值与解析器的最小值要求保持不变。
+
 [Preview CI](../../../../.github/workflows/build-preview-cloudflare.yml)为每个 PR 构建并保留产物。Cloudflare 上传、受保护镜像验证和 URL 评论必须同时满足受信任的同仓库 PR，以及完整的部署和 Access 凭证。未配置仓库报告仅产物模式；部分部署配置会明确失败。仅产物运行不会被宣称为托管 preview。
 
 [Issue lifecycle](../../../../.github/workflows/issue-lifecycle.yml)和[Issue policy](../../../../.github/workflows/issue-policy.yml)始终测试可信的策略实现。真实 Project 操作必须满足配置中的组织/仓库与触发仓库一致，以及完整的 GitHub App 配置。App token 针对当前仓库，不针对硬编码的上游安装。未配置的 fork 明确报告没有执行看板策略或修改；适用但不完整的配置会失败。现有人类 PR 和 changes-requested 检查条件仍受强制执行。

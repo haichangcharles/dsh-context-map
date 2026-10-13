@@ -7,6 +7,7 @@ import { promisify } from 'node:util'
 import { runInNewContext } from 'node:vm'
 import { load } from 'js-yaml'
 import { describe, expect, it } from 'vitest'
+import { COVERAGE_PARTITIONS_ENV, parseCoveragePartitionCount } from './coverage-partitions.ts'
 
 const execute = promisify(execFile)
 const root = resolve(import.meta.dirname, '..')
@@ -57,6 +58,19 @@ async function configuration(script: string, changes: Record<string, string>, pr
 }
 
 describe('portable CI runner and optional integrations', () => {
+  it.each(['node-24-coverage', 'windows-coverage'])('%s supplies a valid coordinator partition count', (name) => {
+    const value = workflow('ci.yml').jobs[name]?.env?.[COVERAGE_PARTITIONS_ENV]
+    if (value === undefined) throw new Error('Coverage partition expression is missing')
+    const defaults = { DSH_CI_FAILOVER_LINUX: '', DSH_CI_FAILOVER_WINDOWS: '',
+      DSH_CI_LINUX_RUNNER: '', DSH_CI_WINDOWS_RUNNER: '' }
+    for (const changes of [{}, { DSH_CI_LINUX_RUNNER: 'larger-linux', DSH_CI_WINDOWS_RUNNER: 'larger-windows' },
+      { DSH_CI_FAILOVER_LINUX: 'selfhosted', DSH_CI_FAILOVER_WINDOWS: 'selfhosted' }]) {
+      const selected = expression(value, { ...defaults, ...changes })
+      expect(typeof selected).toBe('string')
+      expect(parseCoveragePartitionCount(String(selected))).toBeGreaterThanOrEqual(2)
+    }
+  })
+
   it.each([
     { source: 'local/project', fork: true, trusted: true },
     { source: 'local/project', fork: false, trusted: true },
@@ -83,7 +97,7 @@ describe('portable CI runner and optional integrations', () => {
       expect(expression(jobs[name]!['runs-on']!, vars)).toBe('windows-2025')
     }
     expect(expression(jobs['node-24-coverage']!.env!.DSH_COVERAGE_MAX_WORKERS!, vars)).toBe('2')
-    expect(expression(jobs['node-24-coverage']!.env!.DSH_COVERAGE_PARTITIONS!, vars)).toBe('1')
+    expect(expression(jobs['node-24-coverage']!.env!.DSH_COVERAGE_PARTITIONS!, vars)).toBe('2')
     expect(expression(jobs['node-24-consumers']!.env!.DSH_WEB_SNAPSHOT_WORKERS!, vars)).toBe('2')
     expect(expression(jobs['node-24']!['runs-on']!, { ...vars, DSH_CI_LINUX_RUNNER: 'larger-linux' }))
       .toBe('larger-linux')
