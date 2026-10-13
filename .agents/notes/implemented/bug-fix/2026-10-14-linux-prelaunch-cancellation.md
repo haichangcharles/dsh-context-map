@@ -12,6 +12,8 @@ A caller can cancel a Linux scope before its one-shot bootstrap consumes the lau
 
 The [Linux scope owner](../../../../packages/subprocess/subprocess-local/src/linux-scope.ts) retains its requested termination signal. Ordinary and PTY outcomes share resolution: a reported startup error remains authoritative; an unconsumed request after explicit termination settles with null exit code and the requested signal; an unrequested unconsumed exit remains an error. Once the bootstrap consumes the request, the actual target outcome remains authoritative. Range quiescence and protocol cleanup continue independently.
 
+If termination occurs before the manager exposes the unit, the owner retains the latest pending signal and applies it once on first confirmed active establishment. Later escalation updates that pending signal even if request consumption has already proved establishment, preventing an older TERM from replacing KILL. Manager admission and quiescence checks remain authoritative.
+
 Fake PTY lifecycle fixtures explicitly select the fallback owner they model. They cannot consume a real native bootstrap request. Dedicated Linux scope and PTY owner fixtures continue to test native selection and ownership.
 
 ## Alternatives considered
@@ -29,3 +31,5 @@ Signal intent belongs to the existing operation owner rather than a second cance
 ## Testing
 
 The [scope tests](../../../../packages/subprocess/subprocess-local/tests/linux-scope.spec.ts) cover pending SIGTERM and SIGKILL, launcher exit codes without Node signals, PTY cancellation, request cleanup and startup-error precedence. Negative cases retain unexpected unconsumed-exit rejection and unknown scope-state errors. The scope, runtime, spawn and terminal suites pass 185 tests without provider calls or relaxed timing assertions.
+
+A later public-owner regression exposed the remaining late-establishment cancellation race: TERM and KILL could both precede visible unit admission. The signal replay and consumed-before-escalation ordering cases each failed before their fix. After independent ordering review, all 35 scope tests pass and scope coverage remains 100%; the preceding combined runtime, scope and spawn run passed 148 tests. This local evidence does not claim that the two hosted Linux disposal timeouts have been reproduced or that the final hosted rerun is green.

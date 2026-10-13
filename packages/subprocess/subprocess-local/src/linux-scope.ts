@@ -162,6 +162,7 @@ interface DirectRange {
 class SystemdScopeOwner implements BoundProcessOwner {
   private establishment: 'pending' | 'established' = 'pending'
   private requestedSignal: 'SIGTERM' | 'SIGKILL' | undefined
+  private pendingEstablishmentSignal: 'SIGTERM' | 'SIGKILL' | undefined
   private stopped = false
   private observation: Promise<void> | undefined
   private killFailure: Error | undefined
@@ -183,6 +184,9 @@ class SystemdScopeOwner implements BoundProcessOwner {
     this.requestedSignal = signal
     this.observeRequestConsumption()
     const directFallbackRequired = this.establishment === 'pending'
+    if (directFallbackRequired || this.pendingEstablishmentSignal !== undefined) {
+      this.pendingEstablishmentSignal = signal
+    }
     if (directFallbackRequired && this.direct.running()) this.direct.signal(signal)
     const result = this.runSync(this.systemctl, [
       '--user',
@@ -286,6 +290,13 @@ class SystemdScopeOwner implements BoundProcessOwner {
       if (activeState === 'inactive' || activeState === 'failed') return false
       if (!['active', 'activating', 'reloading', 'deactivating'].includes(activeState)) {
         throw new Error(`systemctl returned unknown ActiveState for ${this.unit}: ${JSON.stringify(activeState)}`)
+      }
+      // Earlier signals may have reached only the launcher before the unit existed.
+      // Apply the latest cancellation once to the newly established native range.
+      const pendingSignal = this.pendingEstablishmentSignal
+      if (pendingSignal !== undefined) {
+        this.pendingEstablishmentSignal = undefined
+        this.signal(pendingSignal)
       }
       if (this.killFailure !== undefined) throw this.killFailure
       return true

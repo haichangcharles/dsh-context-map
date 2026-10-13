@@ -34,6 +34,10 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for Great, let's move forward. BANANA!" [disabled]: Auto
+- button "include context for Great, let's move forward. BANANA!": Use
+- button "exclude context for Great, let's move forward. BANANA!": Skip
+- button "Locate Great, let's move forward. BANANA! in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - button "Ran for {{duration}}":

@@ -12,6 +12,8 @@ Status: implemented
 
 [Linux scope owner](../../../../packages/subprocess/subprocess-local/src/linux-scope.ts) 保存请求的终止信号。普通进程与 PTY 共用结果解析：已报告的启动错误仍是权威结果；显式终止后尚未消费的请求以空退出码和请求信号结算；未请求终止的未消费请求退出仍是错误。bootstrap 消费请求后，实际目标结果仍是权威结果。范围完全停稳与协议清理继续独立完成。
 
+如果终止发生在 manager 暴露 unit 之前，owner 保存最近一次待发送信号，并在首次确认 scope 已建立且活跃时补发一次。即使请求消费已证明建立，后续升级仍更新该待发送信号，避免旧 TERM 覆盖 KILL。manager 的准入与停稳检查仍是权威依据。
+
 假的 PTY 生命周期 fixture 显式选择其模拟的 fallback owner。它们不能消费真实原生 bootstrap 请求。专用 Linux scope 和 PTY owner fixture 继续验证原生选择与所有权。
 
 ## Alternatives considered
@@ -29,3 +31,5 @@ Status: implemented
 ## Testing
 
 [scope 测试](../../../../packages/subprocess/subprocess-local/tests/linux-scope.spec.ts) 覆盖待启动时的 SIGTERM 与 SIGKILL、没有 Node 信号的 launcher 退出码、PTY 取消、请求清理与启动错误优先级。负例保留未请求终止的未消费请求退出拒绝，以及未知 scope 状态错误。scope、运行时、spawn 和 terminal 套件共 185 个测试通过，没有提供方调用或放宽时间断言。
+
+后续公开 owner 回归验证暴露了尚未覆盖的延迟建立取消竞争：TERM 和 KILL 都可能早于可见的 unit 准入。信号补发与先消费后升级的顺序用例都在各自修复前失败。经独立顺序审查，全部 35 个 scope 测试通过，scope 覆盖率仍为 100%；此前运行时、scope 和 spawn 的组合检查通过 148 个测试。该本地证据不表示已复现托管 Linux 的两个释放超时，也不表示最终托管重跑通过。

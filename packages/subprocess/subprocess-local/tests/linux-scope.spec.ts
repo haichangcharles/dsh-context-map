@@ -358,6 +358,41 @@ describe('Linux scope establishment and quiescence', () => {
     expect(existsSync(requestPath)).toBe(false)
   })
 
+  it('replays the strongest cancellation when a scope establishes after early signals', async () => {
+    const states = [missingUnit(), activeUnit(), activeUnit('inactive')]
+    let requestPath = ''
+    const launched = launch(async () => states.shift() ?? activeUnit('inactive'), {
+      sleep: async () => { consumeLinuxLaunchRequest(requestPath) },
+    })
+    requestPath = launched.requestPath
+    vi.spyOn(process, 'kill').mockReturnValue(true)
+    const waiting = launched.result.owner.waitForExit()
+    launched.result.owner.signal('SIGTERM')
+    launched.result.owner.signal('SIGKILL')
+    await waiting
+    expect(launched.spawnSync).toHaveBeenCalledTimes(3)
+    expect(launched.spawnSync).toHaveBeenNthCalledWith(3, '/bin/systemctl',
+      expect.arrayContaining(['--signal=SIGKILL']), expect.anything())
+    launched.child.exit(null, 'SIGKILL')
+    await expect(launched.result.direct).resolves.toEqual({ exitCode: null, signal: 'SIGKILL' })
+    launched.result.owner.cleanup?.()
+  })
+
+  it('keeps the latest cancellation when request consumption precedes escalation', async () => {
+    const states = [activeUnit(), activeUnit('inactive')]
+    const launched = launch(async () => states.shift() ?? activeUnit('inactive'))
+    vi.spyOn(process, 'kill').mockReturnValue(true)
+    launched.result.owner.signal('SIGTERM')
+    consumeLinuxLaunchRequest(launched.requestPath)
+    launched.result.owner.signal('SIGKILL')
+    await launched.result.owner.waitForExit()
+    expect(launched.spawnSync).toHaveBeenNthCalledWith(3, '/bin/systemctl',
+      expect.arrayContaining(['--signal=SIGKILL']), expect.anything())
+    launched.child.exit(null, 'SIGKILL')
+    await expect(launched.result.direct).resolves.toEqual({ exitCode: null, signal: 'SIGKILL' })
+    launched.result.owner.cleanup?.()
+  })
+
   it('preserves a reported startup error even when a cancellation races with it', async () => {
     const { child, result, requestPath } = launch(async () => missingUnit())
     writeLinuxStartupError(linuxLaunchFilesFromLocator(requestPath), {

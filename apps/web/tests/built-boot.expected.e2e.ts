@@ -66,7 +66,7 @@ it('boots the built plugin graph and renders a fixture session end to end', asyn
     const mark = document.querySelector('svg[role="img"][aria-label="DSH Context Map"]')
     expect(mark?.getAttribute('viewBox')).toBe('0 0 24 24')
     expect(mark?.closest('[aria-hidden="true"]')).not.toBeNull()
-    expect(screen.getByRole('button', { name: 'New session' })).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: 'New session' })).toContain(mark?.closest('button'))
     expect(screen.queryByText('DSH Local Build')).toBeNull()
   } else {
     expect(document.querySelector('svg[viewBox="0 0 23.16 17.04"]')).not.toBeNull()

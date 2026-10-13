@@ -14,7 +14,7 @@ The official brand SVG exists inside an `aria-hidden` decorative wrapper of the 
 
 The public [browser helper](../../../../apps/web/tests/support.ts), `waitForMessageContextControls`, waits for each scenario's explicit native-message count and four Context buttons per message before capture. Feedback and skill scenarios await publication before collapsing the Map, move the pointer away and require the toggle tooltip to disappear. The queued-image case checks both its initial user controls and five final native messages; its aborted partial assistant remains outside the Context graph.
 
-The built-boot test verifies the exact SVG attributes and decorative ancestor, plus the accessible New session button. Goldens add only inspected, legitimate Context controls. Original Session/model JSONL, replay packets, file content, image geometry, feedback release and queue-order assertions remain unchanged.
+The built-boot test verifies the exact SVG attributes and decorative ancestor, plus membership of its owning button in the accessible New session controls. Multiple independent New session buttons are legitimate. Goldens add only inspected, legitimate Context controls. Original Session/model JSONL, replay packets, file content, image geometry, feedback release and queue-order assertions remain unchanged.
 
 ## Alternatives considered
 
@@ -28,4 +28,4 @@ These changes stabilize observation of the existing product. They do not change 
 
 ## Testing
 
-Five owning files contain 19 keyless tests. The first focused run passed both built-boot tests and both SVG tests, while exposing pointer-hover and initial-publication races in the other files. After fixing those premises, the second focused run passed all remaining 15 tests across feedback-release, queue-image and skill-user-invoke. Owning lint and diff checks pass. No provider API was called; this scoped evidence does not claim the complete remote CI suite passed.
+Five owning files contain 19 keyless tests. The first focused run passed both built-boot tests and both SVG tests, while exposing pointer-hover and initial-publication races in the other files. After fixing those premises, the second focused run passed all remaining 15 tests across feedback-release, queue-image and skill-user-invoke. Owning lint and diff checks pass. A later CI run exposed the same final-reply publication race in steering and the legitimate second New session button in the official build. Explicit final-reply readiness and exact brand-owner membership fix those fixture assumptions; both owning files pass all eight tests in a further keyless run. No provider API was called; this scoped evidence does not claim the complete remote CI suite passed.

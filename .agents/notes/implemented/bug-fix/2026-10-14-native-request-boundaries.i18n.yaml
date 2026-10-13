@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-10-14-native-request-boundaries.md
-2026-10-14-native-request-boundaries.md: c80f65bc7a773a05efad2660e7d95eb2aca43b66
-2026-10-14-native-request-boundaries.zh.md: 68a9e67f07d05a7b95a17608e8798f92bbb08b1a
+2026-10-14-native-request-boundaries.md: e92ff97ecad299e93ee762aaf1d51bfc963d502f
+2026-10-14-native-request-boundaries.zh.md: 167e10ea9219c39f2c925b5411dc3637ba2cbb1c

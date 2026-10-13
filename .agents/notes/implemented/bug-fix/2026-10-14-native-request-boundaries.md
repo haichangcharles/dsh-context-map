@@ -12,6 +12,8 @@ The coverage gate exposed untested public compiler, sandbox and final-dispatch b
 
 The admitted Agent step passes its captured turn and step into request construction. Its running-phase check, cancellation checks and missing-compiler rejection remain unchanged. Native regressions exercise malformed JavaScript compiler output, empty native assistant messages, registration disposal, missing durable compiler plugins, sandbox policy and runner diagnostics, and synchronous dispatch authorization through local HTTP fixtures.
 
+Deep snapshots use native `mkdtemp` to create their private directory atomically; the repeated POSIX `chmod` is removed. [libuv delegates to native mkdtemp](https://github.com/libuv/libuv/blob/v1.51.0/src/unix/fs.c), and [glibc creates the directory with owner-only mode](https://github.com/bminor/glibc/blob/master/sysdeps/posix/tempname.c). A restrictive umask can further limit owner access and is respected; the snapshot file retains `0600` creation and real POSIX permission assertions. Windows keeps its native temporary-directory behavior without pretending POSIX bits enforce ACLs.
+
 ## Alternatives considered
 
 - **Ignore uncovered branches.** This would leave public failure behavior unverified.

@@ -12,6 +12,8 @@ Status: implemented
 
 已经准入的 Agent step 把捕获的 turn 和 step 传给请求构造。running phase 检查、取消检查和缺失 compiler 的拒绝保持不变。原生回归通过本地 HTTP fixture 验证 JavaScript compiler 的异常输出、空原生 assistant 消息、注册释放、缺失的持久 compiler 插件、sandbox policy 和 runner 诊断，以及同步 dispatch 授权。
 
+Deep snapshot 通过原生 `mkdtemp` 原子创建私有目录，删除重复的 POSIX `chmod`。[libuv 调用原生 mkdtemp](https://github.com/libuv/libuv/blob/v1.51.0/src/unix/fs.c)，[glibc 以仅拥有者权限创建目录](https://github.com/bminor/glibc/blob/master/sysdeps/posix/tempname.c)。更严格的 umask 可以继续限制拥有者权限，系统尊重这个选择；snapshot 文件保留 `0600` 创建和真实 POSIX 权限断言。Windows 保留原生临时目录行为，不把 POSIX 位宣称为 ACL 保护。
+
 ## Alternatives considered
 
 - **忽略未覆盖分支。** 这会让公开失败行为缺少验证。

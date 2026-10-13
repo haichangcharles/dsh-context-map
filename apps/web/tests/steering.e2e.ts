@@ -171,9 +171,17 @@ describe('web e2e: mid-turn steering lands durably and visibly', () => {
     expect(await pendingSteering.count()).toBe(0)
     await expect.poll(() => page.getByText('BANANA', { exact: false }).count(), { timeout: 10_000 }).toBeGreaterThanOrEqual(2)
     expect(await page.locator('[data-question-key]').count()).toBe(0)
+    // Host completion precedes the graph poll: wait for the final native reply's own controls.
+    for (const mode of ['natural', 'include', 'exclude']) {
+      await page.getByRole('button', { name: `${mode} context for Great, let's move forward. BANANA!`, exact: true })
+        .waitFor({ state: 'attached', timeout: 15_000 })
+    }
+    expect(await page.getByRole('button', { name: "Locate Great, let's move forward. BANANA! in Context Map", exact: true }).count()).toBe(1)
     // Settled golden: steer text between the question round trip and the
     // obeying reply, composer takeover gone.
     await restoreFullWidthChat(page)
+    await page.mouse.move(0, 0)
+    await page.getByRole('tooltip', { name: 'Open sidebar', exact: true }).waitFor({ state: 'hidden' })
     const snapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(SETTLED_EXPECTED, snapshot, MODE)
     await restoreFullWidthChat(page)

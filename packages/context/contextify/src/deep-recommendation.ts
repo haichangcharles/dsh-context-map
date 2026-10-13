@@ -1,6 +1,6 @@
 /** Full-tree projection and private temporary-file lifecycle for Deep review. */
 import { randomUUID } from 'node:crypto'
-import { chmod, mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
@@ -392,7 +392,6 @@ export async function withDeepSnapshot<T>(
   const directory = await mkdtemp(join(tmpdir(), TEMP_DIRECTORY_PREFIX))
   const filePath = join(directory, SNAPSHOT_FILE_NAME)
   try {
-    if (process.platform !== 'win32') await chmod(directory, 0o700)
     await writeFile(filePath, serializeDeepRecommendationSnapshot(snapshot), { encoding: 'utf8', mode: 0o600 })
     assertNotCancelled(signal)
     const result = await operation(Object.freeze({ directory, filePath }))

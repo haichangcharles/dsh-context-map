@@ -14,7 +14,7 @@ Status: implemented
 
 公开的[浏览器辅助函数](../../../../apps/web/tests/support.ts) `waitForMessageContextControls` 根据场景明确的原生消息数量，等待每条消息的四个 Context 按钮，再截图。反馈与 skill 场景先等待发布，再收起 Map、移开指针，并确认开关提示消失。排队图片用例分别检查初始用户控件和最终五条原生消息；被中止的部分助手输出仍不进入 Context graph。
 
-built-boot 测试验证准确的 SVG 属性、装饰性祖先以及可访问的 New session 按钮。基准仅加入逐项核对过的合法 Context 控件。原始 Session/model JSONL、回放请求、文件内容、图片几何、反馈释放及队列顺序断言保持不变。
+built-boot 测试验证准确的 SVG 属性、装饰性祖先以及其所属按钮确实位于可访问的 New session 控件列表中。多个独立的 New session 按钮是合法的。基准仅加入逐项核对过的合法 Context 控件。原始 Session/model JSONL、回放请求、文件内容、图片几何、反馈释放及队列顺序断言保持不变。
 
 ## Alternatives considered
 
@@ -28,4 +28,4 @@ built-boot 测试验证准确的 SVG 属性、装饰性祖先以及可访问的 
 
 ## Testing
 
-五个负责的文件共含 19 项无需密钥的测试。第一轮定向执行通过两项 built-boot 和两项 SVG 测试，同时暴露其余文件的指针悬停与初始发布竞态。修复这些前提后，第二轮通过 feedback-release、queue-image 与 skill-user-invoke 的全部 15 项测试。负责范围的 lint 与 diff 检查通过。没有调用提供方 API；上述范围内的证据不代表完整远端 CI 已通过。
+五个负责的文件共含 19 项无需密钥的测试。第一轮定向执行通过两项 built-boot 和两项 SVG 测试，同时暴露其余文件的指针悬停与初始发布竞态。修复这些前提后，第二轮通过 feedback-release、queue-image 与 skill-user-invoke 的全部 15 项测试。负责范围的 lint 与 diff 检查通过。后续 CI 又在 steering 中发现相同的最终回复发布竞态，并发现官方构建中的第二个合法 New session 按钮。显式等待最终回复控件、准确核对品牌所属按钮，修复了这两项测试前提；随后两个负责文件的全部八项测试在无需密钥的执行中通过。没有调用提供方 API；上述范围内的证据不代表完整远端 CI 已通过。
