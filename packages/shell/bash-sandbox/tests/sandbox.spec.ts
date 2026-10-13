@@ -30,10 +30,10 @@ const nativeTrace = vi.hoisted(() => ({
     phase?: 'start' | 'result'
     elapsedMs: number
     status?: number | null
-    errorCode?: string | number
-    signal?: 'SIGTERM' | 'SIGKILL'
-    loadState?: string
-    activeState?: string
+    errorCode?: string | number | undefined
+    signal?: 'SIGTERM' | 'SIGKILL' | undefined
+    loadState?: string | undefined
+    activeState?: string | undefined
   }[],
 }))
 
