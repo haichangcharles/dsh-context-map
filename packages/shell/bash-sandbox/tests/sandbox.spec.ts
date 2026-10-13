@@ -8,7 +8,7 @@
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { afterAll, describe, expect, it, onTestFailed, vi } from 'vitest'
+import { afterAll, describe, expect, it, onTestFailed, onTestFinished, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { ShellRunResult, CollectedOutput, ShellProcess } from '@deepseek-ai/dsh-shell'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
@@ -20,6 +20,72 @@ import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import type { SubprocessHandle, SubprocessOutputReader } from '@deepseek-ai/dsh-subprocess'
 import { classifyDenial, classifyRunnerFailure, isRunnerSpawnFailure } from '../src/helpers.ts'
 import type { Config } from '@deepseek-ai/dsh-bash-sandbox'
+
+// Observe the real native command adapter only for the immediate-disposal fixture.
+const nativeTrace = vi.hoisted(() => ({
+  active: false,
+  startedAt: 0,
+  events: [] as {
+    event: 'show' | 'kill' | 'probe'
+    phase?: 'start' | 'result'
+    elapsedMs: number
+    status?: number | null
+    errorCode?: string | number
+    signal?: 'SIGTERM' | 'SIGKILL'
+    loadState?: string
+    activeState?: string
+  }[],
+}))
+
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>()
+  const errno = (error: unknown): string | number | undefined => {
+    if (!(error instanceof Error) || !('code' in error)) return undefined
+    const code = error.code
+    return typeof code === 'number' ? code
+      : typeof code === 'string' && ['ENOENT', 'EACCES', 'EPERM', 'ETIMEDOUT', 'ESRCH'].includes(code) ? code : 'other'
+  }
+  const state = (text: string, field: string, allowed: readonly string[]): string | undefined => {
+    const value = text.split(/\r?\n/u).find(line => line.startsWith(`${field}=`))?.slice(field.length + 1)
+    return value === undefined ? undefined : allowed.includes(value) ? value : 'other'
+  }
+  const matches = (args: unknown[], operation: string): boolean => nativeTrace.active
+    && args[0] === 'systemctl' && Array.isArray(args[1]) && args[1].includes(operation)
+  return {
+    ...actual,
+    execFile: ((...args: unknown[]) => {
+      const callback = args.at(-1)
+      if (matches(args, 'show') && typeof callback === 'function') {
+        nativeTrace.events.push({ event: 'show', phase: 'start',
+          elapsedMs: Math.round(performance.now() - nativeTrace.startedAt) })
+        args[args.length - 1] = function (this: unknown, ...results: unknown[]) {
+          const text = typeof results[1] === 'string' ? results[1] : ''
+          if (nativeTrace.active) nativeTrace.events.push({ event: 'show', phase: 'result',
+            elapsedMs: Math.round(performance.now() - nativeTrace.startedAt),
+            errorCode: errno(results[0]),
+            loadState: state(text, 'LoadState', ['loaded', 'not-found', 'masked', 'error', 'bad-setting', 'merged', 'stub']),
+            activeState: state(text, 'ActiveState', ['active', 'inactive', 'activating', 'deactivating', 'reloading', 'failed']) })
+          Reflect.apply(callback, this, results)
+        }
+      }
+      return actual.execFile(...args as Parameters<typeof actual.execFile>)
+    }) as typeof actual.execFile,
+    spawnSync: ((...args: unknown[]) => {
+      const result = actual.spawnSync(...args as Parameters<typeof actual.spawnSync>)
+      if (nativeTrace.active && args[0] === 'systemd-run' && Array.isArray(args[1]) && args[1].includes('--scope')) {
+        nativeTrace.events.push({ event: 'probe', elapsedMs: Math.round(performance.now() - nativeTrace.startedAt),
+          status: result.status, errorCode: errno(result.error) })
+      }
+      if (matches(args, 'kill')) {
+        const argv = args[1] as unknown[]
+        const signal = argv.includes('--signal=SIGKILL') ? 'SIGKILL' : argv.includes('--signal=SIGTERM') ? 'SIGTERM' : undefined
+        nativeTrace.events.push({ event: 'kill', elapsedMs: Math.round(performance.now() - nativeTrace.startedAt),
+          status: result.status, errorCode: errno(result.error), signal })
+      }
+      return result
+    }) as typeof actual.spawnSync,
+  }
+})
 
 const spillDir = mkdtempSync(join(tmpdir(), 'dsh-bash-sandbox-spec-'))
 
@@ -661,20 +727,29 @@ describe('background sandbox facts', () => {
 
   it('disposal kills wrapped background jobs (inherited HMR safety)', async () => {
     const startedAt = performance.now()
+    nativeTrace.events = []
+    nativeTrace.startedAt = startedAt
+    onTestFinished(() => { nativeTrace.active = false })
     const stages: { event: string; elapsedMs: number }[] = []
     const mark = (event: string): void => {
       stages.push({ event, elapsedMs: Math.round(performance.now() - startedAt) })
     }
-    const state: { context?: Context; task?: ShellProcess } = {}
+    const state: { context?: Context; task?: ShellProcess; fallbackWarning?: () => boolean } = {}
     onTestFailed(() => {
       // Fixed stage names and states only; never print command or environment data.
       console.error(JSON.stringify({ diagnostic: 'sandbox-immediate-disposal', stages,
-        rootFiberState: state.context?.fiber.state, processStatus: state.task?.status }))
+        rootFiberState: state.context?.fiber.state, processStatus: state.task?.status,
+        fallback: state.fallbackWarning?.(), native: nativeTrace.events }))
+      nativeTrace.active = false
     })
     mark('setup:start')
     const { ctx, bash } = await setup()
     state.context = ctx
+    const fallbackWarning = vi.spyOn(ctx.logger, 'warn')
+    state.fallbackWarning = () => fallbackWarning.mock.calls.some(([message]) =>
+      String(message).startsWith('subprocess-local is using weaker process-tree containment'))
     mark('setup:ready')
+    nativeTrace.active = true
     const spawn = ctx.subprocess.spawn.bind(ctx.subprocess)
     vi.spyOn(ctx.subprocess, 'spawn').mockImplementation((spec) => {
       mark('spawn:start')
