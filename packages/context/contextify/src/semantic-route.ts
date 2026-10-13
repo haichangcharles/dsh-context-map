@@ -3,7 +3,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ContextFamilyGraph, ContextPolicyObservation, ContextRecommendationBase, ContextStewardProfile } from './types.ts'
 import { buildContextRouteCandidates, planContextRoute, draftRouteIntent,
   type ContextRouteCandidate, type ContextRouteIntent, type ContextRouteProposal } from './context-route-policy.ts'
-import { parseRecommendationDecisionText, type ContextRecommendationDecision } from './recommendation.ts'
+import { parseRecommendationJson, parseRecommendationDecisionText, type ContextRecommendationDecision } from './recommendation.ts'
 
 /** Protocol ceiling on scored native Sessions in one Context-action packet. */
 export const CONTEXT_ACTION_MAX_SESSIONS = 8
@@ -164,13 +164,7 @@ export function parseSemanticContextRoute(value: unknown, packet: ContextActionP
  * @returns Separate selection and optional route values for domain validation.
  */
 export function parseFastContextDecisionText(text: string, packet: ContextActionPacket): FastContextDecision {
-  const start = text.indexOf('{')
-  const end = text.lastIndexOf('}')
-  if (start < 0 || end < start) throw new Error('recommendation response did not contain JSON')
-  let parsed: unknown
-  try { parsed = JSON.parse(text.slice(start, end + 1)) }
-  catch { throw new Error('recommendation response contained invalid JSON') }
-  const root = record(parsed, 'recommendation', ['include', 'exclude', 'archive', 'route', 'workStates'])
+  const root = record(parseRecommendationJson(text), 'recommendation', ['include', 'exclude', 'archive', 'route', 'workStates'])
   const { route, ...selection } = root
   return Object.freeze({ decision: parseRecommendationDecisionText(JSON.stringify(selection)),
     ...(route === undefined ? {} : { route: parseSemanticContextRoute(route, packet) }) })

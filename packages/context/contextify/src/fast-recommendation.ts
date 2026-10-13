@@ -1,6 +1,6 @@
 /** Deterministic bounded candidate routing for Fast Context recommendations. */
 import type { ContextFamilyGraph } from './types.ts'
-import type { ContextRecommendationInputNode } from './recommendation.ts'
+import { contextReviewTopology, contextReviewNodeContent, type ContextRecommendationInputNode } from './recommendation.ts'
 import { personalContextCandidateBonus, type PersonalContextEdit,
   type PersonalContextPlanExample } from './personal-context-policy.ts'
 import { lexicalTokens } from './lexical-tokens.ts'
@@ -181,13 +181,7 @@ export function buildFastRecommendationInput(request: FastRecommendationRequest)
   const included = new Set(request.effectiveIncludedNodeIds)
   const explicit = new Set([...request.explicitIncludedNodeIds, ...request.explicitExcludedNodeIds])
   const reviewableExcluded = new Set(request.reviewableExcludedNodeIds ?? [])
-  const incoming = new Map<string, string[]>()
-  const outgoing = new Map<string, string[]>()
-  for (const edge of request.graph.edges) {
-    incoming.set(edge.target, [...incoming.get(edge.target) ?? [], edge.source])
-    outgoing.set(edge.source, [...outgoing.get(edge.source) ?? [], edge.target])
-  }
-  const depth = new Map(request.graph.sessions.map(session => [session.id, session.depth]))
+  const { incoming, outgoing, depths: depth } = contextReviewTopology(request.graph)
   const distance = distancesFromActive(request.graph)
   const objectiveTokens = lexicalTokens(request.objective)
   const selected = new Map<string, FastRecommendationReason>()
@@ -324,14 +318,8 @@ export function buildFastRecommendationInput(request: FastRecommendationRequest)
     const reason = selected.get(node.id)
     if (reason === undefined) return []
     const exact = request.contents[node.id] ?? node.preview
-    const content = Array.from(exact).slice(0, FAST_RECOMMENDATION_MAX_NODE_CHARS).join('')
     return [freezeNode({
-      id: node.id,
-      role: node.role,
-      ...(node.sourceKind === undefined ? {} : { sourceKind: node.sourceKind }),
-      ...(node.webAction === undefined ? {} : { webAction: node.webAction }),
-      content,
-      truncated: content.length < exact.length,
+      ...contextReviewNodeContent(node, exact, FAST_RECOMMENDATION_MAX_NODE_CHARS),
       included: included.has(node.id),
       ...(reviewableExcluded.has(node.id) ? { reviewableExcluded: true } : {}),
       active: node.sessionIds.includes(request.graph.activeSessionId),

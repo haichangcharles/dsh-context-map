@@ -6,6 +6,13 @@ import { jaccardOverlap } from './lexical-tokens.ts'
 import { contextPlanFeedbackStates } from './plan.ts'
 import { contextReviewFeedback } from './context-review-feedback.ts'
 
+/** Share owned event positions and Undo provenance without replaying inherited choices. */
+function ownedPolicyTimeline(inspection: ContextFamilyInspection) {
+  const owned = inspection.events.slice(inspection.inheritedEventCount)
+  return { ...contextPlanFeedbackStates(owned),
+    entries: owned.map((event, offset) => ({ event, index: inspection.inheritedEventCount + offset })) }
+}
+
 /** One explicit UI choice paired with its reviewed objective when recorded. */
 export interface PersonalContextEdit {
   readonly objective: string
@@ -195,12 +202,10 @@ export function contextEditEvidenceFromFamily(
   const nodeById = new Map(graph.nodes.map(node => [node.id, node]))
   const edits: { time: number; sessionId: string; seq: number; edit: PersonalContextEdit }[] = []
   for (const inspection of inspections.values()) {
-    const { stateByPlanRevision, undoneStates } = contextPlanFeedbackStates(
-      inspection.events.slice(inspection.inheritedEventCount))
-    for (let index = inspection.inheritedEventCount; index < inspection.events.length; index += 1) {
-      const event = inspection.events[index]
-      if ((event?.type !== 'contextify/node-choice'
-        && event?.type !== 'contextify/recommendation-reviewed')
+    const { stateByPlanRevision, undoneStates, entries } = ownedPolicyTimeline(inspection)
+    for (const { index, event } of entries) {
+      if ((event.type !== 'contextify/node-choice'
+        && event.type !== 'contextify/recommendation-reviewed')
         || event.data.uiOrigin !== 'contextify-client') continue
       if (event.type === 'contextify/node-choice' && event.data.origin === 'recommendation'
         && inspection.events[index + 1]?.type === 'contextify/recommendation-reviewed') continue
@@ -340,11 +345,9 @@ export function contextPlanExamplesFromFamily(
   const nodeById = new Map(graph.nodes.map(node => [node.id, node]))
   const examples: { time: number; sessionId: string; seq: number; example: PersonalContextPlanExample }[] = []
   for (const inspection of inspections.values()) {
-    const { stateByPlanRevision, undoneStates } = contextPlanFeedbackStates(
-      inspection.events.slice(inspection.inheritedEventCount))
-    for (let index = inspection.inheritedEventCount; index < inspection.events.length; index += 1) {
-      const event = inspection.events[index]
-      if (event?.type !== 'contextify/node-choice' || event.data.uiOrigin !== 'contextify-client'
+    const { stateByPlanRevision, undoneStates, entries } = ownedPolicyTimeline(inspection)
+    for (const { index, event } of entries) {
+      if (event.type !== 'contextify/node-choice' || event.data.uiOrigin !== 'contextify-client'
         || event.data.origin !== 'recommendation' || !event.data.changed) continue
       const changedState = stateByPlanRevision.get(event.data.afterPlanRevision)
       if (changedState !== undefined && undoneStates.has(changedState)) continue

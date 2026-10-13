@@ -63,6 +63,58 @@ function sizeFor(id: string, sizes: ContextMapNodeSizes): ContextMapNodeSize {
   return sizes[id] ?? { width: CONTEXT_MAP_NODE_WIDTH, height: CONTEXT_MAP_NODE_HEIGHT }
 }
 
+/** Exact Dagre placement for one connected chain, without general rank optimization. */
+function chainLayout(
+  records: readonly ContextFamilyGraphNode[],
+  edges: readonly ContextFamilyGraphEdge[],
+  direction: 'TB' | 'LR',
+  sizes: ContextMapNodeSizes,
+): Array<Node<ContextMapLayoutData>> | undefined {
+  if (records.length === 0) return edges.length === 0 ? [] : undefined
+  if (edges.length !== records.length - 1) return undefined
+  const byId = new Map(records.map((record, index) => [record.id, { record, index }]))
+  if (byId.size !== records.length) return undefined
+  const successors = new Map<string, string>()
+  const incoming = new Set<string>()
+  for (const edge of edges) {
+    if (!byId.has(edge.source) || !byId.has(edge.target)
+      || successors.has(edge.source) || incoming.has(edge.target)) return undefined
+    successors.set(edge.source, edge.target)
+    incoming.add(edge.target)
+  }
+  const roots = records.filter(record => !incoming.has(record.id))
+  const root = roots[0]
+  if (roots.length !== 1 || root === undefined) return undefined
+  const horizontal = direction === 'LR'
+  let crossExtent = 0
+  for (const record of records) {
+    const size = sizeFor(record.id, sizes)
+    if (!Number.isFinite(size.width) || !Number.isFinite(size.height)
+      || size.width <= 0 || size.height <= 0) return undefined
+    crossExtent = Math.max(crossExtent, horizontal ? size.height : size.width)
+  }
+  const visited = new Set<string>()
+  const nodes: Array<Node<ContextMapLayoutData>> = []
+  let cursor: string | undefined = root.id
+  let rankStart = 0
+  while (cursor !== undefined) {
+    const item = byId.get(cursor)
+    if (item === undefined || visited.has(cursor)) return undefined
+    visited.add(cursor)
+    const size = sizeFor(cursor, sizes)
+    const crossStart = (crossExtent - (horizontal ? size.height : size.width)) / 2
+    nodes[item.index] = {
+      id: cursor, type: 'contextMessage', data: { record: item.record },
+      position: horizontal ? { x: rankStart, y: crossStart } : { x: crossStart, y: rankStart },
+      targetPosition: horizontal ? Position.Left : Position.Top,
+      sourcePosition: horizontal ? Position.Right : Position.Bottom,
+    }
+    rankStart += (horizontal ? size.width : size.height) + CONTEXT_MAP_RANK_GAP
+    cursor = successors.get(cursor)
+  }
+  return visited.size === records.length ? nodes : undefined
+}
+
 function mindMapLayout(
   records: readonly ContextFamilyGraphNode[],
   edges: readonly ContextFamilyGraphEdge[],
@@ -129,5 +181,6 @@ export function layoutContextMap(
   sizes: ContextMapNodeSizes = {},
 ): Array<Node<ContextMapLayoutData>> {
   if (mode === 'mindmap') return mindMapLayout(nodes, edges)
-  return dagreLayout(nodes, edges, mode === 'timeline' ? 'LR' : 'TB', sizes)
+  const direction = mode === 'timeline' ? 'LR' : 'TB'
+  return chainLayout(nodes, edges, direction, sizes) ?? dagreLayout(nodes, edges, direction, sizes)
 }

@@ -15,7 +15,7 @@ import {
   resolveChildDepth,
 } from '@deepseek-ai/dsh-subagent'
 import { defineTool, type ToolExecution, type ToolGuard } from '@deepseek-ai/dsh-tools'
-import { parseRecommendationDecisionText, type ContextRecommendationDecision } from './recommendation.ts'
+import { contextReviewTopology, parseRecommendationDecisionText, type ContextRecommendationDecision } from './recommendation.ts'
 import type { ContextFamilyGraph, ContextFamilySession, ContextPlanSnapshot } from './types.ts'
 
 const TEMP_DIRECTORY_PREFIX = 'dsh-contextify-'
@@ -324,12 +324,7 @@ export function buildDeepRecommendationSnapshot(
   const explicitIncluded = new Set(request.plan.included.map(item => item.nodeId))
   const explicitExcluded = new Set(request.plan.excluded.map(item => item.nodeId))
   const archived = new Set(request.plan.replacements.map(item => item.nodeId))
-  const incoming = new Map<string, string[]>()
-  const outgoing = new Map<string, string[]>()
-  for (const edge of request.graph.edges) {
-    incoming.set(edge.target, [...incoming.get(edge.target) ?? [], edge.source])
-    outgoing.set(edge.source, [...outgoing.get(edge.source) ?? [], edge.target])
-  }
+  const { incoming, outgoing } = contextReviewTopology(request.graph)
   const nodes = request.graph.nodes.map((node): DeepRecommendationNode => Object.freeze({
     kind: 'node',
     id: node.id,

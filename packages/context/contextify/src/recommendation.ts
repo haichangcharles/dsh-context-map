@@ -2,6 +2,7 @@
 import type {
   ContextArchiveCandidate,
   ContextFamilyGraph,
+  ContextFamilyGraphNode,
   ContextRecommendationBase,
   ContextRecommendationMode,
   ContextRecommendationProposal,
@@ -86,22 +87,58 @@ function readWorkStates(value: unknown): ContextRecommendationDecision['workStat
   }))
 }
 
+/** Extract the shared classifier JSON envelope while preserving parse failures.
+ * @param text - Raw tool-free classifier response.
+ * @returns Parsed unknown value for each caller's strict schema validation.
+ */
+export function parseRecommendationJson(text: string): unknown {
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  if (start < 0 || end < start) throw new Error('recommendation response did not contain JSON')
+  try { return JSON.parse(text.slice(start, end + 1)) }
+  catch { throw new Error('recommendation response contained invalid JSON') }
+}
+
+/** Project reusable native graph adjacency for every review mode.
+ * @param graph - Frozen Session-family topology.
+ * @returns Incoming/outgoing node IDs and native Session depths.
+ */
+export function contextReviewTopology(graph: ContextFamilyGraph): {
+  incoming: Map<string, string[]>
+  outgoing: Map<string, string[]>
+  depths: Map<ContextFamilyGraph['activeSessionId'], number>
+} {
+  const incoming = new Map<string, string[]>()
+  const outgoing = new Map<string, string[]>()
+  for (const edge of graph.edges) {
+    incoming.set(edge.target, [...incoming.get(edge.target) ?? [], edge.source])
+    outgoing.set(edge.source, [...outgoing.get(edge.source) ?? [], edge.target])
+  }
+  return { incoming, outgoing, depths: new Map(graph.sessions.map(session => [session.id, session.depth])) }
+}
+
+/** Preserve source identity and Unicode-bounded content in review packets.
+ * @param node - Canonical graph node.
+ * @param exact - Exact source content before review truncation.
+ * @param limit - Maximum Unicode code points.
+ * @returns Shared content fields; caller supplies its mode-specific topology.
+ */
+export function contextReviewNodeContent(node: ContextFamilyGraphNode, exact: string, limit: number):
+Pick<ContextRecommendationInputNode, 'id' | 'role' | 'sourceKind' | 'webAction' | 'content' | 'truncated'> {
+  const content = Array.from(exact).slice(0, limit).join('')
+  return { id: node.id, role: node.role,
+    ...(node.sourceKind === undefined ? {} : { sourceKind: node.sourceKind }),
+    ...(node.webAction === undefined ? {} : { webAction: node.webAction }),
+    content, truncated: content.length < exact.length }
+}
+
 /**
  * Parse one JSON object from a tool-free classifier response.
  * @param text - Raw classifier text containing one recommendation JSON object.
  * @returns Frozen selection lists and optional bounded native task-state advice.
  */
 export function parseRecommendationDecisionText(text: string): ContextRecommendationDecision {
-  const start = text.indexOf('{')
-  const end = text.lastIndexOf('}')
-  if (start < 0 || end < start) throw new Error('recommendation response did not contain JSON')
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(text.slice(start, end + 1))
-  } catch {
-    throw new Error('recommendation response contained invalid JSON')
-  }
-  const root = record(parsed, 'recommendation')
+  const root = record(parseRecommendationJson(text), 'recommendation')
   const allowed = new Set(['exclude', 'include', 'archive', 'workStates'])
   for (const key of Object.keys(root)) {
     if (!allowed.has(key)) throw new Error(`recommendation field "${key}" is unsupported`)
@@ -137,25 +174,13 @@ export function buildRecommendationInput(request: {
     throw new Error(`Context recommendation supports at most ${String(CONTEXT_RECOMMENDATION_MAX_NODES)} nodes`)
   }
   const included = new Set(request.effectiveIncludedNodeIds)
-  const incoming = new Map<string, string[]>()
-  const outgoing = new Map<string, string[]>()
-  for (const edge of request.graph.edges) {
-    incoming.set(edge.target, [...incoming.get(edge.target) ?? [], edge.source])
-    outgoing.set(edge.source, [...outgoing.get(edge.source) ?? [], edge.target])
-  }
-  const depths = new Map(request.graph.sessions.map(session => [session.id, session.depth]))
+  const { incoming, outgoing, depths } = contextReviewTopology(request.graph)
   const count = Math.max(request.graph.nodes.length, 1)
   const contentLimit = Math.max(160, Math.min(4_000, Math.floor(72_000 / count)))
   const nodes = request.graph.nodes.map((node): ContextRecommendationInputNode => {
     const exact = request.contents[node.id] ?? node.preview
-    const content = Array.from(exact).slice(0, contentLimit).join('')
     return Object.freeze({
-      id: node.id,
-      role: node.role,
-      ...(node.sourceKind === undefined ? {} : { sourceKind: node.sourceKind }),
-      ...(node.webAction === undefined ? {} : { webAction: node.webAction }),
-      content,
-      truncated: content.length < exact.length,
+      ...contextReviewNodeContent(node, exact, contentLimit),
       included: included.has(node.id),
       active: node.sessionIds.includes(request.graph.activeSessionId),
       incoming: Object.freeze([...(incoming.get(node.id) ?? [])]),

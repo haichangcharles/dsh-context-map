@@ -6,7 +6,7 @@ import invariant from 'tiny-invariant'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { BlockAssembler, createUserMessage, HarnessError, type Message } from '@deepseek-ai/dsh-llm'
-import { SessionId, type Session } from '@deepseek-ai/dsh-session'
+import { SessionId, type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-context-compiler'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import type {} from '@deepseek-ai/dsh-settings'
@@ -227,6 +227,45 @@ function contentHash(message: Message): string {
   return createHash('sha256').update(JSON.stringify(message)).digest('hex')
 }
 
+const REVIEW_ONLY_EVENTS = new Set<SessionEvent['type']>([
+  'contextify/branch-review', 'contextify/branch-choice', 'contextify/route-choice',
+  'contextify/manual-branch', 'contextify/manual-route', 'contextify/policy-reset',
+  'contextify/work-state-choice', 'contextify/node-choice', 'contextify/recommendation-request',
+  'contextify/recommendation-presented', 'contextify/recommendation-reviewed', 'contextify/recommendation-dismissed',
+])
+
+function changesFamilyView(event: SessionEvent): boolean {
+  return !REVIEW_ONLY_EVENTS.has(event.type)
+}
+
+function requireBranchReview(events: readonly SessionEvent[], suggestionId: string) {
+  const review = events.findLast(event => event.type === 'contextify/branch-review'
+    && event.data.suggestion?.id === suggestionId)
+  if (review?.type !== 'contextify/branch-review' || review.data.suggestion === null) {
+    throw new ContextifyError('Branch suggestion is unavailable', 'CONTEXTIFY_INVALID_TRANSITION')
+  }
+  return { review, suggestion: review.data.suggestion }
+}
+
+function assertBranchSourceCurrent(events: readonly SessionEvent[], boundaryAfter: number): void {
+  const advanced = events.slice(boundaryAfter + 1).some(event =>
+    event.type === 'turn/start' || event.type === 'turn/end'
+    || event.type === 'user/message' || event.type === 'assistant/message' || event.type === 'tool/result')
+  if (advanced) {
+    throw new ContextifyError('the source conversation advanced after the Branch suggestion', 'CONTEXTIFY_STALE_GRAPH')
+  }
+}
+
+function requireFocusNode(graph: ContextFamilyGraph, ref: ContextMessageRef): ContextFamilyGraphNode {
+  const node = resolveNode(graph, ref)
+  if (node === undefined) throw new ContextifyError('message is not part of the active Context Map', 'CONTEXTIFY_INVALID_NODE')
+  if (node.activeEventSeq === null || node.role === 'tool'
+    || (node.sourceKind !== undefined && node.sourceKind !== 'chat')) {
+    throw new ContextifyError('only active text chat messages can be focused', 'CONTEXTIFY_UNSUPPORTED_MESSAGE')
+  }
+  return node
+}
+
 function familyRevision(inspections: ReadonlyMap<SessionId, ContextFamilyInspection>): string {
   const records = [...inspections.values()]
     .sort((left, right) => left.meta.id.localeCompare(right.meta.id))
@@ -235,30 +274,8 @@ function familyRevision(inspections: ReadonlyMap<SessionId, ContextFamilyInspect
       parentSession: meta.parentSession ?? null,
       seedLength: inheritedEventCount,
       // Review and choice records do not alter visible topology.
-      eventCount: events.filter(event => event.type !== 'contextify/branch-review'
-        && event.type !== 'contextify/branch-choice'
-        && event.type !== 'contextify/route-choice'
-        && event.type !== 'contextify/manual-branch'
-        && event.type !== 'contextify/manual-route'
-        && event.type !== 'contextify/policy-reset'
-        && event.type !== 'contextify/work-state-choice'
-        && event.type !== 'contextify/node-choice'
-        && event.type !== 'contextify/recommendation-request'
-        && event.type !== 'contextify/recommendation-presented'
-        && event.type !== 'contextify/recommendation-reviewed'
-        && event.type !== 'contextify/recommendation-dismissed').length,
-      lastSeq: events.findLast(event => event.type !== 'contextify/branch-review'
-        && event.type !== 'contextify/branch-choice'
-        && event.type !== 'contextify/route-choice'
-        && event.type !== 'contextify/manual-branch'
-        && event.type !== 'contextify/manual-route'
-        && event.type !== 'contextify/policy-reset'
-        && event.type !== 'contextify/work-state-choice'
-        && event.type !== 'contextify/node-choice'
-        && event.type !== 'contextify/recommendation-request'
-        && event.type !== 'contextify/recommendation-presented'
-        && event.type !== 'contextify/recommendation-reviewed'
-        && event.type !== 'contextify/recommendation-dismissed')?.seq ?? -1,
+      eventCount: events.filter(changesFamilyView).length,
+      lastSeq: events.findLast(changesFamilyView)?.seq ?? -1,
     }))
   return createHash('sha256').update(JSON.stringify(records)).digest('hex')
 }
@@ -1323,12 +1340,7 @@ export class ContextifyService extends TypertRemoteService {
     if (agent.status !== 'idle') {
       throw new ContextifyError('Branch relocation requires an idle Agent', 'CONTEXTIFY_AGENT_BUSY')
     }
-    const review = agent.session.snapshotEvents().findLast(event => event.type === 'contextify/branch-review'
-      && event.data.suggestion?.id === suggestionId)
-    if (review?.type !== 'contextify/branch-review' || review.data.suggestion === null) {
-      throw new ContextifyError('Branch suggestion is unavailable', 'CONTEXTIFY_INVALID_TRANSITION')
-    }
-    const suggestion = review.data.suggestion
+    const { suggestion } = requireBranchReview(agent.session.snapshotEvents(), suggestionId)
     if (agent.session.snapshotEvents().some(event => event.type === 'contextify/branch-choice'
       && event.data.suggestionId === suggestionId)) {
       throw new ContextifyError('Branch suggestion was already decided', 'CONTEXTIFY_INVALID_TRANSITION')
@@ -1336,12 +1348,7 @@ export class ContextifyService extends TypertRemoteService {
     if (suggestion.boundaryBefore < 0) {
       throw new ContextifyError('the first conversation Turn has no preceding Branch boundary', 'CONTEXTIFY_INVALID_TRANSITION')
     }
-    const laterConversation = agent.session.snapshotEvents().slice(suggestion.boundaryAfter + 1).some(event =>
-      event.type === 'turn/start' || event.type === 'turn/end'
-      || event.type === 'user/message' || event.type === 'assistant/message' || event.type === 'tool/result')
-    if (laterConversation) {
-      throw new ContextifyError('the source conversation advanced after the Branch suggestion', 'CONTEXTIFY_STALE_GRAPH')
-    }
+    assertBranchSourceCurrent(agent.session.snapshotEvents(), suggestion.boundaryAfter)
     return { sourceSessionId: agent.id, beforeSeq: suggestion.boundaryBefore + 1 }
   }
 
@@ -1372,12 +1379,7 @@ export class ContextifyService extends TypertRemoteService {
     if (currentContextPlan(agent.session).revision !== suggestion.planRevision) {
       throw new ContextifyError('the Context Plan changed after the Branch suggestion', 'CONTEXTIFY_STALE_REVISION')
     }
-    const laterConversation = events.slice(suggestion.boundaryAfter + 1).some(event =>
-      event.type === 'turn/start' || event.type === 'turn/end'
-      || event.type === 'user/message' || event.type === 'assistant/message' || event.type === 'tool/result')
-    if (laterConversation) {
-      throw new ContextifyError('the source conversation advanced after the Branch suggestion', 'CONTEXTIFY_STALE_GRAPH')
-    }
+    assertBranchSourceCurrent(events, suggestion.boundaryAfter)
     agent.session.append('contextify/branch-choice', {
       suggestionId, choice: 'keep', turnEndSeq: review.data.turnEndSeq,
       ...(uiOrigin === 'contextify-client' ? { uiOrigin } : {}),
@@ -1651,12 +1653,7 @@ export class ContextifyService extends TypertRemoteService {
       throw new ContextifyError('excerpt reason must be non-empty and bounded', 'CONTEXTIFY_INVALID_TRANSITION')
     }
     const family = await this.loadFamily(agent.session)
-    const node = resolveNode(family.graph, nodeRef)
-    if (node === undefined) throw new ContextifyError('message is not part of the active Context Map', 'CONTEXTIFY_INVALID_NODE')
-    if (node.activeEventSeq === null || node.role === 'tool'
-      || (node.sourceKind !== undefined && node.sourceKind !== 'chat')) {
-      throw new ContextifyError('only active text chat messages can be focused', 'CONTEXTIFY_UNSUPPORTED_MESSAGE')
-    }
+    const node = requireFocusNode(family.graph, nodeRef)
     if (current.replacements.some(item => item.nodeId === node.id)) {
       throw new ContextifyError('restore the existing replacement before focusing this message',
         'CONTEXTIFY_INVALID_TRANSITION')
@@ -1720,12 +1717,7 @@ export class ContextifyService extends TypertRemoteService {
   async getNodeText(agent: Agent, nodeRef: ContextMessageRef): Promise<string> {
     this.assertLive(agent)
     const family = await this.loadFamily(agent.session)
-    const node = resolveNode(family.graph, nodeRef)
-    if (node === undefined) throw new ContextifyError('message is not part of the active Context Map', 'CONTEXTIFY_INVALID_NODE')
-    if (node.activeEventSeq === null || node.role === 'tool'
-      || (node.sourceKind !== undefined && node.sourceKind !== 'chat')) {
-      throw new ContextifyError('only active text chat messages can be focused', 'CONTEXTIFY_UNSUPPORTED_MESSAGE')
-    }
+    const node = requireFocusNode(family.graph, nodeRef)
     const source = family.inspections.get(node.owner.sessionId)
     invariant(source, 'projected Context Map owners must belong to the inspected family')
     const exact = exactMessage(source, node.owner.seq)
@@ -1754,24 +1746,14 @@ export class ContextifyService extends TypertRemoteService {
   ): Promise<ContextBranchRelocationResult> {
     this.assertLive(agent)
     if (agent.status !== 'idle') throw new ContextifyError('Branch relocation requires an idle Agent', 'CONTEXTIFY_AGENT_BUSY')
-    const review = agent.session.snapshotEvents().findLast(event => event.type === 'contextify/branch-review'
-      && event.data.suggestion?.id === suggestionId)
-    if (review?.type !== 'contextify/branch-review' || review.data.suggestion === null) {
-      throw new ContextifyError('Branch suggestion is unavailable', 'CONTEXTIFY_INVALID_TRANSITION')
-    }
-    const suggestion = review.data.suggestion
+    const { review, suggestion } = requireBranchReview(agent.session.snapshotEvents(), suggestionId)
     const previousChoice = agent.session.snapshotEvents().findLast(event => event.type === 'contextify/branch-choice'
       && event.data.suggestionId === suggestionId)
     if (previousChoice?.type === 'contextify/branch-choice' && previousChoice.data.choice === 'keep') {
       throw new ContextifyError('Branch suggestion was already kept', 'CONTEXTIFY_INVALID_TRANSITION')
     }
     const key = branchRelocationKey(agent.id, suggestion.boundaryAfter)
-    const laterConversation = agent.session.snapshotEvents().slice(suggestion.boundaryAfter + 1).some(event =>
-      event.type === 'turn/start' || event.type === 'turn/end'
-      || event.type === 'user/message' || event.type === 'assistant/message' || event.type === 'tool/result')
-    if (laterConversation) {
-      throw new ContextifyError('the source conversation advanced after the Branch suggestion', 'CONTEXTIFY_STALE_GRAPH')
-    }
+    assertBranchSourceCurrent(agent.session.snapshotEvents(), suggestion.boundaryAfter)
     let plan = currentContextPlan(agent.session)
     const family = await this.loadFamily(agent.session)
     const nodes = [suggestion.input, suggestion.output].map(ref => resolveNode(family.graph, ref))

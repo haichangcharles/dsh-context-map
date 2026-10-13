@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import dagre from 'dagre'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ContextFamilyGraphEdge, ContextFamilyGraphNode } from '@deepseek-ai/dsh-contextify/types'
 import {
@@ -28,6 +29,77 @@ function edge(source: string, target: string): ContextFamilyGraphEdge {
 }
 
 describe('measured Context Map layout', () => {
+  it.each(['tree', 'timeline'] as const)('places an unordered measured chain exactly as Dagre in %s mode', (mode) => {
+    const nodes = [node('leaf', 3), node('root', 1), node('middle', 2)]
+    const edges = [edge('middle', 'leaf'), edge('root', 'middle')]
+    const sizes: ContextMapNodeSizes = {
+      root: { width: 400, height: 100 }, middle: { width: 100, height: 150 }, leaf: { width: 224, height: 116 },
+    }
+    const expected = new dagre.graphlib.Graph()
+    expected.setDefaultEdgeLabel(() => ({}))
+    expected.setGraph({ rankdir: mode === 'tree' ? 'TB' : 'LR', nodesep: CONTEXT_MAP_NODE_GAP, ranksep: CONTEXT_MAP_RANK_GAP })
+    for (const record of nodes) expected.setNode(record.id, sizes[record.id]!)
+    for (const link of edges) expected.setEdge(link.source, link.target)
+    dagre.layout(expected)
+
+    const layout = layoutContextMap(nodes, edges, mode, sizes)
+    expect(layout.map(record => record.id)).toEqual(nodes.map(record => record.id))
+    for (const record of layout) {
+      const center = expected.node(record.id) as { x: number; y: number }
+      const size = sizes[record.id]!
+      expect(record.position).toEqual({ x: center.x - size.width / 2, y: center.y - size.height / 2 })
+    }
+  })
+
+  it('places all 480 chain messages without invoking general graph optimization', () => {
+    const nodes = Array.from({ length: 480 }, (_, index) => node(`turn-message-${String(index)}`, index))
+    const edges = nodes.slice(1).map((record, index) => edge(nodes[index]!.id, record.id))
+    const generalLayout = vi.spyOn(dagre, 'layout')
+    try {
+      const layout = layoutContextMap(nodes, edges, 'tree')
+      expect(layout).toHaveLength(480)
+      for (let index = 0; index < layout.length; index++) {
+        expect(layout[index]?.position).toEqual({ x: 0, y: index * (116 + CONTEXT_MAP_RANK_GAP) })
+      }
+      expect(generalLayout).not.toHaveBeenCalled()
+    } finally { generalLayout.mockRestore() }
+  })
+
+  it('retains Dagre alignment for fractional renderer measurements in a longer chain', () => {
+    const nodes = Array.from({ length: 16 }, (_, index) => node(`measured-${String(index)}`, index))
+    const edges = nodes.slice(1).map((record, index) => edge(nodes[index]!.id, record.id))
+    const sizes: ContextMapNodeSizes = Object.fromEntries(nodes.map((record, index) => [record.id,
+      { width: 180 + (index % 7) * 12.5, height: 88 + (index % 5) * 15.5 }]))
+    for (const mode of ['tree', 'timeline'] as const) {
+      const expected = new dagre.graphlib.Graph()
+      expected.setDefaultEdgeLabel(() => ({}))
+      expected.setGraph({ rankdir: mode === 'tree' ? 'TB' : 'LR', nodesep: CONTEXT_MAP_NODE_GAP, ranksep: CONTEXT_MAP_RANK_GAP })
+      for (const record of nodes) expected.setNode(record.id, sizes[record.id]!)
+      for (const link of edges) expected.setEdge(link.source, link.target)
+      dagre.layout(expected)
+      for (const record of layoutContextMap(nodes, edges, mode, sizes)) {
+        const center = expected.node(record.id) as { x: number; y: number }
+        const size = sizes[record.id]!
+        expect(record.position).toEqual({ x: center.x - size.width / 2, y: center.y - size.height / 2 })
+      }
+    }
+  })
+
+  it.each([
+    [edge('root', 'left'), edge('root', 'right')],
+    [edge('root', 'right'), edge('left', 'right')],
+    [edge('root', 'left'), edge('left', 'root')],
+    [edge('root', 'missing'), edge('left', 'right')],
+    [edge('root', 'left'), edge('root', 'left')],
+  ].map(edges => ({ edges })))('keeps the general layout for branches, joins, cycles and invalid endpoints %#', ({ edges }) => {
+    const generalLayout = vi.spyOn(dagre, 'layout')
+    try {
+      expect(layoutContextMap([node('root', 1), node('left', 2), node('right', 3)], edges, 'tree'))
+        .toHaveLength(3)
+      expect(generalLayout).toHaveBeenCalledOnce()
+    } finally { generalLayout.mockRestore() }
+  })
+
   it('places a child below the measured bottom of a tall parent', () => {
     const nodes = [node('parent', 1), node('child', 2)]
     const sizes: ContextMapNodeSizes = {

@@ -103,6 +103,13 @@ describe('client bundle purity gate', () => {
     expect(() => resolveId('@deepseek-ai/dsh-host-open-in-app')).toThrow(/purity/)
   })
 
+  it('inlines only the pure Contextify vocabulary and defaults entry', () => {
+    expect(resolveId('@deepseek-ai/dsh-contextify/types')).toBeNull()
+    expect(() => resolveId('@deepseek-ai/dsh-contextify')).toThrow(/purity/)
+    expect(() => resolveId('@deepseek-ai/dsh-contextify/types/internal')).toThrow(/purity/)
+    expect(() => resolveId('@deepseek-ai/dsh-contextify/branch-tool')).toThrow(/purity/)
+  })
+
   it('admits only the pure spill notice entry, not its Host policy', () => {
     expect(resolveId('@deepseek-ai/dsh-spill-policy/notice')).toBeNull()
     expect(resolveId('@deepseek-ai/dsh-output-retention')).toBeNull()
