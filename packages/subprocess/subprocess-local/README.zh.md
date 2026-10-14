@@ -94,6 +94,8 @@ kind: "package-reference"
 
 显式取消的 Linux 启动，如果 bootstrap 尚未消费请求，会以空退出码和 owner 请求的信号结算。未消费请求的意外退出仍是启动失败；已报告的启动错误优先于同时发生的取消。已消费请求的目标结果保持不变；范围完全停稳与协议清理仍是独立义务。参见[取消决策](../../../.agents/notes/implemented/bug-fix/2026-10-14-linux-prelaunch-cancellation.zh.md)。
 
+最终 Linux SIGKILL 成功后，还会为自有 scope 入队 stop，而不阻塞等待该任务。这会完成一种在 cgroup 已变空后仍可能保持 active 的 manager 生命周期。`waitForExit()` 仍要求权威的 scope 完全停稳证明；直接退出和 stop 确认不会替代它。宿主退出清理也会尽力提交相同的 stop。参见[scope 生命周期决策](../../../.agents/notes/implemented/bug-fix/2026-10-14-linux-scope-lifecycle.zh.md)。
+
 ### 安全不变式
 
 spill 文件以 `0600` 权限、`O_EXCL` 与随机名称在 `0700` 每进程目录下创建，可抵御共享临时目录中的符号链接植入；最终关闭失败时不公布 spill 路径。fallback 进程身份携带启动时间，因此清理绝不会跟随 PID 复用。选定的 native 路径失败时会报告错误，而不会通过 fallback 重放 argv；受管范围只有在清理完成后才从存活集合移除，否则失败仍保持可观察。宿主退出最终清理不创建 Promise 或定时器，保留宿主退出码与诊断，分别包含每个目标的失败，也不会声称已经完全停稳。

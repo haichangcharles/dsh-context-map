@@ -166,6 +166,7 @@ class SystemdScopeOwner implements BoundProcessOwner {
   private stopped = false
   private observation: Promise<void> | undefined
   private killFailure: Error | undefined
+  private stopFailure: Error | undefined
   private wakeGeneration = 0
   private wakeWaiter: { generation: number; resolve: () => void } | undefined
 
@@ -197,7 +198,10 @@ class SystemdScopeOwner implements BoundProcessOwner {
     ], { encoding: 'utf8', env: managerEnvironment(), timeout: SYSTEMCTL_TIMEOUT_MS })
     this.wakeObservation()
     if (result.error === undefined && result.status === 0) {
-      if (signal === 'SIGKILL') this.killFailure = undefined
+      if (signal === 'SIGKILL') {
+        this.killFailure = undefined
+        this.requestScopeStop()
+      }
       return
     }
     if (!directFallbackRequired && this.direct.running()) this.direct.signal(signal)
@@ -209,6 +213,21 @@ class SystemdScopeOwner implements BoundProcessOwner {
         )
       }
     }
+  }
+
+  /** Enqueue lifecycle completion; only a later manager observation proves exit. */
+  private requestScopeStop(): void {
+    const result = this.runSync(this.systemctl, [
+      '--user', 'stop', '--no-block', this.unit,
+    ], { encoding: 'utf8', env: managerEnvironment(), timeout: SYSTEMCTL_TIMEOUT_MS })
+    const output = `${result.stdout}\n${result.stderr}`
+    if (result.error === undefined && result.status === 0 || MISSING_UNIT.test(output)) {
+      this.stopFailure = undefined
+      return
+    }
+    this.stopFailure = result.error ?? new Error(
+      `systemctl could not stop ${this.unit}: ${output.trim() || `exit ${String(result.status)}`}`,
+    )
   }
 
   terminateForHostExit(): void {
@@ -228,6 +247,11 @@ class SystemdScopeOwner implements BoundProcessOwner {
     } catch {
       // Host exit cannot report one range; the runtime continues with the rest.
     }
+    try {
+      this.requestScopeStop()
+    } catch {
+      // Continue other owned ranges even if this manager request cannot run.
+    }
   }
 
   private observeRequestConsumption(): void {
@@ -243,6 +267,7 @@ class SystemdScopeOwner implements BoundProcessOwner {
       return false
     }
     if (this.killFailure !== undefined) throw this.killFailure
+    if (this.stopFailure !== undefined) throw this.stopFailure
     return true
   }
 
@@ -299,6 +324,7 @@ class SystemdScopeOwner implements BoundProcessOwner {
         this.signal(pendingSignal)
       }
       if (this.killFailure !== undefined) throw this.killFailure
+      if (this.stopFailure !== undefined) throw this.stopFailure
       return true
     }
     if (!MISSING_UNIT.test(output)) {

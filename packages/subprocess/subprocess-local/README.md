@@ -94,6 +94,8 @@ A spawn synchronously validates the final argv, cwd, and environment, selects co
 
 An explicitly cancelled Linux launch whose bootstrap has not consumed its request settles with a null exit code and the owner's requested signal. An unexpected unconsumed exit remains a launch failure, and a reported startup error takes precedence over concurrent cancellation. Consumed-target outcomes are unchanged; range quiescence and protocol cleanup remain separate obligations. See the [cancellation decision](../../../.agents/notes/implemented/bug-fix/2026-10-14-linux-prelaunch-cancellation.md).
 
+Successful final Linux SIGKILL also enqueues an owned scope stop without blocking for its job. This completes a manager lifecycle that can remain active after its cgroup becomes empty. `waitForExit()` still requires authoritative scope quiescence; direct exit and stop acknowledgement do not replace it. Host-exit cleanup submits the same stop on a best-effort basis. See the [scope lifecycle decision](../../../.agents/notes/implemented/bug-fix/2026-10-14-linux-scope-lifecycle.md).
+
 ### Safety invariants
 
 Spill files are opened `0600` with `O_EXCL` and random names under a `0700` per-process directory, defeating symlink planting in shared temp dirs; a failed final close withholds the spill path. Fallback process identities carry start times, so cleanup never follows PID reuse. A selected native failure is reported instead of replaying argv through fallback, and a range is removed from the live set only after cleanup completes or the failure remains observable. Host-exit finalization creates no promises or timers, preserves the host exit code and diagnostic, contains each target's failure, and does not claim quiescence.
