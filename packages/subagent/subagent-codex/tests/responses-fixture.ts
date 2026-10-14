@@ -32,6 +32,54 @@ export type ResponsesBehavior =
   }
   | { readonly kind: 'hold' }
 
+/** A fixed script or behavior selected from the actual current localhost request. */
+export type ResponsesRequestScript = (request: RecordedResponsesRequest, index: number) => ResponsesBehavior
+export type ResponsesFixtureScript = readonly ResponsesBehavior[] | ResponsesRequestScript
+
+/**
+ * Continue a real fixture command until its actual tool output reports successful exit.
+ * @param choices - Command calls chosen only from the product's advertised functions.
+ * @param text - Final text emitted after confirmed command exit.
+ * @param deadline - The existing test's absolute deadline, including startup.
+ * @param observeOutput - Safe diagnostic sink receiving only the latest function-call output.
+ * @returns A request-aware localhost script with empty-input command continuations.
+ */
+export function completeFixtureCommand(
+  choices: Extract<ResponsesBehavior, { kind: 'advertisedFunctionCall' }>['choices'],
+  text: string,
+  deadline: number,
+  observeOutput: (output: string) => void,
+): ResponsesRequestScript {
+  return (request, index): ResponsesBehavior => {
+    if (Date.now() >= deadline) throw new Error('Isolated fixture command exceeded the existing test deadline')
+    if (index === 0) return { kind: 'advertisedFunctionCall', choices }
+    const input = request.body.input
+    const output = Array.isArray(input)
+      ? input.flatMap((item: unknown): string[] => (
+        item !== null && typeof item === 'object'
+        && 'type' in item && item.type === 'function_call_output'
+        && 'output' in item && typeof item.output === 'string'
+          ? [item.output] : []
+      )).at(-1)
+      : undefined
+    if (output === undefined) throw new Error('Missing actual fixture command output')
+    observeOutput(output)
+    const running = /Process running with session ID (\d+)/.exec(output)
+    if (running !== null) {
+      const sessionId = Number(running[1])
+      if (!Number.isSafeInteger(sessionId)) throw new Error('Invalid actual fixture command session ID')
+      return {
+        kind: 'advertisedFunctionCall',
+        choices: [{ name: 'write_stdin', arguments: { session_id: sessionId, chars: '' } }],
+      }
+    }
+    if (!/Process exited with code 0/.test(output)) {
+      throw new Error('Isolated fixture command did not report successful process exit')
+    }
+    return { kind: 'complete', text }
+  }
+}
+
 /** Running package-private Responses fixture. */
 export interface ResponsesFixture {
   readonly baseUrl: string
@@ -240,13 +288,18 @@ function advertisedFunctionNames(body: Record<string, unknown>): Set<string> {
 
 /**
  * Start a loopback-only Responses SSE fixture.
- * @param script - one behavior per expected Responses request.
+ * @param script - Fixed behaviors or a request-aware local script.
  * @returns the running fixture and its observed requests.
  */
 export async function startResponsesFixture(
-  script: readonly ResponsesBehavior[],
+  script: ResponsesFixtureScript,
 ): Promise<ResponsesFixture> {
-  const behaviors = [...script]
+  const nextBehavior = typeof script === 'function'
+    ? script
+    : (() => {
+      const behaviors = [...script]
+      return (): ResponsesBehavior | undefined => behaviors.shift()
+    })()
   const requests: RecordedResponsesRequest[] = []
   const started = Promise.withResolvers<undefined>()
   const openResponses = new Set<ServerResponse>()
@@ -255,14 +308,15 @@ export async function startResponsesFixture(
     response.on('close', () => { openResponses.delete(response) })
     void readRequest(request).then((body) => {
       const parsedBody = JSON.parse(body) as Record<string, unknown>
-      requests.push({
+      const recorded = {
         method: request.method,
         path: request.url,
         headers: request.headers,
         body: parsedBody,
-      })
+      }
+      requests.push(recorded)
       started.resolve(undefined)
-      const behavior = behaviors.shift()
+      const behavior = nextBehavior(recorded, requests.length - 1)
       if (behavior === undefined) {
         response.writeHead(500, { 'content-type': 'application/json' })
         response.end(JSON.stringify({ error: { message: 'fixture script exhausted' } }))
