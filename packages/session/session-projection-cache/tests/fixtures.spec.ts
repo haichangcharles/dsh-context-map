@@ -148,6 +148,7 @@ async function assertRewrite(ctx: Context, root: string, id: SessionId): Promise
       warnings: warnings.mock.calls.map(([message]) => ({
         trigger: /: (create|turn\/end|detach|count threshold|interval) write /u.exec(String(message))?.[1],
         code: /\b(EACCES|EPERM|ENOENT|ENOTDIR|EEXIST|EBUSY|EMFILE|ENFILE|ENOSPC|EIO)\b/u.exec(String(message))?.[1],
+        syscall: /,\s*(open|mkdir|rename|fsync|close|unlink|rmdir)\b/u.exec(String(message))?.[1] ?? 'unknown',
       })) }))
   })
   const session = ctx.sessions.create(id)

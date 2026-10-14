@@ -11,7 +11,8 @@
  * @module @deepseek-ai/dsh-storage-json/src/atomic
  */
 
-import { open, rename, rm } from 'node:fs/promises'
+import { open, rm } from 'node:fs/promises'
+import { renameAtomicTemp } from '@deepseek-ai/dsh-atomic-write'
 import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 
@@ -31,7 +32,7 @@ export async function writeAtomic(path: string, data: string): Promise<void> {
     } finally {
       await handle.close()
     }
-    await rename(tmp, path)
+    await renameAtomicTemp(tmp, path)
     await fsyncDirectory(dirname(path))
   } catch (error) {
     await rm(tmp, { force: true })
