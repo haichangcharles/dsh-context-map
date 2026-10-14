@@ -139,6 +139,20 @@ export interface DeepSeekAdapterOptions {
   resolveFiles?: () => DeepSeekFileStore
   /** Prepare the official API's plugin-contributed top-level fields for one exact wire request. */
   prepareExtensions: (request: DeepSeekLlmApiExtensionRequest) => Promise<PreparedDeepSeekLlmApiExtensions>
+  /**
+   * Synchronously authorize the final JSON payload immediately before fetch.
+   * Throw to deny dispatch. This runs for each transport attempt after request
+   * extensions and image representation are finalized, without an await
+   * between its return and fetch. A returned value, including a Promise, is
+   * rejected at runtime. It never receives credentials or headers. Image file
+   * uploads may already have occurred; this only fences chat-completion sends.
+   */
+  authorizeDispatch?: (request: {
+    readonly payload: string
+    readonly sessionId?: string
+    readonly purpose?: GenerateOptions['purpose']
+    readonly signal: AbortSignal
+  }) => void
 }
 
 /** Default maximum idle interval while an adapter stream read is outstanding. */
@@ -643,6 +657,30 @@ export class DeepSeekAdapter extends LlmAdapter {
       // Prepared outside the try so the TRANSPORT label below covers exactly the
       // transport boundary, never a serialization failure.
       const payload = JSON.stringify({ ...body, ...extensions.fields })
+      signal.throwIfAborted()
+      try {
+        const authorizationResult: unknown = this.config.authorizeDispatch?.({
+          payload,
+          signal,
+          ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },
+          ...options.purpose === undefined ? {} : { purpose: options.purpose },
+        })
+        if (authorizationResult !== undefined) {
+          // TypeScript permits Promise-returning callbacks where a void return
+          // is expected. Fail closed at runtime: awaiting here would create a
+          // new edit window before fetch, while ignoring the promise would send
+          // a request before its authorization finished.
+          if (authorizationResult !== null && typeof authorizationResult === 'object'
+            && 'then' in authorizationResult && typeof authorizationResult.then === 'function') {
+            void Promise.resolve(authorizationResult).catch(() => {})
+          }
+          throw new Error('DeepSeek dispatch authorization must return synchronously')
+        }
+      } catch (error: unknown) {
+        if (signal.aborted) throw error
+        throw new LlmError('DeepSeek request dispatch was not authorized', 'REQUEST_NOT_AUTHORIZED', { cause: error })
+      }
+      signal.throwIfAborted()
 
       // TODO(http): adopt the Cordis HTTP service when shared transport configuration
       // outweighs its additional runtime dependencies.

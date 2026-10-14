@@ -46,6 +46,18 @@ export interface IConversation {
   /** The per-session input machine registry (SessionInputResolver face). */
   readonly input: SessionInputResolver
   /**
+   * Carry an unchanged plain draft to an empty Session composer.
+   * @param fromId - Session that owns the reviewed draft.
+   * @param toId - Existing destination Session.
+   * @param expected - Exact text and editor revision reviewed before navigation.
+   * @returns Whether the draft and its attachments moved without replacing a destination draft.
+   */
+  moveDraft(
+    fromId: SessionId,
+    toId: SessionId,
+    expected: { readonly draft: string; readonly draftRev: number },
+  ): boolean
+  /**
    * The per-session composer-block registry: how a plugin the composer
    * cannot import makes a session's input inert with its own reason.
    */
@@ -167,6 +179,30 @@ export class ConversationController extends Service implements IConversation {
 
   /** The per-session input machine registry (SessionInputResolver face). */
   readonly input: SessionInputResolver
+  /** Move one unchanged plain draft before switching native Sessions. */
+  moveDraft(
+    fromId: SessionId,
+    toId: SessionId,
+    expected: { readonly draft: string; readonly draftRev: number },
+  ): boolean {
+    if (fromId === toId) return false
+    const fromScope = this.ctx.sessions.scope(fromId)
+    const toScope = this.ctx.sessions.scope(toId)
+    if (fromScope === undefined || toScope === undefined) return false
+    const source = this.input.for(fromScope)
+    const target = this.input.for(toScope)
+    const current = source.state.getSnapshot()
+    const destination = target.state.getSnapshot()
+    if (current.phase !== 'plain' || destination.phase !== 'plain'
+      || current.draft !== expected.draft || current.draftRev !== expected.draftRev
+      || destination.draft !== '' || destination.attachmentIds.length > 0) return false
+    if (current.attachmentIds.length > 0 && !target.addAttachments(current.attachmentIds)) return false
+    target.setDraft(current.draft)
+    this.rebindDraftFiles(toId, current.attachmentIds)
+    source.setDraft('')
+    for (const id of current.attachmentIds) source.removeAttachment(id)
+    return true
+  }
   /** The per-session composer-block registry. */
   readonly blocks: ComposerBlocks
   /** Live upload state per file-kind draft; images never appear here. */

@@ -21,7 +21,7 @@ import {
   compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, recordFixture, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import {
+import { restoreFullWidthChat,
   connectFreshWorkspace, expandTurnProcesses, newEnglishPage, REPO_ROOT, saveFailureShot,
 } from './support.ts'
 
@@ -180,8 +180,17 @@ describe('web e2e: fresh round trip through the real assembly', () => {
     await page.getByRole('button', {
       name: 'Select model, current DeepSeek-V4-Flash',
     }).waitFor({ timeout: 10_000 })
+    // The graph poll may trail Host completion; require the final assistant's
+    // real controls before either compact or expanded transcript capture.
+    for (const mode of ['natural', 'include', 'exclude']) {
+      await page.getByRole('button', { name: `${mode} context for DONE`, exact: true })
+        .waitFor({ state: 'attached', timeout: 15_000 })
+    }
+    expect(await page.getByRole('button', { name: 'Locate DONE in Context Map', exact: true }).count()).toBe(1)
+    await restoreFullWidthChat(page)
     const snapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(UI_EXPECTED, snapshot, MODE)
+    await restoreFullWidthChat(page)
     const expanded = await captureExpandedTurnProcessAria(
       page,
       '[class*="centerCol"]',

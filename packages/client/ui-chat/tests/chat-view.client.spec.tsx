@@ -761,6 +761,62 @@ describe('ChatView', () => {
     expect(view.getByRole('tooltip').textContent).toContain('p25')
   })
 
+  it('observes a rail growing from one turn and reveals its active mark after hiding', () => {
+    const observers: ResizeObserverStub[] = []
+    class ResizeObserverStub {
+      readonly targets = new Set<Element>()
+      constructor(private readonly callback: ResizeObserverCallback) { observers.push(this) }
+      observe = (target: Element): void => { this.targets.add(target) }
+      disconnect = vi.fn()
+      notify = (): void => { this.callback([], this as unknown as ResizeObserver) }
+    }
+    vi.stubGlobal('ResizeObserver', ResizeObserverStub)
+    const h = makeHarness(
+      { nodes: [userInTurn(8, 'latest prompt', 60), assistant(9, 'latest response', 60)] },
+      { hasMore: true },
+    )
+    h.setOutline([{ turn: 60, seq: 8, prompt: 'latest prompt', response: '' }])
+    const view = render(<h.ChatView {...h.props} />)
+    expect(view.queryByRole('navigation', { name: '轮次导航' })).toBeNull()
+    act(() => {
+      h.setOutline(Array.from({ length: 60 }, (_, index) => ({
+        turn: index + 1, seq: index * 4, prompt: `p${String(index + 1)}`, response: '',
+      })))
+      h.setSession({ running: true })
+    })
+    const nav = view.getByRole('navigation', { name: '轮次导航' })
+    const scroller = nav.querySelector('[class*="scroller"]') as HTMLElement
+    let height = 0
+    Object.defineProperty(scroller, 'scrollHeight', { value: 602, configurable: true })
+    Object.defineProperty(scroller, 'clientHeight', { get: () => height, configurable: true })
+    const scrollTo = vi.fn((optionsOrX?: ScrollToOptions | number, y?: number) => {
+      const top = typeof optionsOrX === 'number' ? y ?? scroller.scrollTop : optionsOrX?.top ?? scroller.scrollTop
+      scroller.scrollLeft = typeof optionsOrX === 'number' ? optionsOrX : optionsOrX?.left ?? scroller.scrollLeft
+      scroller.scrollTop = Math.min(top, scroller.scrollHeight - height)
+    }) satisfies HTMLElement['scrollTo']
+    scroller.scrollTo = scrollTo
+    const observer = observers.find(candidate => candidate.targets.has(scroller))
+    expect(observer).toBeDefined()
+    act(() => { observer?.notify() })
+    expect(scrollTo).not.toHaveBeenCalled()
+
+    height = 300
+    act(() => { observer?.notify() })
+    expect(scroller.scrollTop).toBe(302)
+    expect(scroller.className).toContain('fadeTop')
+    expect(scroller.className).not.toContain('fadeBottom')
+
+    scroller.scrollTop = 100
+    fireEvent.scroll(scroller)
+    expect(scroller.scrollTop).toBe(100)
+    expect(scrollTo).toHaveBeenCalledOnce()
+    fireEvent.pointerEnter(nav)
+    height = 200
+    act(() => { observer?.notify() })
+    expect(scroller.scrollTop).toBe(100)
+    expect(scrollTo).toHaveBeenCalledOnce()
+  })
+
   it('lands a jump on its turn once the paged rows commit', async () => {
     const later = [userInTurn(8, 'third prompt', 3), assistant(9, 'third response', 3)]
     const h = makeHarness({ nodes: later }, { hasMore: true })
@@ -2439,6 +2495,100 @@ describe('ChatView', () => {
     } finally {
       rect.mockRestore()
     }
+  })
+
+  it('settles a pinned reflow reaching the new floor before composer growth', () => {
+    let notify: (() => void) | undefined
+    class ResizeObserverStub {
+      constructor(callback: ResizeObserverCallback) {
+        notify = () => { callback([], this as unknown as ResizeObserver) }
+      }
+
+      observe = vi.fn()
+      disconnect = vi.fn()
+    }
+    vi.stubGlobal('ResizeObserver', ResizeObserverStub)
+    const h = makeHarness({ nodes: [user(1, 'q'), assistant(2, 'a')] })
+    const view = render(<h.ChatView {...h.props} />)
+    const scroller = view.container.querySelector('[class*="scroll"]') as HTMLDivElement
+    const metrics = installScrollMetrics(scroller, 1_000, 300)
+    scroller.scrollTop = 700
+    fireEvent.scroll(scroller)
+    fireEvent(scroller, new Event('scrollend'))
+
+    // Opening the adjacent Map narrows Chat. Browser anchoring advances its
+    // pinned position onto the new floor before the composer grows.
+    metrics.setLayout(1_400, 1_100)
+    fireEvent.scroll(scroller)
+    metrics.setHeight(1_436)
+    act(() => { notify?.() })
+    expect(scroller.scrollTop).toBe(1_136)
+    fireEvent(scroller, new Event('scrollend'))
+    expect(view.queryByLabelText('回到底部')).toBeNull()
+    expect(h.chatScroll.read()).toBeNull()
+
+    metrics.setHeight(1_600)
+    act(() => { h.setChat({ partial: { turn: 2, step: 1, blocks: [{ kind: 'text', text: 'grow' }] } }) })
+    expect(scroller.scrollTop).toBe(1_300)
+  })
+
+  it('replays a deferred disclosure resize when reader scrolling returns to the tail', () => {
+    let notify: (() => void) | undefined
+    class ResizeObserverStub {
+      constructor(callback: ResizeObserverCallback) {
+        notify = () => { callback([], this as unknown as ResizeObserver) }
+      }
+
+      observe = vi.fn()
+      disconnect = vi.fn()
+    }
+    vi.stubGlobal('ResizeObserver', ResizeObserverStub)
+    const h = makeHarness({ nodes: [user(1, 'q'), assistant(2, 'a')] })
+    const view = render(<h.ChatView {...h.props} />)
+    const scroller = view.container.querySelector('[class*="scroll"]') as HTMLDivElement
+    const metrics = installScrollMetrics(scroller, 1_000, 300)
+    readerScroll(scroller, 500)
+    expect(view.getByLabelText('回到底部')).toBeTruthy()
+
+    // End lands on the disclosure's old floor. A subsequent layout change
+    // grows the flow before the native scroll burst settles.
+    scroller.scrollTop = 700
+    fireEvent.scroll(scroller)
+    metrics.setHeight(1_022)
+    act(() => { notify?.() })
+    expect(scroller.scrollTop).toBe(700)
+    fireEvent(scroller, new Event('scrollend'))
+
+    expect(scroller.scrollTop).toBe(722)
+    expect(view.queryByLabelText('回到底部')).toBeNull()
+    expect(h.chatScroll.read()).toBeNull()
+  })
+
+  it('does not replay a deferred resize over a small upward reader gesture inside the follow threshold', () => {
+    let notify: (() => void) | undefined
+    class ResizeObserverStub {
+      constructor(callback: ResizeObserverCallback) {
+        notify = () => { callback([], this as unknown as ResizeObserver) }
+      }
+
+      observe = vi.fn()
+      disconnect = vi.fn()
+    }
+    vi.stubGlobal('ResizeObserver', ResizeObserverStub)
+    const h = makeHarness({ nodes: [user(1, 'q'), assistant(2, 'a')] })
+    const view = render(<h.ChatView {...h.props} />)
+    const scroller = view.container.querySelector('[class*="scroll"]') as HTMLDivElement
+    const metrics = installScrollMetrics(scroller, 1_000, 300)
+    readerScroll(scroller, 700)
+    scroller.scrollTop = 690
+    fireEvent.scroll(scroller)
+    metrics.setHeight(1_005)
+    act(() => { notify?.() })
+    fireEvent(scroller, new Event('scrollend'))
+
+    expect(scroller.scrollTop).toBe(690)
+    expect(view.queryByLabelText('回到底部')).toBeNull()
+    expect(h.chatScroll.read()).toBeNull()
   })
 
   it('lets small reader movements accumulate past the follow threshold during growth', () => {

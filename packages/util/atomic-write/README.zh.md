@@ -38,6 +38,11 @@ await writeFileAtomic('/home/u/.dsh/settings.yaml', text, { mode: 0o600 })
 
 父目录会按需创建，读取方只会观察到旧内容或完整的新内容。在 Windows 上，报告为 `EACCES`、`EBUSY` 或 `EPERM` 的瞬时替换干扰会在有界时间内重试；任何剩余失败都会移除临时文件，并保持目标文件不变。
 
+<a id="publishing-a-prepared-file"></a>
+### 发布已准备好的文件
+
+调用方已经持有完整、关闭的同目录临时文件时，使用 `renameAtomicTemp(temp, filename)`。它复用有界的 Windows 替换重试，不重写文件、删除目标或改变权限。文件及目录 fsync，以及发布失败后删除临时文件，仍由调用方负责。[JSON 后端](../../storage/storage-json/README.zh.md) 在同步完整临时文件后使用此边界。
+
 ### 协调写入方
 
 对于单靠原子提交无法保证安全的读-渲染-提交循环，请在操作期间持有写锁：
@@ -74,7 +79,7 @@ await withFileLock('/home/u/.dsh/settings.yaml', async () => {
 
 | 文件 | 职责 |
 |---|---|
-| [`src/index.ts`](src/index.ts) | `writeFileAtomic` 与 `withFileLock`，即本包的全部接口 |
+| [`src/index.ts`](src/index.ts) | `writeFileAtomic`、`renameAtomicTemp` 与 `withFileLock`，即本包的全部接口 |
 | — | 不发布运行时不变式伴生入口；这个纯文件系统原语不维护事件流或可变运行时数据；其替换约定由单元测试覆盖。 |
 
 ### 写入路径

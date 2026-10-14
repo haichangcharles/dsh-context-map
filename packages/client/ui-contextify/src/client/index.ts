@@ -1,5 +1,6 @@
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 /** Browser assembly for the native Session Context Map. */
+import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import { useEffect } from 'react'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -9,7 +10,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import type { ContextFamilyGraphNode } from '@deepseek-ai/dsh-contextify/types'
+import type { ContextFamilyGraphNode, ContextRouteAdvice } from '@deepseek-ai/dsh-contextify/types'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
@@ -21,6 +22,8 @@ import { BranchSuggestionTail, type BranchSuggestionTailInjected } from './Branc
 import { ContextifyController, type ContextifyTransport } from './controller.ts'
 import { createContextMapStore } from './store.ts'
 import { ContextifyPromptSettingsSection } from './ContextifyPromptSettings.tsx'
+import { DraftContextReview, type DraftContextReviewInjected } from './DraftContextReview.tsx'
+import { en as stewardEn, zh as stewardZh } from './locales.ts'
 import type { ContextifyPromptSettings } from '@deepseek-ai/dsh-contextify/types'
 
 export { ContextMapPanel } from './ContextMapPanel.tsx'
@@ -30,7 +33,7 @@ export type { ContextifyControllerSnapshot, ContextifyTransport } from './contro
 export { createContextMapStore } from './store.ts'
 
 /** Services required by the Contextify Remote adapter and details surface. */
-export const inject = ['slots', 'remote', 'remote.contextify', 'layout', 'sessions', 'conversation', 'sidebarRight', 'sidebarRightTabs']
+export const inject = ['locale', 'slots', 'remote', 'remote.contextify', 'layout', 'sessions', 'conversation', 'sidebarRight', 'sidebarRightTabs']
 
 /** Convert a generated transport result into the component's ordinary promise contract. */
 function valueOf<T>(result: RemoteResult<T>): T {
@@ -52,14 +55,15 @@ export function nativeBranchSource(node: ContextFamilyGraphNode): {
   return { sessionId: node.owner.sessionId, atSeq: node.branchAtSeq, increaseTitle: true }
 }
 
-/** Open the Context Map when the user enters a nonempty Session. */
+/** Open the family Map for nonempty native Sessions; execution-detail routes have a separate owner. */
 function DetailsOpener({ open, useSessions }: {
   open: () => void
   useSessions: SnapshotSelectorHook<SessionListState>
 }) {
   const sessionId = useSessions((state) => {
     const current = state.current
-    return current !== undefined && state.byId[current]?.blank === false ? current : undefined
+    if (current === undefined || state.currentAddress !== undefined || state.byId[current]?.origin === 'subagent') return undefined
+    return state.byId[current]?.blank === false ? current : undefined
   })
   useEffect(() => {
     if (sessionId !== undefined) open()
@@ -69,17 +73,19 @@ function DetailsOpener({ open, useSessions }: {
 
 /** Register the pinned map and one shared controller per native Session. */
 export function apply(ctx: ClientContext): void {
+  const t = ctx.locale.bind('contextifySteward')
   const remote = ctx.remote.contextify
   const controllers = new Map<SessionId, ContextifyController>()
+  ctx.effect(() => ctx.locale.register('contextifySteward', { zh: stewardZh, en: stewardEn }),
+    'ui-contextify: Steward copy')
   ctx.inject(['settingsScope', 'locale', 'connection'], (settingsCtx) => {
     const promptScope = settingsCtx.settingsScope.bind<ContextifyPromptSettings>({ namespace: 'contextify' })
     settingsCtx.slots.inject('settings.section', () => settingsCtx.slots.register({
       name: 'settings.section',
       id: 'contextify-prompts',
+      locale: 'contextifySteward',
       order: 25,
-      label: () => settingsCtx.locale.getSnapshot().active.startsWith('zh')
-        ? 'Context Map 提示词'
-        : 'Context Map prompts',
+      label: () => t('copy.contextMapPrompts'),
       inject: () => ({ scope: promptScope }),
     }, ContextifyPromptSettingsSection))
   })
@@ -89,31 +95,46 @@ export function apply(ctx: ClientContext): void {
     const transport: ContextifyTransport = {
       get: async () => valueOf(await remote.get(sessionId)),
       familyPage: async (after, limit) => valueOf(await remote.familyPage(sessionId, after, limit)),
-      setNodeMode: async (ref, node, mode) => valueOf(await remote.setNodeMode(sessionId, ref, node, mode)),
-      setNodeModes: async (ref, mutations, expectedGraphRevision) => valueOf(await remote.setNodeModes(
-        sessionId, ref, mutations, expectedGraphRevision,
+      setNodeMode: async (ref, node, mode) => valueOf(await remote.setNodeMode(
+        sessionId, ref, node, mode, 'contextify-client',
+      )),
+      setNodeModes: async (ref, mutations, expectedGraphRevision, reviewedDeclinedNodeIds) => valueOf(await remote.setNodeModes(
+        sessionId, ref, mutations, expectedGraphRevision, 'contextify-client', reviewedDeclinedNodeIds,
       )),
       reset: async ref => valueOf(await remote.reset(sessionId, ref)),
       undo: async ref => valueOf(await remote.undo(sessionId, ref)),
       redo: async ref => valueOf(await remote.redo(sessionId, ref)),
-      recommend: async (base, objective, mode) => valueOf(
-        await remote.recommend(sessionId, base, objective, mode),
+      recommend: async (base, objective, mode, draftBound) => valueOf(
+        await remote.recommend(sessionId, base, objective, mode, draftBound),
       ),
       cancelRecommendation: async () => { valueOf(await remote.cancelRecommendation(sessionId)) },
+      presentRecommendation: async (proposal) => { valueOf(await remote.presentRecommendation(
+        sessionId, proposal, 'contextify-client',
+      )) },
+      dismissRecommendation: async (proposal, declinedNodeIds) => { valueOf(await remote.dismissRecommendation(
+        sessionId, proposal, 'contextify-client', declinedNodeIds,
+      )) },
       archiveNode: async (ref, node, reason, expectedGraphRevision) => valueOf(await remote.archiveNode(
         sessionId, ref, node, reason, expectedGraphRevision,
+      )),
+      getNodeText: async node => valueOf(await remote.getNodeText(sessionId, node)),
+      focusNodeExcerpt: async (ref, node, start, end, reason) => valueOf(await remote.focusNodeExcerpt(
+        sessionId, ref, node, start, end, reason, 'contextify-client',
       )),
       restoreNode: async (ref, node) => valueOf(await remote.restoreNode(sessionId, ref, node)),
       prepareBranchSuggestion: async suggestionId => valueOf(
         await remote.prepareBranchSuggestion(sessionId, suggestionId),
       ),
+      keepBranchSuggestion: async (suggestionId) => { valueOf(
+        await remote.keepBranchSuggestion(sessionId, suggestionId, 'contextify-client'),
+      ) },
       forkNativeBranch: preparation => ctx.sessions.fork({
         sessionId: preparation.sourceSessionId,
         beforeSeq: preparation.beforeSeq,
         increaseTitle: true,
       }),
       acceptBranchSuggestion: async (suggestionId, childSessionId) => valueOf(
-        await remote.acceptBranchSuggestion(sessionId, suggestionId, childSessionId),
+        await remote.acceptBranchSuggestion(sessionId, suggestionId, childSessionId, 'contextify-client'),
       ),
     }
     const controller = new ContextifyController(transport)
@@ -135,20 +156,28 @@ export function apply(ctx: ClientContext): void {
     const controller = controllerFor(sessionId)
     return {
       hooks: { contextify: controller },
+      keepBranchSuggestion: suggestionId => controller.keepBranchSuggestion(suggestionId),
       moveBranchSuggestion: async (suggestionId) => {
+        const sourceScope = ctx.sessions.scope(sessionId)
+        if (sourceScope === undefined) throw new Error(t('error.currentSession'))
+        const { draft, draftRev } = ctx.conversation.input.for(sourceScope).state.getSnapshot()
         const result = await controller.acceptBranchSuggestion(suggestionId)
+        if (!ctx.conversation.moveDraft(sessionId, result.childSessionId, { draft, draftRev })) {
+          throw new Error(t('error.newBranchDraft'))
+        }
         ctx.sessions.open(result.childSessionId)
       },
     }
   }
 
   ctx.effect(() => ctx.sidebarRightTabs.register({
-    id: 'context-map', kind: 'context-map', priority: 'builtin', title: () => 'Context Map',
-    guide: [{ order: 10, title: () => 'Context Map', description: () => 'Inspect branches and control conversation context' }],
+    id: 'context-map', kind: 'context-map', priority: 'builtin', title: () => t('copy.contextMap'),
+    guide: [{ order: 10, title: () => t('copy.contextMap'), description: () => t('guide.contextMapDescription') }],
   }))
   ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
     name: 'sidebar.right.pane.tab',
     key: 'context-map',
+    locale: 'contextifySteward',
     store: createContextMapStore(),
     inject: (sessionId: SessionId): ContextMapPanelInjected => {
       const controller = controllerFor(sessionId)
@@ -161,15 +190,118 @@ export function apply(ctx: ClientContext): void {
           undo: () => controller.undo(),
           redo: () => controller.redo(),
           recommend: (mode, objective) => controller.recommend(mode, objective),
+          inspectPolicy: async () => valueOf(await remote.stewardProfile(sessionId)),
+          policyEvidence: async () => valueOf(await remote.policyEvidence(sessionId)),
+          resetPolicy: async () => {
+            valueOf(await remote.resetPolicy(sessionId, 'contextify-client'))
+            controller.clearRecommendation()
+            await controller.refresh()
+          },
+          reviewWorkState: async (proposal, targetSessionId, choice) => {
+            valueOf(await remote.reviewWorkState(sessionId, proposal, targetSessionId, choice, 'contextify-client'))
+            await controller.refresh()
+          },
+          moveDraftHere: async (targetSessionId) => {
+            const sourceScope = ctx.sessions.scope(sessionId)
+            if (sourceScope === undefined) throw new Error(t('error.currentSession'))
+            const { draft, draftRev, phase } = ctx.conversation.input.for(sourceScope).state.getSnapshot()
+            if (phase !== 'plain' || draft.trim().length === 0) throw new Error(t('error.emptyDraft'))
+            const revision = controller.getSnapshot().graphRevision
+            if (revision === undefined) throw new Error(t('error.mapNotReady'))
+            const page = valueOf(await remote.familyPage(sessionId, undefined, 1))
+            if (page.revision !== revision || page.activeSessionId !== sessionId
+              || targetSessionId === sessionId || !page.sessions.some(session => session.id === targetSessionId)) {
+              throw new Error(t('error.destinationChanged'))
+            }
+            if (!ctx.conversation.moveDraft(sessionId, targetSessionId, { draft, draftRev })) {
+              throw new Error(t('error.draftTransfer'))
+            }
+            try {
+              valueOf(await remote.recordManualRoute(sessionId, targetSessionId, randomUUID(),
+                revision, 'contextify-client', draft.trim()))
+            } finally {
+              ctx.sessions.open(targetSessionId)
+            }
+          },
+          setWorkState: async (targetSessionId, state) => {
+            const revision = controller.getSnapshot().graphRevision
+            if (revision === undefined) throw new Error(t('error.mapNotReady'))
+            valueOf(await remote.setWorkState(sessionId, targetSessionId, state,
+              revision, 'contextify-client'))
+            await controller.refresh()
+          },
           cancelRecommendation: () => controller.cancelRecommendation(),
-          applyRecommendations: () => controller.applyRecommendations(),
+          applyRecommendations: declinedNodeIds => controller.applyRecommendations(declinedNodeIds),
           clearRecommendation: () => { controller.clearRecommendation() },
+          rejectRoute: async (route: ContextRouteAdvice) => {
+            const sourceScope = ctx.sessions.scope(sessionId)
+            if (sourceScope === undefined
+              || ctx.conversation.input.for(sourceScope).state.getSnapshot().draft.trim() !== route.objective) {
+              throw new Error(t('error.changedDraftReview'))
+            }
+            valueOf(await remote.reviewRoute(sessionId, route, 'reject', undefined, 'contextify-client'))
+          },
+          acceptRoute: async (route: ContextRouteAdvice) => {
+            if (route.base.activeSessionId !== sessionId) throw new Error(t('error.staleRoute'))
+            const page = valueOf(await remote.familyPage(sessionId, undefined, 1))
+            const view = valueOf(await remote.get(sessionId))
+            if (page.revision !== route.base.graphRevision
+              || view.plan.revision !== route.base.planRevision
+              || page.activeSessionId !== sessionId) throw new Error(t('error.staleRoute'))
+            const sourceScope = ctx.sessions.scope(sessionId)
+            if (sourceScope === undefined) throw new Error(t('error.currentSession'))
+            const { draft, draftRev, phase } = ctx.conversation.input.for(sourceScope).state.getSnapshot()
+            if (phase !== 'plain' || draft.trim() !== route.objective) {
+              throw new Error(t('error.changedDraftReview'))
+            }
+            let targetId: SessionId
+            if (route.action === 'branch') {
+              const graph = controller.getSnapshot().graph
+              if (controller.getSnapshot().graphRevision !== page.revision || graph === undefined) {
+                throw new Error(t('error.staleRoute'))
+              }
+              const pivot = graph.nodes.filter(node => node.sessionIds.includes(sessionId)
+                && node.branchAtSeq !== null).at(-1)
+              if (pivot?.branchAtSeq === null || pivot === undefined) {
+                throw new Error(t('error.noBranchTurn'))
+              }
+              targetId = await ctx.sessions.fork({ sessionId, atSeq: pivot.branchAtSeq, increaseTitle: true })
+            } else {
+              const target = route.targetSessionId
+              if (target === undefined || !page.sessions.some(session => session.id === target)) {
+                throw new Error(t('error.destinationSession'))
+              }
+              targetId = target
+            }
+            if (!ctx.conversation.moveDraft(sessionId, targetId, { draft, draftRev })) {
+              throw new Error(t('error.draftTransfer'))
+            }
+            try {
+              valueOf(await remote.reviewRoute(sessionId, route, 'accept', targetId, 'contextify-client'))
+            } finally {
+              ctx.sessions.open(targetId)
+            }
+          },
+          presentRecommendation: proposal => controller.presentRecommendation(proposal),
+          dismissRecommendation: declinedNodeIds => controller.dismissRecommendation(declinedNodeIds),
           confirmArchive: candidate => controller.confirmArchive(candidate),
           archiveNode: node => controller.archiveNode(node),
+          getNodeText: node => controller.getNodeText(node),
+          focusNodeExcerpt: (node, start, end) => controller.focusNodeExcerpt(node, start, end),
           restoreNode: node => controller.restoreNode(node),
           branch: async (node: ContextFamilyGraphNode) => {
+            const sourceScope = ctx.sessions.scope(sessionId)
+            if (sourceScope === undefined) throw new Error(t('error.currentSession'))
+            const { draft, draftRev } = ctx.conversation.input.for(sourceScope).state.getSnapshot()
             const childId = await ctx.sessions.fork(nativeBranchSource(node))
-            ctx.sessions.open(childId)
+            if (!ctx.conversation.moveDraft(sessionId, childId, { draft, draftRev })) {
+              throw new Error(t('error.newBranchDraft'))
+            }
+            try {
+              valueOf(await remote.recordManualBranch(sessionId, childId, 'contextify-client', draft))
+            } finally {
+              ctx.sessions.open(childId)
+            }
           },
           locate: (node) => { ctx.conversation.revealMessage(node.owner.sessionId, node.owner.seq) },
           close: () => { if (ctx.sidebarRight.isExpanded()) ctx.sidebarRight.toggleExpanded() },
@@ -181,21 +313,39 @@ export function apply(ctx: ClientContext): void {
   ctx.slots.inject('conversation.chat.user-actions', () => ctx.slots.register({
     name: 'conversation.chat.user-actions',
     id: 'contextify',
+    locale: 'contextifySteward',
     order: 20,
     inject: messageActionInjected,
   }, ContextMessageAction))
   ctx.slots.inject('conversation.chat.assistant-actions', () => ctx.slots.register({
     name: 'conversation.chat.assistant-actions',
     id: 'contextify',
+    locale: 'contextifySteward',
     order: 20,
     inject: messageActionInjected,
   }, ContextMessageAction))
   ctx.slots.inject('conversation.chat.turnTail', () => ctx.slots.register({
     name: 'conversation.chat.turnTail',
+    locale: 'contextifySteward',
     priority: 10,
     select: owner => owner.seq,
     inject: branchSuggestionInjected,
   }, BranchSuggestionTail))
+
+  ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+    name: 'conversation.input.dock',
+    id: 'contextify-draft-review',
+    order: 30,
+    locale: 'contextifySteward',
+    inject: (sessionId: SessionId): DraftContextReviewInjected => {
+      const controller = controllerFor(sessionId)
+      return {
+        review: (objective, mode = 'local') => controller.recommend(mode, objective, true),
+        discard: () => { controller.clearRecommendation() },
+        openMap: () => { ctx.sidebarRight.openTab('context-map') },
+      }
+    },
+  }, DraftContextReview))
 
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay',

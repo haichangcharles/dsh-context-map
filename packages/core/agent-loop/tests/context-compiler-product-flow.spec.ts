@@ -8,6 +8,7 @@ import LlmRuntime, { createUserMessage, type Message } from '@deepseek-ai/dsh-ll
 import SessionStore, { Session, SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import { compileContextify, createInitialContextPlan, nextPlan, undoPlan } from '../../../context/contextify/src/plan.ts'
 import { MockAdapter, textResponse } from './mock-adapter.ts'
 
 async function harness(adapter: MockAdapter): Promise<Context> {
@@ -39,6 +40,68 @@ function messageText(message: Message): string {
 }
 
 describe('context compiler product flow', () => {
+  it('sends the edited logical sources after a mixed checkpoint and restores the checkpoint on Undo', async () => {
+    const adapter = new MockAdapter([
+      textResponse('answer A'),
+      textResponse('answer B'),
+      textResponse('answer after Exclude'),
+      textResponse('answer after Undo'),
+    ])
+    const ctx = await harness(adapter)
+    try {
+      ctx.contextCompiler.register({
+        id: 'contextify-test', version: 3,
+        select: request => ({ eventSeqs: compileContextify(request).eventSeqs }),
+      })
+      const agent = await ctx.agentLoop.create(SessionId('mixed-checkpoint-provider-send'), {
+        provider: 'mock', model: 'mock',
+      })
+      ctx.contextCompiler.select(agent.session, 'contextify-test')
+      const initial = createInitialContextPlan()
+      agent.session.append('contextify/plan', initial)
+
+      send(agent, 'source A')
+      await agent.whenIdle()
+      send(agent, 'source B')
+      await agent.whenIdle()
+
+      const messages = agent.session.snapshotEvents().filter(event =>
+        event.type === 'user/message' || event.type === 'assistant/message')
+      expect(messages).toHaveLength(4)
+      const [userA, assistantA, userB, assistantB] = messages
+      agent.session.append('user/message', createUserMessage({
+        content: [{ type: 'text', text: 'checkpoint A+B' }],
+        source: { kind: 'plugin', plugin: 'compact' },
+      }), {
+        surfaceOp: { op: 'replace', startSeq: userA!.seq, endSeq: assistantB!.seq },
+        sourceEventSeqs: [userA!.seq, assistantA!.seq, userB!.seq, assistantB!.seq],
+      })
+      const excluded = nextPlan(initial, {
+        excluded: [
+          { nodeId: 'source-a-user', eventSeq: userA!.seq },
+          { nodeId: 'source-a-assistant', eventSeq: assistantA!.seq },
+        ], included: [], replacements: [],
+      })
+      agent.session.append('contextify/plan', excluded)
+
+      send(agent, 'question after Exclude')
+      await agent.whenIdle()
+      const excludedRequest = adapter.requests[2]!.messages.map(messageText)
+      expect(excludedRequest).toContain('source B')
+      expect(excludedRequest).toContain('answer B')
+      expect(excludedRequest).not.toContain('source A')
+      expect(excludedRequest).not.toContain('answer A')
+      expect(excludedRequest).not.toContain('checkpoint A+B')
+
+      const restored = undoPlan(agent.session, excluded)
+      expect(restored).not.toBeNull()
+      agent.session.append('contextify/plan', restored!)
+      send(agent, 'question after Undo')
+      await agent.whenIdle()
+      expect(adapter.requests[3]!.messages.map(messageText)).toContain('checkpoint A+B')
+    } finally { await ctx.fiber.dispose() }
+  })
+
   it('refuses an unsupported durable Surface compiler version before model I/O', async () => {
     const adapter = new MockAdapter([textResponse('must not run')])
     const ctx = await harness(adapter)

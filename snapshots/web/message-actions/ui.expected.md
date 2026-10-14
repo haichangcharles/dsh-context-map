@@ -62,8 +62,6 @@
 - button "include context for Now give the final answer.": Use
 - button "exclude context for Now give the final answer.": Skip
 - button "Locate Now give the final answer. in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - paragraph: DONE
 - button "Copy":
   - img
@@ -81,7 +79,8 @@
   - img
   - text: Ran for {{duration}}
 - text: {{clock}}
-- textbox "Message or run a task, / commands, @ files or sessions"
+- textbox "Message or run a task, / commands, @ files or sessions":
+  - paragraph
 - button "Commands":
   - img
 - button "Add attachment":

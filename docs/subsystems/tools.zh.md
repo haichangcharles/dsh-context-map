@@ -310,12 +310,13 @@ interface ToolDispatchExecution extends Omit<ToolExecution, 'signal'> {
 
 `ToolExecutionToken` 是不透明的运行时 `Symbol`，仅用于身份比较。策略执行前，`execute()` 会物化并冻结参数、拒绝非 JSON 输入并分配 token。身份字段、调用方必需的 signal 和可选的 parent token 均保持 readonly。`ToolDispatchExecution` 包装层可以替换 signal 但不能移除；注册表会在调用工具函数体前重新融合调用方的 signal。最终观察者接收冻结的执行身份。
 
-`ToolGuard` 是感知作用域的最终预分派策略。其返回类型有意不包含 allow 结果：`undefined` 保留 waterfall 的决策，而返回的 reason 只能缩减权限，因此后续监听器无法撤销它。
+`ToolGuard` 是感知作用域的最终预分派策略。它在 `tools/pre-execute` 后以及已注册工具的 body 入口再次运行。其返回类型有意不包含 allow 结果：`undefined` 保留 waterfall 的决策，而返回的 reason 只能缩减权限，因此后续监听器无法撤销它。
 
 ```ts type-equiv
 /**
- * A monotonic execution guard evaluated after every `tools/pre-execute`
- * listener and before the tool body. Returning a reason denies the call;
+ * A monotonic execution guard evaluated after the `tools/pre-execute`
+ * waterfall and again at registered tool-body entry. It must tolerate
+ * repeated evaluation. Returning a reason denies the call;
  * returning `undefined` leaves it unchanged. Because guards have no allow
  * result, listener ordering cannot turn a denial back into permission.
  * @param execution - the identity-protected call after extensible pre-execute policy completed.
@@ -514,7 +515,9 @@ restrict(filter: ToolRestriction): () => void
 
 /**
  * Register a monotonic guard after the extensible `tools/pre-execute`
- * waterfall. A plain-context guard applies globally; one registered through
+ * waterfall and again immediately before the tool body starts. A
+ * guard must tolerate repeated evaluation. A plain-context guard applies
+ * globally; one registered through
  * `agent.ctx` applies only to that agent. Any matching guard may deny by
  * returning a reason, while no guard can force-allow a call another guard
  * denied. The exact effect disposer is returned for ordered ownership and

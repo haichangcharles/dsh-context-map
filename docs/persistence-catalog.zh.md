@@ -424,9 +424,26 @@ Source: [`packages/context/context-compiler/src/index.ts:115`](../packages/conte
 
 ### `contextify/*`
 
+<a id="contextifybranch-choice--log-only"></a>
+
+#### `contextify/branch-choice` — 仅日志
+
+```ts persistence-catalog
+/** Explicit user choice for one displayed Branch suggestion. */
+'contextify/branch-choice': {
+  readonly suggestionId: string
+  readonly choice: 'keep' | 'move'
+  readonly turnEndSeq: number
+  /** Client-declared confirmation from the shipped Contextify UI; not authenticated human identity. */
+  readonly uiOrigin?: 'contextify-client'
+}
+```
+
+Source: [`packages/context/contextify/src/types.ts:404`](../packages/context/contextify/src/types.ts)
+
 <a id="contextifybranch-relocation--log-only"></a>
 
-#### `contextify/branch-relocation` — log-only
+#### `contextify/branch-relocation` — 仅日志
 
 ```ts persistence-catalog
 /** Marker used to deduplicate deterministic Q+A relocation. */
@@ -437,11 +454,11 @@ Source: [`packages/context/context-compiler/src/index.ts:115`](../packages/conte
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:303`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:553`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifybranch-review--log-only"></a>
 
-#### `contextify/branch-review` — log-only
+#### `contextify/branch-review` — 仅日志
 
 ```ts persistence-catalog
 /** Durable result preventing repeated post-Turn Branch review. */
@@ -451,18 +468,289 @@ Source: [`packages/context/contextify/src/types.ts:303`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:298`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:399`](../packages/context/contextify/src/types.ts)
+
+<a id="contextifydelegation-slice--log-only"></a>
+
+#### `contextify/delegation-slice` — 仅日志
+
+```ts persistence-catalog
+/** A child may depend on exactly these immutable parent Session events. */
+'contextify/delegation-slice': DelegationSliceRecord
+```
+
+Source: [`packages/context/contextify/src/revision-lineage.ts:31`](../packages/context/contextify/src/revision-lineage.ts)
+
+<a id="contextifyexcerpt-choice--log-only"></a>
+
+#### `contextify/excerpt-choice` — 仅日志
+
+```ts persistence-catalog
+/** Confirmed exact-text focus for a mixed active chat message. */
+'contextify/excerpt-choice': {
+  readonly nodeId: string
+  readonly sourceSessionId: SessionId
+  readonly sourceSeq: number
+  readonly start: number
+  readonly end: number
+  readonly beforePlanRevision: number
+  readonly afterPlanRevision: number
+  /** Client-declared provenance, not authenticated human identity. */
+  readonly uiOrigin?: 'contextify-client'
+}
+```
+
+Source: [`packages/context/contextify/src/types.ts:541`](../packages/context/contextify/src/types.ts)
+
+<a id="contextifymanual-branch--log-only"></a>
+
+#### `contextify/manual-branch` — 仅日志
+
+```ts persistence-catalog
+/** Confirmed manual fork from Context Map, after native draft transfer. */
+'contextify/manual-branch': {
+  readonly childSessionId: SessionId
+  /** Bounded unsent draft that motivated this confirmed fork, when present. */
+  readonly objective?: string
+  /** Client-declared action source; this is not authenticated human identity. */
+  readonly uiOrigin?: 'contextify-client'
+}
+```
+
+Source: [`packages/context/contextify/src/types.ts:424`](../packages/context/contextify/src/types.ts)
+
+<a id="contextifymanual-route--log-only"></a>
+
+#### `contextify/manual-route` — 仅日志
+
+```ts persistence-catalog
+/** Confirmed draft navigation; passive graph inspection does not emit this event. */
+'contextify/manual-route': {
+  readonly actionId: string
+  readonly action: 'navigate' | 'return'
+  readonly targetSessionId: SessionId
+  readonly objective: string
+  readonly graphRevision: string
+  readonly uiOrigin?: 'contextify-client'
+}
+```
+
+Source: [`packages/context/contextify/src/types.ts:432`](../packages/context/contextify/src/types.ts)
+
+<a id="contextifynode-choice--log-only"></a>
+
+#### `contextify/node-choice` — 仅日志
+
+```ts persistence-catalog
+/** Successful explicit node-mode change with its Remote invocation source. */
+'contextify/node-choice': {
+  readonly origin: 'direct' | 'recommendation'
+  readonly changed: boolean
+  /** Client-declared confirmation from the shipped Contextify UI; not authenticated human identity. */
+  readonly uiOrigin?: 'contextify-client'
+  readonly beforePlanRevision: number
+  readonly afterPlanRevision: number
+  readonly graphRevision: string
+  readonly mutations: readonly {
+    readonly nodeId: string
+    readonly mode: 'natural' | 'include' | 'exclude'
+  }[]
+  readonly proposal?: {
+    readonly currentNodeIds: readonly string[]
+    readonly proposedNodeIds: readonly string[]
+    readonly selection: readonly {
+      readonly nodeId: string
+      readonly action: 'include' | 'exclude'
+    }[]
+  }
+}
+```
+
+Source: [`packages/context/contextify/src/types.ts:463`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyplan--log-only"></a>
 
-#### `contextify/plan` — log-only
+#### `contextify/plan` — 仅日志
 
 ```ts persistence-catalog
 /** Complete post-mutation Contextify plan. */
 'contextify/plan': ContextPlanSnapshot
 ```
 
-Source: [`packages/context/contextify/src/types.ts:296`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:397`](../packages/context/contextify/src/types.ts)
+
+<a id="contextifypolicy-reset--log-only"></a>
+
+#### `contextify/policy-reset` — 仅日志
+
+```ts persistence-catalog
+/** Profile policy reset watermarks; logs and Context Plans remain intact. */
+'contextify/policy-reset': {
+  readonly cursors: readonly { readonly sessionId: SessionId; readonly seq: number }[]
+  readonly uiOrigin?: 'contextify-client'
+}
+```
+
+Source: [`packages/context/contextify/src/types.ts:441`](../packages/context/contextify/src/types.ts)
+
+<a id="contextifyrecommendation-dismissed--log-only"></a>
+
+#### `contextify/recommendation-dismissed` — 仅日志
+
+```ts persistence-catalog
+/** Explicit closure of one reviewed Context proposal; no Plan mutation. */
+'contextify/recommendation-dismissed': {
+  readonly mode: ContextRecommendationMode
+  readonly base: ContextRecommendationBase
+  /** Bounded reviewed objective, present only when items were explicitly declined. */
+  readonly objective?: string
+  readonly selection: readonly {
+    readonly nodeId: string
+    readonly action: 'include' | 'exclude'
+  }[]
+  readonly archiveNodeIds: readonly string[]
+  /** Items explicitly set to Keep current before the whole sheet was closed. */
+  readonly declinedNodeIds?: readonly string[]
+  /** Client-declared UI action, not authenticated identity or passive exposure. */
+  readonly uiOrigin?: 'contextify-client'
+}
+```
+
+Source: [`packages/context/contextify/src/types.ts:510`](../packages/context/contextify/src/types.ts)
+
+<a id="contextifyrecommendation-presented--log-only"></a>
+
+#### `contextify/recommendation-presented` — 仅日志
+
+```ts persistence-catalog
+/** A current review rendered in the visible Client document; not proof that it was read. */
+'contextify/recommendation-presented': {
+  readonly mode: ContextRecommendationMode
+  readonly base: ContextRecommendationBase
+  readonly selection: readonly {
+    readonly nodeId: string
+    readonly action: 'include' | 'exclude'
+  }[]
+  readonly archiveNodeIds: readonly string[]
+  /** A route card was visible; this is exposure, not a preference label. */
+  readonly routeAction?: ContextRouteAdvice['action']
+  readonly routeTargetSessionId?: SessionId
+  /** Client-declared render path, not authenticated identity or attention. */
+  readonly uiOrigin?: 'contextify-client'
+}
+```
+
+Source: [`packages/context/contextify/src/types.ts:495`](../packages/context/contextify/src/types.ts)
+
+<a id="contextifyrecommendation-request--log-only"></a>
+
+#### `contextify/recommendation-request` — 仅日志
+
+```ts persistence-catalog
+/** Frozen auxiliary Fast model request; no credentials are stored. */
+'contextify/recommendation-request': {
+  readonly base: ContextRecommendationBase
+  readonly provider: string
+  readonly model: string
+  readonly objective: string
+  readonly system: string
+  readonly userText: string
+  readonly maxTokens: number
+}
+```
+
+Source: [`packages/context/contextify/src/types.ts:485`](../packages/context/contextify/src/types.ts)
+
+<a id="contextifyrecommendation-reviewed--log-only"></a>
+
+#### `contextify/recommendation-reviewed` — 仅日志
+
+```ts persistence-catalog
+/** Resolution of a current review; accepted and declined proposed changes are disjoint. */
+'contextify/recommendation-reviewed': {
+  readonly mode: ContextRecommendationMode
+  readonly base: ContextRecommendationBase
+  /** Bounded objective used to produce this confirmed recommendation. */
+  readonly objective?: string
+  readonly selection: readonly {
+    readonly nodeId: string
+    readonly action: 'include' | 'exclude'
+  }[]
+  readonly acceptedNodeIds: readonly string[]
+  readonly declinedNodeIds: readonly string[]
+  /** Client-declared UI action, not authenticated identity. */
+  readonly uiOrigin?: 'contextify-client'
+}
+```
+
+Source: [`packages/context/contextify/src/types.ts:526`](../packages/context/contextify/src/types.ts)
+
+<a id="contextifyrequest-read-set--log-only"></a>
+
+#### `contextify/request-read-set` — 仅日志
+
+```ts persistence-catalog
+/** The admitted step's selected history and new messages, logged before its model request. */
+'contextify/request-read-set': RequestReadSetRecord
+```
+
+Source: [`packages/context/contextify/src/revision-lineage.ts:33`](../packages/context/contextify/src/revision-lineage.ts)
+
+<a id="contextifyroute-choice--log-only"></a>
+
+#### `contextify/route-choice` — 仅日志
+
+```ts persistence-catalog
+/** Explicit decision on a draft-bound native Session route card. */
+'contextify/route-choice': {
+  readonly routeKey: string
+  readonly action: ContextRouteAdvice['action']
+  readonly choice: 'accept' | 'reject'
+  readonly base: ContextRecommendationBase
+  /** Bounded reviewed draft objective; recorded only after an explicit route decision. */
+  readonly objective?: string
+  readonly targetSessionId?: SessionId
+  /** Client-declared confirmation, not authenticated human identity. */
+  readonly uiOrigin?: 'contextify-client'
+}
+```
+
+Source: [`packages/context/contextify/src/types.ts:412`](../packages/context/contextify/src/types.ts)
+
+<a id="contextifywork-state--log-only"></a>
+
+#### `contextify/work-state` — 仅日志
+
+```ts persistence-catalog
+/** User-reviewed task lifecycle overlay; never alters Context Plan selection. */
+'contextify/work-state': {
+  readonly targetSessionId: SessionId
+  readonly state: 'open' | 'parked' | 'completed'
+  /** Target Session cursor when the choice was made; later human turns reopen it. */
+  readonly targetEventSeq?: number
+  readonly uiOrigin?: 'contextify-client'
+}
+```
+
+Source: [`packages/context/contextify/src/types.ts:455`](../packages/context/contextify/src/types.ts)
+
+<a id="contextifywork-state-choice--log-only"></a>
+
+#### `contextify/work-state-choice` — 仅日志
+
+```ts persistence-catalog
+/** Explicit review of one exact task-state suggestion. */
+'contextify/work-state-choice': {
+  readonly targetSessionId: SessionId
+  readonly state: 'open' | 'parked' | 'completed'
+  readonly choice: 'accept' | 'reject'
+  readonly objective: string
+  readonly base: ContextRecommendationBase
+  readonly uiOrigin?: 'contextify-client'
+}
+```
+
+Source: [`packages/context/contextify/src/types.ts:446`](../packages/context/contextify/src/types.ts)
 
 ### `deliverables/*`
 

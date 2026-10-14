@@ -19,7 +19,7 @@ import {
   webSnapshotMode,
   type WebScaffold,
 } from './scaffold.ts'
-import { conversationContextKey, expandOwningTurnProcess, newEnglishPage, saveFailureShot } from './support.ts'
+import { conversationContextKey, expandOwningTurnProcess, newEnglishPage, restoreFullWidthChat, saveFailureShot } from './support.ts'
 
 const MODE = webSnapshotMode()
 const SESSION_ID = 'chat-long-interactions-e2e'
@@ -196,6 +196,7 @@ describe('web e2e: long Chat interaction contract', () => {
     if (boundary === undefined) throw new Error(`turn ${String(BRANCH_TURN)} has no turn/end event`)
     const expectedUserText = textContent(branchUserEvent.data.content)
 
+    await restoreFullWidthChat(page)
     const turnNavigation = page.getByRole('navigation', { name: 'Turn navigation' })
     await turnNavigation.waitFor({ state: 'visible', timeout: 15_000 })
     // The whole-log outline offers every fixture turn before any paging, with

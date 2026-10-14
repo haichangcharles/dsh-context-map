@@ -13,7 +13,7 @@ import type {} from '@deepseek-ai/dsh-session-title'
 import {
   launchWebScaffold, seedSession, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { newEnglishPage, saveFailureShot } from './support.ts'
+import { newEnglishPage, restoreFullWidthChat, saveFailureShot } from './support.ts'
 
 const MODE = webSnapshotMode()
 const OVERLAY = fileURLToPath(new URL('./produced-files.overlay.yml', import.meta.url))
@@ -138,6 +138,7 @@ describe('web e2e: a finished turn ends with the files it produced', () => {
     const sessionRow = page.locator('[role="treeitem"]').nth(1)
     await sessionRow.waitFor({ timeout: 10_000 })
     await sessionRow.click()
+    await restoreFullWidthChat(page)
 
     await expect.poll(() => page.getByText(DONE, { exact: true }).count(), { timeout: 15_000 }).toBe(1)
     const row = page.locator('[data-produced-files-row]')

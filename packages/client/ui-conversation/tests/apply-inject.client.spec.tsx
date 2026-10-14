@@ -316,6 +316,65 @@ describe('Conversation inject API', () => {
     await b.runtime.dispose()
   })
 
+  it('moves a reviewed draft between Sessions without overwriting a newer edit', async () => {
+    const b = await bench()
+    const other = 'draft-target' as SessionId
+    await b.runtime.sessions.add({ id: other, session: {} }, { current: false })
+    const source = b.inputApi(ROOT)
+    const target = b.inputApi(other)
+    source.actions.setDraft('Continue the earlier writing branch')
+    const expected = source.state.getSnapshot()
+    expect(b.runtime.ctx.conversation.moveDraft(ROOT, other, {
+      draft: expected.draft, draftRev: expected.draftRev,
+    })).toBe(true)
+    expect(source.state.getSnapshot().draft).toBe('')
+    expect(target.state.getSnapshot().draft).toBe(expected.draft)
+
+    source.actions.setDraft('New source draft')
+    const stale = source.state.getSnapshot()
+    source.actions.setDraft('Newer correction')
+    expect(b.runtime.ctx.conversation.moveDraft(ROOT, other, {
+      draft: stale.draft, draftRev: stale.draftRev,
+    })).toBe(false)
+    expect(source.state.getSnapshot().draft).toBe('Newer correction')
+    expect(target.state.getSnapshot().draft).toBe(expected.draft)
+    const current = source.state.getSnapshot()
+    expect(b.runtime.ctx.conversation.moveDraft(ROOT, other, {
+      draft: current.draft, draftRev: current.draftRev,
+    })).toBe(false)
+    expect(source.state.getSnapshot().draft).toBe('Newer correction')
+    expect(target.state.getSnapshot().draft).toBe(expected.draft)
+    await b.runtime.dispose()
+  })
+
+  it('carries file attachments and rebinds their upload to the destination', async () => {
+    const b = await bench()
+    const other = 'attachment-target' as SessionId
+    const targetUpload = vi.fn(() => Promise.resolve({
+      ok: true as const,
+      value: {
+        receiptId: 'target-receipt' as never,
+        file: { attachmentId: 'target-file' as never, name: 'draft.pdf', bytes: 1 },
+      },
+    }))
+    b.uploads.set(other, targetUpload)
+    await b.runtime.sessions.add({ id: other, session: {} }, { current: false })
+    const source = b.inputApi(ROOT)
+    source.actions.setDraft('Review the attached draft')
+    expect(b.composerApi(ROOT).addFiles?.([
+      new File([Uint8Array.of(1)], 'draft.pdf', { type: 'application/pdf' }),
+    ])).toBeNull()
+    const expected = source.state.getSnapshot()
+    expect(expected.attachmentIds).toHaveLength(1)
+    expect(b.runtime.ctx.conversation.moveDraft(ROOT, other, {
+      draft: expected.draft, draftRev: expected.draftRev,
+    })).toBe(true)
+    expect(source.state.getSnapshot().attachmentIds).toHaveLength(0)
+    expect(b.inputApi(other).state.getSnapshot().attachmentIds).toEqual(expected.attachmentIds)
+    await vi.waitFor(() => { expect(targetUpload).toHaveBeenCalledOnce() })
+    await b.runtime.dispose()
+  })
+
   it('supports no-Session navigation and propagates Workspace connection failure', async () => {
     const b = await bench()
     b.connectWorkspace.mockResolvedValueOnce(ROOT)

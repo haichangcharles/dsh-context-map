@@ -973,21 +973,112 @@ Durable Context Plan mutations and native Session-family graph reads.
  */
 @Remote('familyPage') async familyPage(agent: Agent, after?: number, limit?: number): Promise<ContextFamilyGraphPage>
 
+/** Record a reviewed task lifecycle choice without altering the Context Plan.
+ * @param agent - Live Agent whose Session owns the choice.
+ * @param targetSessionId - Native family Session whose work state changes.
+ * @param state - Explicitly reviewed task lifecycle state.
+ * @param expectedGraphRevision - Family revision shown when the choice was made.
+ * @param uiOrigin - Client-declared action source, not authenticated identity.
+ */
+@Remote('setWorkState') async setWorkState( agent: Agent, targetSessionId: SessionId, state: 'open' | 'parked' | 'completed', expectedGraphRevision: string, uiOrigin?: 'contextify-client', ): Promise<void>
+
 /**
- * Analyze one exact graph snapshot in manually selected Fast or Deep mode.
+ * Project confirmed Context-management choices across this DSH Profile's Sessions.
+ * The returned policy changes proposal thresholds only; it cannot authorize mutation.
+ * @param agent - Live Agent selecting the native Session family.
+ * @returns A compact, inspectable policy with support counts per action.
+ */
+@Remote('stewardProfile') async stewardProfile(agent: Agent): Promise<ContextStewardProfile>
+
+/** Inspect recent explicit policy evidence without mutating the Profile.
+ * @param agent - Live Agent selecting the Profile and native Session family.
+ * @returns At most forty current observations with owned Session event references.
+ */
+@Remote('policyEvidence') async policyEvidence(agent: Agent): Promise<readonly ContextPolicyObservation[]>
+
+/** Reset learned preferences at exact owned event cursors, retaining logs and Plans.
+ * @param agent - Live idle Agent whose Session records the Profile reset.
+ * @param uiOrigin - Explicit Client reset action source.
+ */
+@Remote('resetPolicy') async resetPolicy(agent: Agent, uiOrigin?: 'contextify-client'): Promise<void>
+
+/** Review one exact pending task lifecycle proposal independently of Context selection.
+ * @param agent - Live idle Agent owning the reviewed proposal.
+ * @param proposal - Exact currently pending recommendation.
+ * @param sessionId - Proposed native task branch.
+ * @param choice - Explicit acceptance or rejection.
+ * @param uiOrigin - Client action source.
+ */
+@Remote('reviewWorkState') async reviewWorkState(agent: Agent, proposal: ContextRecommendationProposal, sessionId: SessionId, choice: 'accept' | 'reject', uiOrigin?: 'contextify-client'): Promise<void>
+
+/** Record a successful explicit draft transfer to a native family branch.
+ * @param agent - Live source Agent whose draft was transferred.
+ * @param targetSessionId - Native destination in the same family.
+ * @param actionId - Unique Client transfer identifier used for idempotence.
+ * @param expectedGraphRevision - Frozen family revision preceding transfer.
+ * @param uiOrigin - Explicit Client action source; passive Locate does not call this method.
+ * @param objective - Transferred draft text.
+ */
+@Remote('recordManualRoute') async recordManualRoute(agent: Agent, targetSessionId: SessionId, actionId: string, expectedGraphRevision: string, uiOrigin?: 'contextify-client', objective?: string): Promise<void>
+
+/**
+ * Analyze one exact graph snapshot in manually selected Local, Fast, or Deep mode.
  * @param agent - Live idle Agent whose route and native Session family are reviewed.
  * @param base - Expected plan revision, graph watermark, and active Session identity.
  * @param objective - Optional review objective; the latest user input is the fallback.
- * @param mode - Fast bounded classifier (default) or isolated full-tree Harness child.
+ * @param mode - Local policy (default), bounded Fast classifier, or full-tree Harness child.
+ * @param draftBound - True only when the Client reviewed its current unsent composer draft.
  * @returns An ephemeral, validated proposal that has not mutated the Context Plan.
  */
-@Remote('recommend') async recommend( agent: Agent, base: ContextRecommendationBase, objective?: string, mode?: ContextRecommendationMode, ): Promise<ContextRecommendationProposal>
+@Remote('recommend') async recommend( agent: Agent, base: ContextRecommendationBase, objective?: string, mode?: ContextRecommendationMode, draftBound?: boolean, ): Promise<ContextRecommendationProposal>
 
 /**
  * Cancel only the recommendation owned by this native Session family.
  * @param agent - Live Agent identifying the family whose review is cancelled.
  */
 @Remote('cancelRecommendation') cancelRecommendation(agent: Agent): void
+
+/** Record one visible Client rendering of the exact current review, at most once per proposal.
+ * This is an impression signal, not a user's preference or proof of attention.
+ * @param agent - Live Agent whose Session owns the pending proposal.
+ * @param proposal - Exact proposal rendered by the Client.
+ * @param uiOrigin - Optional Client-declared source of the render.
+ */
+@Remote('presentRecommendation') async presentRecommendation(agent: Agent, proposal: ContextRecommendationProposal, uiOrigin?: 'contextify-client'): Promise<void>
+
+/**
+ * Record a reviewed route after its native draft transfer succeeds, or a Stay choice.
+ * @param agent - Live Agent that owns the pending route card.
+ * @param route - Exact revision-bound route card returned by Fast review.
+ * @param choice - Explicit acceptance or rejection of that card.
+ * @param actualTargetSessionId - Native destination after an accepted transfer.
+ * @param uiOrigin - Marks a Client review without claiming authenticated identity.
+ */
+@Remote('reviewRoute') async reviewRoute( agent: Agent, route: ContextRouteAdvice, choice: 'accept' | 'reject', actualTargetSessionId?: SessionId, uiOrigin?: 'contextify-client', ): Promise<void>
+
+/**
+ * Record one completed manual Context Map fork as a positive Branch choice.
+ * @param agent - Live Agent whose family contains the fork.
+ * @param childSessionId - Native child created by the manual fork.
+ * @param uiOrigin - Marks a Client action without claiming authenticated identity.
+ * @param objective - Draft that was transferred into the child after the fork.
+ */
+@Remote('recordManualBranch') async recordManualBranch( agent: Agent, childSessionId: SessionId, uiOrigin?: 'contextify-client', objective?: string, ): Promise<void>
+
+/** Log an explicit dismissal of the exact current review without changing Context selection.
+ * A stale review is consumed without a preference event.
+ * @param agent - Live Agent whose Session owns the pending proposal.
+ * @param proposal - Exact reviewed proposal shown by the Client.
+ * @param uiOrigin - Optional Client-declared source of the dismissal.
+ * @param declinedNodeIds - Items explicitly kept current before the sheet closed.
+ */
+@Remote('dismissRecommendation') async dismissRecommendation(agent: Agent, proposal: ContextRecommendationProposal, uiOrigin?: 'contextify-client', declinedNodeIds?: readonly string[]): Promise<void>
+
+/** Convert one explicit model tool call into a post-Turn user confirmation.
+ * @param agent - Live Agent whose direct human Turn owns the request.
+ * @param reason - Short explanation displayed in the user confirmation.
+ */
+requestExplicitBranch(agent: Agent, reason: string): void
 
 /**
  * Validate a suggestion and return the exact native Host fork boundary.
@@ -998,14 +1089,23 @@ Durable Context Plan mutations and native Session-family graph reads.
 @Remote('prepareBranchSuggestion') prepareBranchSuggestion(agent: Agent, suggestionId: string): ContextBranchRelocationPreparation
 
 /**
+ * Record the user's explicit choice to keep one reviewed Q&A in this Branch.
+ * @param agent - Live idle Agent whose Session owns the suggestion.
+ * @param suggestionId - Suggestion identity returned by `get`.
+ * @param uiOrigin - Optional Client-declared origin for the visible Keep action.
+ */
+@Remote('keepBranchSuggestion') keepBranchSuggestion(agent: Agent, suggestionId: string, uiOrigin?: 'contextify-client'): void
+
+/**
  * Set or clear one message's explicit context mode.
  * @param agent - Live Agent whose Session receives durable events.
  * @param ref - Expected current plan revision.
  * @param node - Message location in one Session in the active family.
  * @param mode - Natural behavior or the meaningful on-path/off-path override.
+ * @param uiOrigin - Optional Client-declared origin for a visible node action.
  * @returns The view after the mutation commits.
  */
-@Remote('setNodeMode') async setNodeMode( agent: Agent, ref: ContextPlanRef, node: ContextMessageRef, mode: 'natural' | 'include' | 'exclude', ): Promise<ContextifyView>
+@Remote('setNodeMode') async setNodeMode( agent: Agent, ref: ContextPlanRef, node: ContextMessageRef, mode: 'natural' | 'include' | 'exclude', uiOrigin?: 'contextify-client', ): Promise<ContextifyView>
 
 /**
  * Apply several node-mode changes as one Context Plan revision.
@@ -1013,9 +1113,11 @@ Durable Context Plan mutations and native Session-family graph reads.
  * @param ref - Expected current plan revision.
  * @param mutations - Ordered message-mode replacements.
  * @param expectedGraphRevision - Optional family revision required by recommendation acceptance.
+ * @param uiOrigin - Optional Client-declared origin for a visible plan action.
+ * @param reviewedDeclinedNodeIds - Explicit Keep-current choices within the reviewed proposal.
  * @returns The view after one complete plan commits.
  */
-@Remote('setNodeModes') async setNodeModes( agent: Agent, ref: ContextPlanRef, mutations: readonly ContextNodeMutation[], expectedGraphRevision?: string, ): Promise<ContextifyView>
+@Remote('setNodeModes') async setNodeModes( agent: Agent, ref: ContextPlanRef, mutations: readonly ContextNodeMutation[], expectedGraphRevision?: string, uiOrigin?: 'contextify-client', reviewedDeclinedNodeIds?: readonly string[], ): Promise<ContextifyView>
 
 /**
  * Archive one node's model-visible semantics with a reversible role-preserving placeholder.
@@ -1029,13 +1131,35 @@ Durable Context Plan mutations and native Session-family graph reads.
 @Remote('archiveNode') async archiveNode( agent: Agent, ref: ContextPlanRef, nodeRef: ContextMessageRef, reason: string, expectedGraphRevision?: string, ): Promise<ContextifyView>
 
 /**
+ * Keep one exact, user-reviewed span of a mixed chat message in future requests.
+ * The source message and graph node remain intact for inspection and Undo.
+ * @param agent - Live idle Agent owning the active Context Plan.
+ * @param ref - Expected current plan revision.
+ * @param nodeRef - Active chat message to focus.
+ * @param start - Inclusive Unicode code-point offset into its sole text block.
+ * @param end - Exclusive Unicode code-point offset into its sole text block.
+ * @param reason - Human-readable purpose of the focus operation.
+ * @param uiOrigin - Optional declaration that the shipped Client confirmed this action.
+ * @returns The committed view containing the exact source-bound excerpt.
+ */
+@Remote('focusNodeExcerpt') async focusNodeExcerpt( agent: Agent, ref: ContextPlanRef, nodeRef: ContextMessageRef, start: number, end: number, reason: string, uiOrigin?: 'contextify-client', ): Promise<ContextifyView>
+
+/** Return one active plain-text chat message for exact-span review in the Client.
+ * @param agent - Live Agent selecting the current Session family.
+ * @param nodeRef - Native message location to inspect.
+ * @returns The exact plain-text source message.
+ */
+@Remote('getNodeText') async getNodeText(agent: Agent, nodeRef: ContextMessageRef): Promise<string>
+
+/**
  * Move one suggested completed Q&A into a deterministic native child Branch.
  * @param agent - Live idle Agent whose source Session owns the reviewed Turn.
  * @param suggestionId - Durable suggestion identity returned by `get`.
  * @param childSessionId - Native Agent-backed child created from the prepared boundary.
+ * @param uiOrigin - Optional Client-declared origin for the visible Move action.
  * @returns The native child Session created by, or recovered for, this relocation.
  */
-@Remote('acceptBranchSuggestion') async acceptBranchSuggestion( agent: Agent, suggestionId: string, childSessionId: SessionId, ): Promise<ContextBranchRelocationResult>
+@Remote('acceptBranchSuggestion') async acceptBranchSuggestion( agent: Agent, suggestionId: string, childSessionId: SessionId, uiOrigin?: 'contextify-client', ): Promise<ContextBranchRelocationResult>
 
 /**
  * Restore a node's original semantics while preserving Include/Exclude state.
@@ -1072,6 +1196,24 @@ Durable Context Plan mutations and native Session-family graph reads.
 ```
 
 Source: [`packages/context/contextify/src/index.ts`](../../packages/context/contextify/src/index.ts)
+
+<a id="ctxcontextifyrevisionlineage--contextifyrevisionlineageruntime"></a>
+
+### `ctx.contextifyRevisionLineage` — `ContextifyRevisionLineageRuntime`
+
+Mount after Contextify to enforce recorded dependencies at parent pre-step. A Contextify Session is upgraded before its first request only if its previous assistant messages already have read sets. Legacy Sessions keep ordinary Contextify selection rather than claiming retrospective lineage.
+
+```ts cordis-catalog
+/** Rejected late reports retained in memory for inspection, not auto-replay.
+ * @param sessionId - Native Session that received the reports.
+ * @returns A copy of its current quarantined reports.
+ */
+quarantinedFor(sessionId: SessionId): readonly UserMessage[]
+```
+
+Types: [UserMessage](session.zh.md)
+
+Source: [`packages/context/contextify/src/revision-lineage-runtime.ts`](../../packages/context/contextify/src/revision-lineage-runtime.ts)
 
 <a id="agent-events"></a>
 

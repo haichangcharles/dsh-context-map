@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
+import { en, zh } from '../src/client/locales.ts'
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from '@testing-library/react'
@@ -21,6 +23,7 @@ const HERO_HOLE = 'conversation.hero.brand.mark'
 
 async function bench(declare = true) {
   const ctx = new Context()
+  ctx.provide('locale', new LocaleRuntime(ctx))
   await ctx.plugin(SlotRegistry).await()
   const slots = ctx.get('slots') as SlotRegistry
   const declareHoles = () => slots.register({
@@ -36,8 +39,8 @@ describe('official browser-brand plugin', () => {
     expect(hostApply).not.toThrow()
   })
 
-  it('declares only the slot service it uses', () => {
-    expect(inject).toEqual(['slots'])
+  it('declares the slot and locale services it uses', () => {
+    expect(inject).toEqual(['slots', 'locale'])
   })
 
   it('leaves every slot empty outside the official build profile', async () => {
@@ -79,13 +82,17 @@ describe('official browser-brand plugin', () => {
   })
 
   it('renders the fork name independently from both requested mark sizes', () => {
-    const name = render(<OfficialBrandName />)
+    const locale = new LocaleRuntime(new Context())
+    locale.register('contextMapBrand', { en, zh })
+    locale.setLocale('en')
+    const t = locale.bind('contextMapBrand')
+    const name = render(<OfficialBrandName t={t} />)
     expect(name.getByText('DSH Context Map')).toBeDefined()
     name.unmount()
 
-    const mark = render(<OfficialBrandMark size={34} />)
+    const mark = render(<OfficialBrandMark t={t} size={34} />)
     expect(mark.container.querySelector('svg')?.getAttribute('width')).toBe('34')
-    mark.rerender(<OfficialBrandMark size={24} />)
+    mark.rerender(<OfficialBrandMark t={t} size={24} />)
     expect(mark.container.querySelector('svg')?.getAttribute('width')).toBe('24')
   })
 })

@@ -85,6 +85,8 @@ export function windowsProcessTree(
  * terminal handle as a `\x03` input write and never reaches this layer).
  */
 export class WindowsProcessInspector implements ProcessInspector {
+  readonly stdinWaitSupported = false
+
   constructor(
     private readonly internals: WindowsProcessInspectorInternals = defaultWindowsProcessInternals(),
   ) {}

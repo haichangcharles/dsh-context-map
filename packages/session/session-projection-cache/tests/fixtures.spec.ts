@@ -12,7 +12,7 @@
  * boot.
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, onTestFailed, vi } from 'vitest'
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -123,12 +123,45 @@ async function placeDoc(root: string, id: string, name: string): Promise<Fixture
  * format stamps, lineage, and the freshly folded title.
  */
 async function assertRewrite(ctx: Context, root: string, id: SessionId): Promise<void> {
+  const startedAt = performance.now()
+  const warnings = vi.spyOn(ctx.logger, 'warn')
+  const changes: { elapsedMs: number; operation: string }[] = []
+  const classifyTitle = (value: unknown): 'rewritten' | 'null' | 'missing' | 'other' =>
+    value === '重写标题' ? 'rewritten' : value === null ? 'null' : value === undefined ? 'missing' : 'other'
+  let observation: {
+    liveSeq: number
+    liveTitle: string
+    cachedSeq: number | undefined
+    cachedTitle: string
+    diskSeq: number | undefined
+    diskTitle: string
+    diskVersion: number
+  } | undefined
+  ctx.on('domain/changed', (change) => {
+    if (change.domain === projectionCacheDomainSpec.name && change.table === 'sessions' && change.key === id) {
+      changes.push({ elapsedMs: Math.round(performance.now() - startedAt), operation: change.operation })
+    }
+  })
+  onTestFailed(() => {
+    // Structural observations and fixed classifications only: no paths, headers or raw warning payloads.
+    console.error(JSON.stringify({ diagnostic: 'projection-cache-fixture-rewrite', changes, observation,
+      warnings: warnings.mock.calls.map(([message]) => ({
+        trigger: /: (create|turn\/end|detach|count threshold|interval) write /u.exec(String(message))?.[1],
+        code: /\b(EACCES|EPERM|ENOENT|ENOTDIR|EEXIST|EBUSY|EMFILE|ENFILE|ENOSPC|EIO)\b/u.exec(String(message))?.[1],
+        syscall: /,\s*(open|mkdir|rename|fsync|close|unlink|rmdir)\b/u.exec(String(message))?.[1] ?? 'unknown',
+      })) }))
+  })
   const session = ctx.sessions.create(id)
   session.append('fixtures-test/set-title', { title: '重写标题' })
   session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
   const path = join(root, projectionCacheDomainSpec.name, 'sessions', `${id}.json`)
   await vi.waitFor(async () => {
     const doc = JSON.parse(await readFile(path, 'utf8')) as FixtureDoc
+    const live = ctx.sessionProjections.snapshot(session)
+    const cached = ctx.sessionProjectionCache.cachedSnapshot(session.header, session.inheritedEventCount, ['title'])
+    observation = { liveSeq: live.asOfSeq, liveTitle: classifyTitle(live.values.title),
+      cachedSeq: cached?.asOfSeq, cachedTitle: classifyTitle(cached?.values.title),
+      diskSeq: doc.record.rows.title?.seq, diskTitle: classifyTitle(doc.record.rows.title?.val), diskVersion: doc.version }
     expect(doc.version).toBe(projectionCacheDomainSpec.version)
     expect(doc.record.identity).toMatchObject({
       formatVersion: SESSION_FORMAT_VERSION,

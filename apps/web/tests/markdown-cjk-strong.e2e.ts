@@ -15,7 +15,7 @@ import {
   webSnapshotMode,
   type WebScaffold,
 } from './scaffold.ts'
-import { newEnglishPage, saveFailureShot } from './support.ts'
+import { restoreFullWidthChat, newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./expected/markdown-cjk-strong', import.meta.url))
 const UI_EXPECTED = fileURLToPath(new URL('./expected/markdown-cjk-strong/ui.expected.md', import.meta.url))
@@ -125,6 +125,7 @@ describe('web e2e: CJK-adjacent Markdown strong emphasis', () => {
       expect(await page.getByText(paragraph, { exact: true }).count()).toBe(1)
     }
 
+    await restoreFullWidthChat(page)
     const snapshot = (await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd))
       .split(SEED_ID).join('{{seededId}}')
     await compareOrRefreshGolden(UI_EXPECTED, snapshot, MODE)

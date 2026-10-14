@@ -38,7 +38,7 @@ import {
   webSnapshotMode,
   type WebScaffold,
 } from './scaffold.ts'
-import { newEnglishPage, saveFailureShot } from './support.ts'
+import { newEnglishPage, restoreFullWidthChat, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./expected/markdown-wide-table', import.meta.url))
 const GEOMETRY_EXPECTED = fileURLToPath(
@@ -279,6 +279,7 @@ describe('web e2e: markdown tables fill the column, wide ones break out and scro
     // viewport identically on every platform, which is what keeps one
     // committed golden true for all lanes.
     await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).click()
+    await restoreFullWidthChat(page)
     await awaitTableLayout(page)
   }, 180_000)
 
@@ -428,6 +429,7 @@ describe('web e2e: markdown tables fill the column, wide ones break out and scro
       await sessionRow.click()
       await hidpiPage.getByText(TAIL_MARKER, { exact: true }).waitFor({ timeout: 15_000 })
       await hidpiPage.getByRole('button', { name: 'Collapse sidebar', exact: true }).click()
+      await restoreFullWidthChat(hidpiPage)
       await awaitTableLayout(hidpiPage)
       const readings = await readTables(hidpiPage)
       const baseline = (await sweep()).find(stop => stop.width === 1100)!

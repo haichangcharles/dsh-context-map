@@ -3,8 +3,9 @@ import { useSyncExternalStore } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
-import { CONTEXTIFY_DEFAULT_PROMPTS } from '@deepseek-ai/dsh-contextify/types'
+import { CONTEXTIFY_DEFAULT_PROMPTS, CONTEXTIFY_DEFAULT_SETTINGS } from '@deepseek-ai/dsh-contextify/types'
 import type { ContextifyPromptSettings } from '@deepseek-ai/dsh-contextify/types'
+import { stewardTestTranslator } from './test-locale.client.ts'
 import { ContextifyPromptSettingsView } from '../src/client/ContextifyPromptSettings.tsx'
 import {
   CONTEXTIFY_CLIENT_DEFAULT_PROMPTS,
@@ -13,7 +14,7 @@ import {
 
 afterEach(cleanup)
 
-function scopeFixture() {
+function scopeFixture(language: 'en' | 'zh' = 'en') {
   let snapshot: SettingsScopeSnapshot<ContextifyPromptSettings> = {
     status: 'ready', value: CONTEXTIFY_CLIENT_DEFAULT_SETTINGS, base: CONTEXTIFY_CLIENT_DEFAULT_SETTINGS,
     user: {}, revision: 1, writable: true, mode: 'host',
@@ -35,14 +36,23 @@ function scopeFixture() {
       listener => scope.subscribe(listener),
       () => scope.getSnapshot(),
     )
-    return <ContextifyPromptSettingsView scope={scope} snapshot={current} />
+    return <ContextifyPromptSettingsView scope={scope} snapshot={current} t={stewardTestTranslator(language)} />
   }
   return { Harness, set }
 }
 
 describe('ContextifyPromptSettingsView', () => {
+  it('renders complete Chinese prompt labels rather than assembling English fragments', () => {
+    const fixture = scopeFixture('zh')
+    render(<fixture.Harness />)
+    expect(screen.getByRole('button', { name: '保存归档指令' })).toBeTruthy()
+    expect(screen.getByLabelText('追加分支指令')).toBeTruthy()
+    expect(screen.getByLabelText('默认归档提示词')).toBeTruthy()
+  })
+
   it('keeps its browser-safe default mirror equal to the Host authority', () => {
     expect(CONTEXTIFY_CLIENT_DEFAULT_PROMPTS).toEqual(CONTEXTIFY_DEFAULT_PROMPTS)
+    expect(CONTEXTIFY_CLIENT_DEFAULT_SETTINGS).toEqual(CONTEXTIFY_DEFAULT_SETTINGS)
   })
 
   it('keeps defaults read-only, saves additions, and gates override editing', async () => {
@@ -51,7 +61,7 @@ describe('ContextifyPromptSettingsView', () => {
 
     expect(screen.getByLabelText('Default Context prompt')).toHaveProperty('readOnly', true)
     fireEvent.click(screen.getByRole('checkbox', { name: /Automatic Branch review/ }))
-    expect(fixture.set).toHaveBeenCalledWith('automaticBranchReview', false)
+    expect(fixture.set).toHaveBeenCalledWith('automaticBranchReview', true)
     fireEvent.change(screen.getByLabelText('Additional Context instructions'), {
       target: { value: 'Prefer recent facts.' },
     })
@@ -64,6 +74,21 @@ describe('ContextifyPromptSettingsView', () => {
     expect(screen.getByRole('dialog', { name: 'Confirm prompt override' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Enable override' }))
     expect(screen.getByLabelText('Custom Context prompt')).toHaveProperty('readOnly', false)
+  })
+
+  it('persists a bounded Deep request limit and ignores invalid limits', async () => {
+    const fixture = scopeFixture()
+    render(<fixture.Harness />)
+    const limit = screen.getByRole('spinbutton', { name: 'Deep review model request limit' })
+    expect(limit).toHaveProperty('value', '3')
+    fireEvent.change(limit, { target: { value: '2' } })
+    expect(fixture.set).not.toHaveBeenCalledWith('deepMaxRequests', 2)
+    fireEvent.click(screen.getByRole('button', { name: 'Save request limit' }))
+    expect(fixture.set).toHaveBeenCalledWith('deepMaxRequests', 2)
+    fireEvent.change(limit, { target: { value: '11' } })
+    expect(fixture.set).not.toHaveBeenCalledWith('deepMaxRequests', 11)
+    fireEvent.change(limit, { target: { value: '1.5' } })
+    expect(fixture.set).not.toHaveBeenCalledWith('deepMaxRequests', 1.5)
   })
 
   it('restores the default base without discarding additional instructions', async () => {

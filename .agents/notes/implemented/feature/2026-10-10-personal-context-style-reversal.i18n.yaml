@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-10-personal-context-style-reversal.md
+2026-10-10-personal-context-style-reversal.md: 4c62a6821e3bc29b34bdd09886c1a8f355df6cd1
+2026-10-10-personal-context-style-reversal.zh.md: 279a306ad46588e0efa7327a9f9cc2699067412f

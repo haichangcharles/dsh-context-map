@@ -393,6 +393,8 @@ describe('LocalSubprocessRuntime', () => {
       const ctx = new Context()
       const fiber = await ctx.plugin(IsolatedLocalSubprocessRuntime)
       const service = ctx.subprocess as InstanceType<typeof IsolatedLocalSubprocessRuntime>
+      // This fake PTY tests fallback lifecycle, not a real scope bootstrap.
+      service.internals = { platform: 'darwin' }
       const handle = await ctx.subprocess.spawnTerminal({
         argv: ['shell'], cwd: process.cwd(), rows: 24, cols: 80, graceMs: 1,
       })
@@ -599,6 +601,9 @@ describe('LocalSubprocessRuntime', () => {
       const disposalErrors: unknown[] = []
       ctx.logger.error = ((error: unknown) => { disposalErrors.push(error) }) as typeof ctx.logger.error
       const fiber = await ctx.plugin(IsolatedLocalSubprocessRuntime)
+      // The fake PTY cannot consume a native scope's launch request.
+      const runtime = ctx.subprocess as InstanceType<typeof IsolatedLocalSubprocessRuntime>
+      runtime.internals = { platform: 'darwin' }
       const alive = new Set([124])
       ;(ctx.subprocess as InstanceType<typeof IsolatedLocalSubprocessRuntime>).terminalInspector = {
         foregroundPgid: () => 123,
@@ -626,6 +631,27 @@ describe('LocalSubprocessRuntime', () => {
       unmockWin32ForIsolatedRuntime()
       vi.resetModules()
     }
+  })
+
+  it('settles a real terminal under the host platform without a platform override', async () => {
+    const ctx = new Context()
+    const fiber = await ctx.plugin(LocalSubprocessRuntime)
+    try {
+      const handle = await ctx.subprocess.spawnTerminal({
+        argv: [process.execPath, '-e', 'process.stdout.write("default platform terminal\\n")'],
+        cwd: process.cwd(), rows: 24, cols: 80, graceMs: 200,
+      })
+      let output = ''
+      const delivered = new Promise<void>((resolve) => {
+        handle.output.on('data', (chunk: Buffer) => { output += chunk.toString('utf8') })
+        handle.output.once('end', resolve)
+      })
+      const outcome = await handle.done
+      await delivered
+      expect(outcome.exitCode).toBe(0)
+      await expect(handle.write('after exit')).rejects.toThrow('terminal process has exited')
+      expect(output).toContain('default platform terminal')
+    } finally { await fiber.dispose() }
   })
 
   it('registers as ctx.subprocess and spawns managed handles', async () => {
@@ -874,11 +900,13 @@ describe('LocalSubprocessRuntime', () => {
   it('disposal contains a spawn-failure rejection that races teardown', async () => {
     const ctx = new Context()
     const fiber = await ctx.plugin(LocalSubprocessRuntime)
-    // Dispose before the rejection continuation removes the handle from the
-    // live set, so teardown itself must swallow the rejected done.
+    // Start teardown from a real startup failure while the manager's range
+    // release is still queued. Disposing before the target even launches can
+    // legitimately cancel it; that does not exercise rejected-done teardown.
     const handle = ctx.subprocess.spawn(spec('true', { cwd: '/nonexistent-dir-dsh-subprocess-test' }))
-    await fiber.dispose()
+    const disposing = handle.done.catch(async () => { await fiber.dispose() })
     await expect(handle.done).rejects.toThrow()
+    await disposing
   })
 
   it('loading a second implementation throws (one processes service per context — cordis standard)', async () => {

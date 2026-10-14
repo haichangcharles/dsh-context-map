@@ -1,9 +1,11 @@
+import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
+import './locales.ts'
 import type { ContextFamilyGraphNode } from '@deepseek-ai/dsh-contextify/types'
 import type { CanvasPoint } from './canvas-interactions.ts'
 import type { ContextNodeMode } from './ContextMapNode.tsx'
 import css from './ContextMapPanel.module.css'
 
-export interface ContextMapMenuProps {
+export interface ContextMapMenuProps extends PropsLocale<'contextifySteward'> {
   readonly point: CanvasPoint
   readonly record: ContextFamilyGraphNode
   readonly mode: ContextNodeMode
@@ -13,6 +15,7 @@ export interface ContextMapMenuProps {
   readonly branch: (record: ContextFamilyGraphNode) => Promise<void>
   readonly restoreAutomatic: (record: ContextFamilyGraphNode) => void
   readonly archive: (record: ContextFamilyGraphNode) => void
+  readonly focusExcerpt: (record: ContextFamilyGraphNode) => void
   readonly showOriginal: (record: ContextFamilyGraphNode) => void
   readonly restoreOriginal: (record: ContextFamilyGraphNode) => void
   readonly reportError: (cause: unknown) => void
@@ -20,7 +23,8 @@ export interface ContextMapMenuProps {
 
 /** Pointer-positioned node actions backed only by Harness-native operations. */
 export function ContextMapMenu({
-  point, record, mode, pending, close, locate, branch, restoreAutomatic, archive, showOriginal, restoreOriginal, reportError,
+  point, record, mode, pending, close, locate, branch, restoreAutomatic, archive,
+  focusExcerpt, showOriginal, restoreOriginal, reportError, t,
 }: ContextMapMenuProps) {
   const run = (action: () => void | Promise<void>): void => {
     try {
@@ -34,7 +38,7 @@ export function ContextMapMenu({
   return (
     <div
       role="menu"
-      aria-label="Message actions"
+      aria-label={t('copy.messageActions')}
       data-context-map-menu=""
       data-opaque-surface="true"
       className={`${css.contextMenu} nodrag nopan`}
@@ -43,21 +47,24 @@ export function ContextMapMenu({
       onClick={(event) => { event.stopPropagation() }}
       onContextMenu={(event) => { event.preventDefault(); event.stopPropagation() }}
     >
-      <button type="button" role="menuitem" onClick={() => { run(() => { locate(record) }) }}>Locate in Chat</button>
+      <button type="button" role="menuitem" onClick={() => { run(() => { locate(record) }) }}>{t('copy.locateInChat')}</button>
       <button
         type="button"
         role="menuitem"
         disabled={pending || record.branchAtSeq === null}
         onClick={() => { run(() => branch(record)) }}
-      >Branch from Here</button>
-      {record.replacement === undefined && <>
+      >{t('copy.branchFromHere')}</button>
+      {record.replacement === undefined
+        && (record.sourceKind === undefined || record.sourceKind === 'chat') && <>
         <div className={css.contextMenuSeparator} />
-        <button type="button" role="menuitem" disabled={pending} onClick={() => { run(() => { archive(record) }) }}>Archive node</button>
+        <button type="button" role="menuitem" disabled={pending} onClick={() => { run(() => { archive(record) }) }}>{t('copy.archiveNode')}</button>
+        {record.activeEventSeq !== null && <button type="button" role="menuitem" disabled={pending}
+          onClick={() => { run(() => { focusExcerpt(record) }) }}>{t('copy.keepTextExcerpt')}</button>}
       </>}
       {record.replacement !== undefined && <>
         <div className={css.contextMenuSeparator} />
-        <button type="button" role="menuitem" onClick={() => { run(() => { showOriginal(record) }) }}>Show original</button>
-        <button type="button" role="menuitem" disabled={pending} onClick={() => { run(() => { restoreOriginal(record) }) }}>Restore node</button>
+        <button type="button" role="menuitem" onClick={() => { run(() => { showOriginal(record) }) }}>{t('copy.showOriginal')}</button>
+        <button type="button" role="menuitem" disabled={pending} onClick={() => { run(() => { restoreOriginal(record) }) }}>{t('copy.restoreNode')}</button>
       </>}
       {mode !== 'natural' && <>
         <div className={css.contextMenuSeparator} />
@@ -66,7 +73,7 @@ export function ContextMapMenu({
           role="menuitem"
           disabled={pending}
           onClick={() => { run(() => { restoreAutomatic(record) }) }}
-        >Restore automatic</button>
+        >{t('copy.restoreAutomatic')}</button>
       </>}
     </div>
   )

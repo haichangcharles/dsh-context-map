@@ -46,7 +46,7 @@ kind: "package-reference"
 
 ### 运行终端会话
 
-`spawnTerminal` 分配真实 PTY 并桥接 UTF-8 文本；你可以检查当前前台进程组并向其发送信号，还可以等待一次 `terminate()` 操作。在受支持的 Linux 宿主上，原始终端 argv 直接在 user-systemd scope 内运行；node-pty PID、会话 leader、控制终端、前台 `inputWaiting` 与就绪状态保持不变，而 scope 会拥有已重新设定父进程或调用 `setsid` 的后代。在 fallback 宿主上，清理会保留根进程树和可观察会话中的精确身份，但无法重新发现每个已经逃逸的后代。Linux 的精确输入等待要求前台线程的 fd 0 标识 shell 的控制终端，且线程当前的 syscall 正在等待该 fd；如果内核拒绝 syscall 探测，上层 PTY 后端会改用空闲推断。在 Windows 上，SIGINT 以 Ctrl-C 输入写入投递，SIGTSTP 与 SIGHUP 不受支持，拆卸会通过进程表验证 shell 已终止，因为被外部终止的 shell 可能永远不会触发 PTY 退出通知。
+`spawnTerminal` 分配真实 PTY 并桥接 UTF-8 文本；你可以检查当前前台进程组并向其发送信号，还可以等待一次 `terminate()` 操作。在受支持的 Linux 宿主上，原始终端 argv 直接在 user-systemd scope 内运行；node-pty PID、会话 leader、控制终端、前台 `inputWaiting` 与就绪状态保持不变，而 scope 会拥有已重新设定父进程或调用 `setsid` 的后代。在 fallback 宿主上，清理会保留根进程树和可观察会话中的精确身份，但无法重新发现每个已经逃逸的后代。Linux 的精确输入等待要求前台线程的 fd 0 标识 shell 的控制终端，且线程当前的 syscall 正在等待该 fd；前台事实根据真实 inspector 与 syscall ABI 声明 `stdinWaitSupported`：受支持 Linux ABI 为 true，不支持的 ABI、macOS 与 Windows 为 false。暂时被拒绝的 syscall 探测只让 `inputWaiting` 为 false，不改变能力。普通发送保留空闲推断；PowerShell 初始启动在能力为 true 或未知时要求精确正向证据。在 Windows 上，SIGINT 以 Ctrl-C 输入写入投递，SIGTSTP 与 SIGHUP 不受支持，拆卸会通过进程表验证 shell 已终止，因为被外部终止的 shell 可能永远不会触发 PTY 退出通知。
 
 ### 关闭行为
 
@@ -91,6 +91,10 @@ kind: "package-reference"
 ### 主流程
 
 一次 spawn 会同步校验最终 argv、cwd 与环境，在用户命令可能运行前选择 containment，并在目标身份保持私有的情况下返回句柄。Linux 普通命令与终端启动使用私有的一次性请求；scope 内的 bootstrap 会恢复目标 cwd 与环境、解析可执行文件、清除 fd 0 至 fd 2 的 close-on-exec 标记，再以原始 argv 进入 libc `execve()`。Windows 普通命令会隔离 runner 的 fd 0 至 fd 2、把 fd 3 留给 IPC，并用 fd 4 至 fd 6 承载 target stdio；runner 把这些 CRT 描述符解析成 OS handle，以 suspended 状态创建 target，将其加入 Job、恢复运行，再只关闭 carrier 描述符。`done` 会在 direct command 及其 stdio 屏障结算后完成，`waitForExit()` 则分别等待所选 scope、Job、进程组或已观察会话变空。
+
+显式取消的 Linux 启动，如果 bootstrap 尚未消费请求，会以空退出码和 owner 请求的信号结算。未消费请求的意外退出仍是启动失败；已报告的启动错误优先于同时发生的取消。已消费请求的目标结果保持不变；范围完全停稳与协议清理仍是独立义务。参见[取消决策](../../../.agents/notes/implemented/bug-fix/2026-10-14-linux-prelaunch-cancellation.zh.md)。
+
+最终 Linux SIGKILL 成功后，还会为自有 scope 入队 stop，而不阻塞等待该任务。这会完成一种在 cgroup 已变空后仍可能保持 active 的 manager 生命周期。`waitForExit()` 仍要求权威的 scope 完全停稳证明；直接退出和 stop 确认不会替代它。宿主退出清理也会尽力提交相同的 stop。参见[scope 生命周期决策](../../../.agents/notes/implemented/bug-fix/2026-10-14-linux-scope-lifecycle.zh.md)。
 
 ### 安全不变式
 

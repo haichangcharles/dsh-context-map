@@ -273,6 +273,13 @@ describe('web e2e: seeded history renders through cold resume', () => {
     const sessionRow = page.locator('[role="treeitem"]').nth(1)
     await sessionRow.waitFor({ timeout: 10_000 })
     await sessionRow.click()
+    // Observe the shipped Map, then restore the full-width historical reading
+    // surface before checking its rail and disclosure reference geometry.
+    const map = page.getByRole('region', { name: 'Context Map', exact: true })
+    await map.waitFor({ timeout: 15_000 })
+    await map.getByRole('button', { name: 'Close Context Map', exact: true }).click()
+    await page.getByRole('button', { name: 'Open right sidebar', exact: true }).waitFor()
+    await page.getByRole('navigation', { name: 'Turn navigation', exact: true }).waitFor()
     // Settled barrier for history: the recorded final assistant text renders.
     await expect.poll(() => page.getByText('DONE', { exact: true }).count(), { timeout: 15_000 }).toBe(1)
     await expect.poll(() => page.getByText('compact', { exact: true }).count(), { timeout: 10_000 }).toBe(1)
@@ -420,7 +427,8 @@ describe('web e2e: seeded history renders through cold resume', () => {
     await fileLink.click()
     await expect.poll(() => frame.getAttribute('data-rightbar-collapsed'), { timeout: 5_000 }).toBe(null)
     const column = page.locator('[data-rightbar-col]')
-    await expect.poll(() => column.locator('[data-dockkit-tab-title]').allTextContents(), { timeout: 5_000 }).toEqual(['a.txt'])
+    await expect.poll(() => column.locator('[data-dockkit-tab-title]').allTextContents(), { timeout: 5_000 }).toEqual(['Context Map', 'a.txt'])
+    expect(await column.locator('[data-textpreview-state="text"]').count()).toBe(1)
     // Path label survives from the recorded args (a.txt).
     await expect.poll(() => page.getByText('a.txt', { exact: false }).count(), { timeout: 5_000 }).toBeGreaterThan(0)
     const path = column.locator('[data-textpreview-path]')

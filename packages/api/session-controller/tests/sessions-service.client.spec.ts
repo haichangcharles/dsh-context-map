@@ -988,6 +988,15 @@ describe('fork', () => {
     expect(b.api.callsOf('session.fork')).toEqual([{ sessionId: 'source', beforeSeq: 42 }])
   })
 
+  it.each(['atSeq', 'beforeSeq'] as const)('rejects invalid %s anchors before contacting the Host', async (boundary) => {
+    const b = bench()
+    await feedList(b, [{ id: 'source', cwd: '/work' }])
+    for (const value of [-1, -0.1, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
+      await expect(b.svc.fork({ sessionId: sid('source'), [boundary]: value })).rejects.toThrow(/non-negative safe integer/)
+    }
+    expect(b.api.callsOf('session.fork')).toEqual([])
+  })
+
   it('does not rename without the title policy or a durable source title', async () => {
     const b = bench()
     await feedList(b, [{ id: 'source', cwd: '/work' }])

@@ -2,13 +2,16 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileS
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import TerminalSessionService from '@deepseek-ai/dsh-terminal'
 import type { TerminalSendOperation } from '@deepseek-ai/dsh-terminal'
+import type { SubprocessTerminalForeground } from '@deepseek-ai/dsh-subprocess'
+import { LocalPtySession } from '@deepseek-ai/dsh-terminal-bash/src/session.ts'
+import { TerminalSanitizer, CONTROLLED_PROMPT } from '@deepseek-ai/dsh-terminal-bash/src/sanitize.ts'
 import SandboxProvider from '@deepseek-ai/dsh-sandbox'
 import type { ConfinedArgv, SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
 import SandboxPolicyService from '@deepseek-ai/dsh-sandbox-policy'
@@ -314,6 +317,149 @@ describe.skipIf(process.platform === 'win32')('terminal-bash real shell', () => 
   }, 35_000)
 })
 
+/** Observe public PTY/session seams without retaining input, environment or output text in the report. */
+function pwshStartupDiagnostics(ctx: Context) {
+  const start = Date.now()
+  const sanitizer = new TerminalSanitizer(16_384)
+  const decoder = new TextDecoder()
+  let chunks = 0
+  let bytes = 0
+  let markerCount = 0
+  let exactPromptTails = 0
+  let promptInvalidations = 0
+  let tailCarriageReturns = 0
+  let tailNewlines = 0
+  let tailOverflowSeen = false
+  let ownedReadySeen = false
+  let firstMarkerAt: number | undefined
+  let firstExactTailAt: number | undefined
+  let firstInvalidationAt: number | undefined
+  let promptTail = ''
+  let setupEchoSeen = false
+  let defaultPromptSeen = false
+  let continuationSeen = false
+  let parserErrorSeen = false
+  let foreground: SubprocessTerminalForeground | undefined
+  let inspectionFailed = false
+  let readSession: (() => ReturnType<LocalPtySession['read']>) | undefined
+  let ownedPrompt: (() => boolean) | undefined
+  let observeOutput: (() => void) | undefined
+  let setupWriteCount = 0
+  let submitWriteCount = 0
+  let cursorReplyCount = 0
+  let cursorQueryChunks = 0
+  const writes: Array<{ bytes: number; setup: boolean; submit: boolean; cursorReply: boolean }> = []
+  const sends: Array<{ elapsedMs: number; reason: string; bytes: number; ownedPrompt: boolean }> = []
+  const restorers: Array<() => void> = []
+  // Default spies delegate to the native method; no replacement implementation or extra await.
+  const startSpy = vi.spyOn(LocalPtySession.prototype, 'startSend')
+  let observedSends = 0
+  const captureSends = (): void => {
+    const candidate: unknown = startSpy.mock.contexts.at(-1)
+    if (candidate instanceof LocalPtySession) {
+      readSession = () => candidate.read({})
+      ownedPrompt = () => candidate.controlledPromptReady
+      // The real session already owns its stream before adding this observer.
+      observeOutput?.()
+      observeOutput = undefined
+    }
+    for (const result of startSpy.mock.results.slice(observedSends)) {
+      if (result.type === 'incomplete') break
+      observedSends += 1
+      if (result.type !== 'return') continue
+      void result.value.done.then((settled) => {
+        sends.push({ elapsedMs: Date.now() - start, reason: settled.waitReason,
+          bytes: Buffer.byteLength(settled.viewport), ownedPrompt: ownedPrompt?.() ?? false })
+        if (sends.length > 12) sends.shift()
+      }).catch(() => { /* The original operation remains the rejection authority. */ })
+    }
+  }
+  restorers.push(() => { startSpy.mockRestore() })
+  const originalSpawn = ctx.subprocess.spawnTerminal.bind(ctx.subprocess)
+  const spawnSpy = vi.spyOn(ctx.subprocess, 'spawnTerminal').mockImplementation(async (spec) => {
+    const handle = await originalSpawn(spec)
+    const onData = (chunk: Buffer): void => {
+      chunks += 1
+      bytes += chunk.byteLength
+      const decoded = decoder.decode(chunk, { stream: true })
+      if (decoded.includes('\x1b[6n')) cursorQueryChunks += 1
+      const classified = sanitizer.push(decoded)
+      setupEchoSeen ||= classified.text.includes('function prompt')
+      defaultPromptSeen ||= classified.text.includes('PS ')
+      continuationSeen ||= /(?:^|\n)>>/.test(classified.text)
+      parserErrorSeen ||= classified.text.includes('ParserError')
+      if (classified.prompt) {
+        markerCount += 1
+        firstMarkerAt ??= Date.now() - start
+        promptTail = ''
+      }
+      if (classified.promptTail !== undefined) {
+        const previouslyExact = promptTail === CONTROLLED_PROMPT
+        if (classified.promptTail.includes('\r')) tailCarriageReturns += 1
+        if (classified.promptTail.includes('\n')) tailNewlines += 1
+        tailOverflowSeen ||= promptTail.length + classified.promptTail.length > CONTROLLED_PROMPT.length
+        promptTail = (promptTail + classified.promptTail).slice(0, 32)
+        if (promptTail === CONTROLLED_PROMPT) {
+          exactPromptTails += 1
+          firstExactTailAt ??= Date.now() - start
+        } else if (previouslyExact) {
+          promptInvalidations += 1
+          firstInvalidationAt ??= Date.now() - start
+        }
+      }
+      ownedReadySeen ||= ownedPrompt?.() === true
+    }
+    observeOutput = () => { handle.output.on('data', onData) }
+    restorers.push(() => { handle.output.off('data', onData) })
+    const originalWrite = handle.write.bind(handle)
+    const writeSpy = vi.spyOn(handle, 'write').mockImplementation((data) => {
+      const setup = data.includes('function prompt')
+      const submit = data.endsWith('\r')
+      const cursorReply = /^\x1b\[\d+;\d+R$/.test(data)
+      if (setup) setupWriteCount += 1
+      if (submit) submitWriteCount += 1
+      if (cursorReply) cursorReplyCount += 1
+      writes.push({ bytes: Buffer.byteLength(data), setup, submit, cursorReply })
+      if (writes.length > 12) writes.shift()
+      return originalWrite(data)
+    })
+    restorers.push(() => { writeSpy.mockRestore() })
+    const originalInspect = handle.inspectForeground.bind(handle)
+    const inspectSpy = vi.spyOn(handle, 'inspectForeground').mockImplementation(() => {
+      captureSends()
+      const inspecting = originalInspect()
+      void inspecting.then((state) => { foreground = state }).catch(() => {
+        inspectionFailed = true // Observe failure without changing its original promise.
+      })
+      return inspecting
+    })
+    restorers.push(() => { inspectSpy.mockRestore() })
+    return handle
+  })
+  restorers.push(() => { spawnSpy.mockRestore() })
+  return {
+    report: () => {
+      captureSends()
+      const read = readSession?.()
+      console.error(JSON.stringify({ diagnostic: 'pwsh-startup-protocol', platform: process.platform,
+        elapsedMs: Date.now() - start, chunks, bytes, markerCount, exactPromptTails,
+        setupWriteCount, submitWriteCount, cursorQueryChunks, cursorReplyCount,
+        promptInvalidations, tailCarriageReturns, tailNewlines, tailOverflowSeen, ownedReadySeen,
+        firstMarkerAt: firstMarkerAt ?? null, firstExactTailAt: firstExactTailAt ?? null,
+        firstInvalidationAt: firstInvalidationAt ?? null,
+        tailLength: promptTail.length, tailStartsAtPrompt: promptTail.startsWith(CONTROLLED_PROMPT),
+        tailContainsPrompt: promptTail.includes(CONTROLLED_PROMPT),
+        setupEchoSeen, defaultPromptSeen, continuationSeen, parserErrorSeen,
+        ownedPrompt: ownedPrompt?.() ?? null, viewportBytes: read === undefined ? null : Buffer.byteLength(read.text),
+        viewportLines: read?.totalLines ?? null, viewportTruncated: read?.truncated ?? null,
+        viewportEndsAtPrompt: read?.text.endsWith(CONTROLLED_PROMPT) ?? null,
+        foregroundPgid: foreground?.processGroupId ?? null, inputWaiting: foreground?.inputWaiting ?? null,
+        inspectionFailed, sendCount: startSpy.mock.calls.length, writes, sends }))
+    },
+    restore: () => { for (const restore of restorers.reverse()) restore() },
+  }
+}
+
 const hasPwsh = spawnSync(
   resolvePwshPath(), ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', '$true'],
   { encoding: 'utf8' },
@@ -329,7 +475,14 @@ describe.skipIf(!hasPwsh)('terminal-bash pwsh real shell', () => {
         handoffGraceMs: 300,
         timeoutMs: 8_000,
       }, 'pwsh')
-      const created = await ctx.terminals.spawn(agent, { type: 'shell', name: 'main', cwd: root })
+      const diagnostics = pwshStartupDiagnostics(ctx)
+      let created
+      try {
+        created = await ctx.terminals.spawn(agent, { type: 'shell', name: 'main', cwd: root })
+      } catch (error: unknown) {
+        diagnostics.report()
+        throw error
+      } finally { diagnostics.restore() }
       expect(created.motd).toContain('dsh> ')
 
       const releaseFile = join(root, 'release-command')

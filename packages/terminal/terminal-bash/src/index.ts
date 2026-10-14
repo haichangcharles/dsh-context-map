@@ -123,24 +123,29 @@ async function startupSession(
       await session.initialize(signal)
       return
     }
+    // Complete the initial console negotiation before typing; early Enter can be
+    // consumed by startup cursor negotiation instead of submitting the command.
+    await session.initialize(signal, true)
     // pwsh cannot install its prompt from the environment. Write the prompt
     // function through the session, pin UTF-8 output before user input, and
-    // accept only backend stdin_read evidence; echoed setup source containing
-    // the printable prompt is not readiness. Follow-up sends bridge silence
+    // require backend stdin_read plus the owned marker and exact printable
+    // prompt; echoed setup source is not readiness. Follow-up sends bridge silence
     // settlements during startup, while one absolute deadline bounds them.
     let viewport = ''
+    let submitted = false
     for (;;) {
-      const first = viewport.length === 0
+      const first = !submitted
+      submitted = true
       startupOperation = session.startSend({
         text: first ? ENCODING_PREAMBLE + PWSH_PROMPT_SETUP : '',
         submit: first,
         ...signal !== undefined ? { signal } : {},
-      })
+      }, !first)
       const result = await startupOperation.done
       if (result.waitReason === 'session_exit') throw new Error('PTY shell exited during startup')
       if (result.waitReason === 'timeout') throw new Error('PTY shell did not reach readiness before startup timeout')
       viewport = result.viewport
-      if (result.waitReason === 'stdin_read') break
+      if (result.waitReason === 'stdin_read' && session.controlledPromptReady) break
     }
     session.motd = viewport
   }

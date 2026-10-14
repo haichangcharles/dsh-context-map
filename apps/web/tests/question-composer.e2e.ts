@@ -19,7 +19,7 @@ import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, recordFixture, seedSession, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import {
+import { restoreFullWidthChat,
   connectFreshWorkspace, expandTurnProcesses, newEnglishPage, saveFailureShot,
 } from './support.ts'
 
@@ -292,6 +292,7 @@ describe('web e2e: resident question composer round trip', () => {
     expect(await selectedRow.locator('[data-state="warning"]').count()).toBe(0)
     await expect.poll(() => page.locator('[data-composer-input]').first().isEnabled(), { timeout: 10_000 }).toBe(true)
     // The default golden pins Compact mode before process disclosure.
+    await restoreFullWidthChat(page)
     const snapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(ANSWERED_EXPECTED, snapshot, MODE)
     // Keep the ask_user_question card's readable answer in the expanded golden
@@ -303,6 +304,7 @@ describe('web e2e: resident question composer round trip', () => {
     expect(await page.getByText('Blue', { exact: true }).count()).toBeGreaterThanOrEqual(1)
     expect(await page.getByText('Include accessibility notes', { exact: true }).count()).toBe(1)
     expect(await page.getByText(/"answers"/).count()).toBe(0)
+    await restoreFullWidthChat(page)
     const expanded = await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(ANSWERED_EXPANDED_EXPECTED, expanded, MODE)
     expect(tripwire.pageErrors).toEqual([])
@@ -398,6 +400,7 @@ describe.skipIf(MODE === 'record')('web e2e: cancelled question transcript', () 
     expect(await cancelledPage
       .getByText('Error: the user cancelled ask_user_question', { exact: true }).count()).toBe(0)
 
+    await restoreFullWidthChat(cancelledPage)
     const snapshot = (await captureStableAria(
       cancelledPage,
       '[class*="centerCol"]',

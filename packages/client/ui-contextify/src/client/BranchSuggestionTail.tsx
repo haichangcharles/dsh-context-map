@@ -1,22 +1,23 @@
 /** In-flow Branch decision for one completed Harness Turn. */
 import { memo, useState } from 'react'
-import type { HostObservable, InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
+import type { HostObservable, InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ContextifyControllerSnapshot } from './controller.ts'
 import { BranchSuggestionCard } from './BranchSuggestionCard.tsx'
 
 export interface BranchSuggestionTailInjected {
   readonly hooks: { readonly contextify: HostObservable<ContextifyControllerSnapshot> }
+  readonly keepBranchSuggestion: (suggestionId: string) => Promise<void>
   readonly moveBranchSuggestion: (suggestionId: string) => Promise<void>
 }
 
-type BranchSuggestionTailProps = InjectFace<BranchSuggestionTailInjected> & {
+type BranchSuggestionTailProps = InjectFace<BranchSuggestionTailInjected> & PropsLocale<'contextifySteward'> & {
   /** Closing assistant sequence selected by the native turnTail slot. */
   readonly matched: number
 }
 
 /** Render only the suggestion owned by this exact completed assistant output. */
 export const BranchSuggestionTail = memo(function BranchSuggestionTail({
-  matched, useContextify, moveBranchSuggestion,
+  matched, useContextify, keepBranchSuggestion, moveBranchSuggestion, t,
 }: BranchSuggestionTailProps) {
   const [dismissedSuggestionId, setDismissedSuggestionId] = useState<string | null>(null)
   const snapshot = useContextify(value => value)
@@ -24,9 +25,13 @@ export const BranchSuggestionTail = memo(function BranchSuggestionTail({
   if (suggestion === undefined || suggestion.output.seq !== matched
     || suggestion.id === dismissedSuggestionId) return null
   return <BranchSuggestionCard
+    t={t}
     suggestion={suggestion}
     pending={snapshot.pending}
-    keep={() => { setDismissedSuggestionId(suggestion.id) }}
+    keep={async () => {
+      await keepBranchSuggestion(suggestion.id)
+      setDismissedSuggestionId(suggestion.id)
+    }}
     move={() => moveBranchSuggestion(suggestion.id)}
   />
 })

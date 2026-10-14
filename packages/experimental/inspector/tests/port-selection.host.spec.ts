@@ -4,6 +4,7 @@ import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterEach, describe, expect, it } from 'vitest'
 import { startInspector, type InspectorHandle } from '../src/host/bridge/controller.ts'
+import { isAddressInUse } from '../src/worker/bridge/endpoint.ts'
 
 async function closeServer(server: Server): Promise<void> {
   if (!server.listening) return
@@ -72,5 +73,26 @@ describe('Inspector endpoint port selection', () => {
     expect(new URL(inspector.endpoint.webSocketDebuggerUrl).port).toBe(String(selectedPort))
     expect(new URL(inspector.endpoint.client.endpoint).port).toBe(String(selectedPort))
     await expect(fetch(new URL('json', inspector.endpoint.httpUrl)).then(response => response.status)).resolves.toBe(200)
+  })
+})
+
+// Winsock exclusivity reports WSAEACCES for an occupied address on Windows.
+describe('Inspector native port-conflict classification', () => {
+  it.each(['win32', 'linux', 'darwin'] as const)('retries address-in-use on %s', (platform) => {
+    expect(isAddressInUse(Object.assign(new Error('occupied'), { code: 'EADDRINUSE' }), platform)).toBe(true)
+  })
+  it.each(['win32', 'linux', 'darwin'] as const)('classifies access denied only as a Windows bind conflict on %s', (platform) => {
+    expect(isAddressInUse(Object.assign(new Error('exclusive bind'), { code: 'EACCES' }), platform)).toBe(platform === 'win32')
+  })
+  it.each(['win32', 'linux', 'darwin'] as const)('retains other native errors on %s', (platform) => {
+    for (const code of ['EPERM', 'EADDRNOTAVAIL', 'EINVAL', 'ECONNRESET']) {
+      expect(isAddressInUse(Object.assign(new Error('bind failed'), { code }), platform)).toBe(false)
+    }
+  })
+  it('uses the current native platform and rejects non-Error values', () => {
+    expect(isAddressInUse(Object.assign(new Error('exclusive bind'), { code: 'EACCES' }))).toBe(process.platform === 'win32')
+    for (const error of [null, undefined, 'EADDRINUSE', { code: 'EADDRINUSE' }, new Error('unclassified')]) {
+      expect(isAddressInUse(error, 'win32')).toBe(false)
+    }
   })
 })

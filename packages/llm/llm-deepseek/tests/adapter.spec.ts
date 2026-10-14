@@ -2322,3 +2322,42 @@ describe('plugin registration and config', () => {
     expect(ctx.llm.listProviders()).toEqual([])
   })
 })
+
+
+describe('synchronous dispatch authorization', () => {
+  function authorizedAdapter(url: string, authorizeDispatch: ConstructorParameters<typeof DeepSeekAdapter>[0]['authorizeDispatch']) {
+    return new DeepSeekAdapter({ options: () => resolveAdapterOptions({ baseURL: url }),
+      resolveApiKey: () => Promise.resolve('test-dispatch-key'), resolveUserId: () => TEST_USER_ID,
+      prepareExtensions: noExtensions, ...authorizeDispatch === undefined ? {} : { authorizeDispatch } })
+  }
+
+  it('authorizes both agent-owned and generic request payloads immediately before local dispatch', async () => {
+    const server = await mockServer([{ kind: 'sse', events: textEvents }, { kind: 'sse', events: textEvents }])
+    const authorized: Array<Parameters<NonNullable<ConstructorParameters<typeof DeepSeekAdapter>[0]['authorizeDispatch']>>[0]> = []
+    const adapter = authorizedAdapter(server.url, (request) => { authorized.push(request) })
+    await drain(adapter.stream({ provider: 'deepseek-official', model: 'm', messages: [], sessionId: SessionId('dispatch-owner'), purpose: 'compaction' }))
+    await drain(adapter.stream({ provider: 'deepseek-official', model: 'm', messages: [] }))
+    expect(authorized[0]).toMatchObject({ sessionId: 'dispatch-owner', purpose: 'compaction' })
+    expect(authorized[0]?.payload).toContain('"model":"m"')
+    expect(authorized[1]?.sessionId).toBeUndefined()
+    expect(authorized[1]?.purpose).toBeUndefined()
+    expect(server.requests).toHaveLength(2)
+  })
+
+  it.each([() => null, () => 1, () => 'pending', () => ({}), () => ({ then: 1 }),
+    () => Promise.resolve(), () => Promise.reject(new Error('asynchronous denial'))])('fails closed for an unauthorized non-void dispatch result %#', async (createResult) => {
+    const server = await mockServer([])
+    const adapter = authorizedAdapter(server.url, createResult)
+    await expect(drain(adapter.stream({ provider: 'deepseek-official', model: 'm', messages: [] }))).rejects.toMatchObject({ code: 'REQUEST_NOT_AUTHORIZED' })
+    expect(server.requests).toEqual([])
+  })
+
+  it('preserves an authorization cancellation and dispatches no local request', async () => {
+    const server = await mockServer([])
+    const controller = new AbortController()
+    const denied = new Error('Source policy was revoked')
+    const adapter = authorizedAdapter(server.url, () => { controller.abort(denied); throw denied })
+    await expect(drain(adapter.stream({ provider: 'deepseek-official', model: 'm', messages: [], signal: controller.signal }))).rejects.toMatchObject({ code: 'ABORTED', cause: denied })
+    expect(server.requests).toEqual([])
+  })
+})

@@ -462,6 +462,10 @@ describe('web e2e: persisted subagent conversation and human continuation', () =
 
   it('matches the settled addressed-conversation aria golden and stays clean', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-subagent-aria'))
+    // Addressed execution details retain their own controls; native family Map is not auto-opened.
+    await expect.poll(() => page.getByRole('region', { name: 'Context Map', exact: true }).count()).toBe(0)
+    await page.getByRole('button', { name: 'Open right sidebar', exact: true }).waitFor()
+    await page.getByRole('navigation', { name: 'Turn navigation', exact: true }).waitFor()
     const snapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(AVAILABLE_CHILD_EXPECTED, snapshot, MODE)
     const expanded = await captureExpandedTurnProcessAria(
@@ -511,6 +515,8 @@ describe('web e2e: persisted subagent conversation and human continuation', () =
     expect(crumbs.slice(-2)).toEqual([LABEL, NESTED_LABEL])
     expect(scaffold.ctx.agents.get(childId)).toBeUndefined()
     expect(scaffold.ctx.agents.get(grandchildId)).toBeUndefined()
+    await expect.poll(() => page.getByRole('region', { name: 'Context Map', exact: true }).count()).toBe(0)
+    await page.getByRole('button', { name: 'Open right sidebar', exact: true }).waitFor()
     await compareOrRefreshGolden(
       UNAVAILABLE_GRANDCHILD_EXPECTED,
       await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd),
@@ -550,6 +556,11 @@ describe('web e2e: persisted subagent conversation and human continuation', () =
     expect(await page.getByText('Ungrouped', { exact: true }).count()).toBe(0)
     const hierarchy = page.getByRole('navigation', { name: 'Session hierarchy' })
     await expect.poll(() => hierarchy.getByRole('button').count()).toBe(1)
+    // An ordinary native fork remains a supported Map, even when its source was an execution detail.
+    const map = page.getByRole('region', { name: 'Context Map', exact: true })
+    await map.waitFor({ timeout: 15_000 })
+    await map.locator('[data-context-node-id]').first().waitFor({ state: 'attached', timeout: 15_000 })
+    expect(await map.getByRole('alert').count()).toBe(0)
     await compareOrRefreshGolden(
       FORK_EXPECTED,
       await captureStableAria(page, '[role="tree"][aria-label="Sessions"]', scaffold.workspaceCwd),

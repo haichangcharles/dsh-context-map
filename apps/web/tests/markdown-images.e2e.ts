@@ -23,7 +23,7 @@ import {
   webSnapshotMode,
   type WebScaffold,
 } from './scaffold.ts'
-import { newEnglishPage, saveFailureShot } from './support.ts'
+import { restoreFullWidthChat, newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./expected/markdown-images', import.meta.url))
 const UI_EXPECTED = fileURLToPath(new URL('./expected/markdown-images/ui.expected.md', import.meta.url))
@@ -265,8 +265,41 @@ describe('web e2e: Markdown image rendering', () => {
       [join(scaffold.workspaceCwd, 'corrupt.png'), 200],
     ]))
 
-    const snapshot = (await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd))
-      .split(SEED_ID).join('{{seededId}}')
+    await restoreFullWidthChat(page)
+    const agent = scaffold.ctx.agents.get(SessionId(SEED_ID))
+    if (agent === undefined) throw new Error('image fixture must have a live Agent')
+    const sourceCwd = agent.session.header.cwd
+    if (sourceCwd === undefined) throw new Error('image fixture must retain its source CWD')
+    const assistant = agent.session.snapshotEvents().find(event => event.type === 'assistant/message')
+    if (assistant?.type !== 'assistant/message') throw new Error('image fixture must retain its source message')
+    expect(assistant.data.message.role).toBe('assistant')
+    expect(assistant.data.message.source).toMatchObject({ kind: 'model', provider: 'fixture', model: 'fixture' })
+    const sourceText = assistant.data.message.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('\n')
+    expect(sourceText).toContain(imageOrigin.url)
+    expect(sourceText).toContain(sourceCwd)
+    const family = await scaffold.ctx.contextify.familyPage(agent)
+    const messageNode = family.records.find(node => node.owner.sessionId === agent.id && node.owner.seq === assistant.seq)
+    if (messageNode === undefined) throw new Error('image graph must preserve its exact source owner')
+    expect(messageNode.role).toBe('assistant')
+    expect(messageNode.sourceKind ?? 'chat').toBe('chat')
+    expect(messageNode.activeEventSeq).toBe(assistant.seq)
+    expect(messageNode.preview).toBe(Array.from(sourceText).slice(0, 240).join(''))
+    expect(Array.from(messageNode.preview)).toHaveLength(240)
+    const preview = messageNode.preview.replace(/\s+/g, ' ').trim()
+    for (const mode of ['natural', 'include', 'exclude']) {
+      expect(await page.getByRole('button', { name: `${mode} context for ${preview}`, exact: true }).count()).toBe(1)
+    }
+    expect(await page.getByRole('button', { name: `Locate ${preview} in Context Map`, exact: true }).count()).toBe(1)
+    // Only this known volatile preview is tokenized, after exact source/role/provenance and UI checks.
+    // A different temporary CWD length changes the crop and must not match any real Context action;
+    // the native source and model packet remain untouched.
+    const changedCwdText = sourceText.split(sourceCwd).join(join(scaffold.workspaceCwd, 'longer-cwd-'.repeat(30)))
+    const wrongPreview = Array.from(changedCwdText).slice(0, 240).join('').replace(/\s+/g, ' ').trim()
+    expect(wrongPreview).not.toBe(preview)
+    expect(await page.getByRole('button', { name: `natural context for ${wrongPreview}`, exact: true }).count()).toBe(0)
+    const snapshot = (await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd, {
+      replacements: [[preview, '{{assistantPreview}}'], [imageOrigin.url, 'http://127.0.0.1:{{port}}/image.png']],
+    })).split(SEED_ID).join('{{seededId}}')
     await compareOrRefreshGolden(UI_EXPECTED, snapshot, MODE)
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])

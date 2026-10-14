@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-10-context-recommendation-dismissal.md
+2026-10-10-context-recommendation-dismissal.md: 001231ec3a8cc159600968b5a2cc25bc4052f6a8
+2026-10-10-context-recommendation-dismissal.zh.md: 2ff861960be1d0a3a909fd04d6adc10a0ec0f367

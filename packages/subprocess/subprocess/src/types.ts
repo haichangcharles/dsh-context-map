@@ -222,6 +222,8 @@ export interface SubprocessTerminalForeground {
   processGroupId: number
   /** Whether the provider can currently prove that group is waiting on terminal input. */
   inputWaiting: boolean
+  /** Whether this provider supports exact stdin-wait inspection; omitted when unknown. */
+  stdinWaitSupported?: boolean
 }
 
 /**

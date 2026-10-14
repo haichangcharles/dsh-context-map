@@ -2,6 +2,8 @@
 
 [English](2026-08-18-trajectory-inspector-right-sidebar.md) | 中文
 
+这是历史计划。已迁移文件的引用指向当前包所有者。`historical-proposal/` 下的名称表示当前 checkout 中不存在的历史拟议文件，并非当前仓库文件；执行前须核对当前包约定。
+
 > **面向 Agent 工作者：** 必须使用子技能：逐项执行本计划时，使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans。步骤使用复选框（`- [ ]`）跟踪。
 
 **目标：** 在 Harness 最右侧详情页中渲染原封不动的原生 Trajectory Inspector，同时保持 Context Map／详情手动切换。
@@ -17,9 +19,9 @@
 **文件：**
 - 修改：`packages/client/ui-conversation/src/client/contract/slots.ts`
 - 修改：`packages/client/ui-conversation/src/client/apply.ts`
-- 修改：`packages/client/ui-conversation/src/client/skeleton/DetailsPanel.tsx`
-- 修改：`packages/client/ui-conversation/src/client/skeleton/DetailsPanel.module.css`
-- 测试：`packages/client/ui-conversation/tests/gate-branch-tails.client.spec.tsx`
+- 修改：`packages/client/ui-sidebar-right/src/client/shell/SidebarRight.tsx`
+- 修改：`packages/client/ui-sidebar-right/src/client/shell/SidebarRight.module.css`
+- 测试：`packages/client/ui-chat/tests/gate-branch-tails.client.spec.tsx`
 - 测试：`packages/client/ui-conversation/tests/apply-inject.client.spec.tsx`
 
 - [x] **步骤 1：编写失败的 DetailsPanel 测试**
@@ -31,7 +33,7 @@
 运行：
 
 ```bash
-pnpm vitest run packages/client/ui-conversation/tests/gate-branch-tails.client.spec.tsx packages/client/ui-conversation/tests/apply-inject.client.spec.tsx
+pnpm vitest run packages/client/ui-chat/tests/gate-branch-tails.client.spec.tsx packages/client/ui-conversation/tests/apply-inject.client.spec.tsx
 ```
 
 预期：失败，因为尚未声明或渲染 `conversation.details.inspector`。
@@ -57,8 +59,8 @@ const inspectorSlot = {
 ### 任务 2：把现有 Trajectory Inspector portal 到 seat
 
 **文件：**
-- 新建：`packages/client/ui-trajectory/src/client/TrajectoryInspectorSeat.tsx`
-- 新建：`packages/client/ui-trajectory/src/client/TrajectoryInspectorSeat.module.css`
+- 新建：`historical-proposal/TrajectoryInspectorSeat.tsx`
+- 新建：`historical-proposal/TrajectoryInspectorSeat.module.css`
 - 修改：`packages/client/ui-trajectory/src/client/index.ts`
 - 修改：`packages/client/ui-trajectory/src/client/TrajectoryView.tsx`
 - 修改：`packages/client/ui-trajectory/src/client/TrajectoryTable.tsx`
@@ -120,7 +122,7 @@ export function TrajectoryInspectorSeat({ hostId }: { hostId: string }) {
 ### 任务 3：锁定“手动切换”实验不变量
 
 **文件：**
-- 测试：`packages/client/ui-conversation/tests/gate-branch-tails.client.spec.tsx`
+- 测试：`packages/client/ui-chat/tests/gate-branch-tails.client.spec.tsx`
 - 测试：`packages/client/ui-trajectory/tests/table.client.spec.tsx`
 
 - [x] **步骤 1：增加跨行为断言**

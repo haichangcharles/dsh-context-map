@@ -7,10 +7,12 @@
 
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { readFile } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
 import { join, resolve } from 'node:path'
-import { afterAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, describe, expect, it, onTestFailed, onTestFinished, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import type { ShellRunResult, CollectedOutput } from '@deepseek-ai/dsh-shell'
+import type { ShellRunResult, CollectedOutput, ShellProcess } from '@deepseek-ai/dsh-shell'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { SANDBOX_UNAVAILABLE, SandboxProvider, SandboxUnavailableError } from '@deepseek-ai/dsh-sandbox'
 import type { ConfinedArgv, SandboxExecutionPolicy, SandboxMode, SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
@@ -20,6 +22,143 @@ import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import type { SubprocessHandle, SubprocessOutputReader } from '@deepseek-ai/dsh-subprocess'
 import { classifyDenial, classifyRunnerFailure, isRunnerSpawnFailure } from '../src/helpers.ts'
 import type { Config } from '@deepseek-ai/dsh-bash-sandbox'
+
+// Observe the real native command adapter only for the immediate-disposal fixture.
+const nativeTrace = vi.hoisted(() => ({
+  active: false,
+  startedAt: 0,
+  scopeName: undefined as string | undefined,
+  events: [] as {
+    event: 'show' | 'kill' | 'probe'
+    phase?: 'start' | 'result'
+    elapsedMs: number
+    status?: number | null
+    errorCode?: string | number | undefined
+    signal?: 'SIGTERM' | 'SIGKILL' | undefined
+    loadState?: string | undefined
+    activeState?: string | undefined
+  }[],
+}))
+
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>()
+  const errno = (error: unknown): string | number | undefined => {
+    if (!(error instanceof Error) || !('code' in error)) return undefined
+    const code = error.code
+    return typeof code === 'number' ? code
+      : typeof code === 'string' && ['ENOENT', 'EACCES', 'EPERM', 'ETIMEDOUT', 'ESRCH'].includes(code) ? code : 'other'
+  }
+  const state = (text: string, field: string, allowed: readonly string[]): string | undefined => {
+    const value = text.split(/\r?\n/u).find(line => line.startsWith(`${field}=`))?.slice(field.length + 1)
+    return value === undefined ? undefined : allowed.includes(value) ? value : 'other'
+  }
+  const matches = (args: unknown[], operation: string): boolean => nativeTrace.active
+    && args[0] === 'systemctl' && Array.isArray(args[1]) && args[1].includes(operation)
+  return {
+    ...actual,
+    execFile: ((...args: unknown[]) => {
+      const callback = args.at(-1)
+      if (matches(args, 'show') && typeof callback === 'function') {
+        const argv = args[1] as unknown[]
+        nativeTrace.scopeName = argv.find((value): value is string =>
+          typeof value === 'string' && /^dsh-subprocess-\d+-[a-f0-9]+\.scope$/u.test(value))
+        nativeTrace.events.push({ event: 'show', phase: 'start',
+          elapsedMs: Math.round(performance.now() - nativeTrace.startedAt) })
+        args[args.length - 1] = function (this: unknown, ...results: unknown[]) {
+          const text = typeof results[1] === 'string' ? results[1] : ''
+          if (nativeTrace.active) nativeTrace.events.push({ event: 'show', phase: 'result',
+            elapsedMs: Math.round(performance.now() - nativeTrace.startedAt),
+            errorCode: errno(results[0]),
+            loadState: state(text, 'LoadState', ['loaded', 'not-found', 'masked', 'error', 'bad-setting', 'merged', 'stub']),
+            activeState: state(text, 'ActiveState', ['active', 'inactive', 'activating', 'deactivating', 'reloading', 'failed']) })
+          Reflect.apply(callback, this, results)
+        }
+      }
+      return actual.execFile(...args as Parameters<typeof actual.execFile>)
+    }) as typeof actual.execFile,
+    spawnSync: ((...args: unknown[]) => {
+      const result = actual.spawnSync(...args as Parameters<typeof actual.spawnSync>)
+      if (nativeTrace.active && args[0] === 'systemd-run' && Array.isArray(args[1]) && args[1].includes('--scope')) {
+        nativeTrace.events.push({ event: 'probe', elapsedMs: Math.round(performance.now() - nativeTrace.startedAt),
+          status: result.status, errorCode: errno(result.error) })
+      }
+      if (matches(args, 'kill')) {
+        const argv = args[1] as unknown[]
+        const signal = argv.includes('--signal=SIGKILL') ? 'SIGKILL' : argv.includes('--signal=SIGTERM') ? 'SIGTERM' : undefined
+        nativeTrace.events.push({ event: 'kill', elapsedMs: Math.round(performance.now() - nativeTrace.startedAt),
+          status: result.status, errorCode: errno(result.error), signal })
+      }
+      return result
+    }) as typeof actual.spawnSync,
+  }
+})
+
+/** Read only the selected native scope's failure facts, never exposing its private identity. */
+async function failedScopeFacts(unit: string | undefined) {
+  const facts = {
+    controlGroupPresent: undefined as boolean | undefined,
+    subState: undefined as string | undefined,
+    tasksCurrent: undefined as number | 'unknown' | undefined,
+    populated: undefined as 0 | 1 | undefined,
+    liveCount: undefined as number | undefined,
+    zombieCount: undefined as number | undefined,
+    deadCount: undefined as number | undefined,
+    unreadableCount: 0,
+    readError: undefined as string | undefined,
+  }
+  const errorCode = (error: unknown): string => {
+    const code = error instanceof Error && 'code' in error ? error.code : undefined
+    return typeof code === 'string' && ['ENOENT', 'EACCES', 'EPERM', 'ETIMEDOUT', 'ESRCH'].includes(code) ? code : 'other'
+  }
+  if (unit === undefined) return { ...facts, readError: 'no-native-scope' }
+  const text = await new Promise<string | undefined>((resolveText) => {
+    execFile('systemctl', ['--user', 'show', unit, '--property=SubState', '--property=TasksCurrent', '--property=ControlGroup'],
+      { encoding: 'utf8', timeout: 2_000 }, (error, stdout) => {
+        if (error !== null) { facts.readError = errorCode(error); resolveText(undefined) }
+        else resolveText(stdout)
+      })
+  })
+  if (text === undefined) return facts
+  const value = (field: string): string | undefined =>
+    text.split(/\r?\n/u).find(line => line.startsWith(`${field}=`))?.slice(field.length + 1)
+  const subState = value('SubState')
+  facts.subState = subState === undefined ? undefined
+    : ['running', 'dead', 'failed', 'stop-sigterm', 'stop-sigkill', 'abandoned', 'start-chown'].includes(subState) ? subState : 'other'
+  const tasks = value('TasksCurrent')
+  facts.tasksCurrent = tasks === undefined ? undefined
+    : /^\d+$/u.test(tasks) && Number.isSafeInteger(Number(tasks)) ? Number(tasks) : 'unknown'
+  const controlGroup = value('ControlGroup')
+  facts.controlGroupPresent = controlGroup === undefined ? undefined : controlGroup.length > 0
+  if (!controlGroup) return facts
+  // The manager owns the cgroup. Inspect only this operation's exact unit path.
+  if (!controlGroup.startsWith('/') || !controlGroup.endsWith(`/${unit}`)
+    || controlGroup.split('/').some(segment => segment === '.' || segment === '..')) {
+    return { ...facts, readError: 'unverified-cgroup-path' }
+  }
+  try {
+    const root = `/sys/fs/cgroup${controlGroup}`
+    const events = await readFile(`${root}/cgroup.events`, 'utf8')
+    const populated = /^populated ([01])$/mu.exec(events)?.[1]
+    facts.populated = populated === '0' ? 0 : populated === '1' ? 1 : undefined
+    const pids = (await readFile(`${root}/cgroup.procs`, 'utf8')).split(/\s+/u).filter(pid => /^\d+$/u.test(pid))
+    facts.liveCount = 0
+    facts.zombieCount = 0
+    facts.deadCount = 0
+    // Fixed read bound; unread members cannot be mistaken for an empty group.
+    facts.unreadableCount = Math.max(0, pids.length - 100)
+    for (const pid of pids.slice(0, 100)) {
+      try {
+        const stat = await readFile(`/proc/${pid}/stat`, 'utf8')
+        const state = stat.slice(stat.lastIndexOf(')') + 2).split(' ')[0]
+        if (state === 'Z') facts.zombieCount += 1
+        else if (state === 'X' || state === 'x') facts.deadCount += 1
+        else if (state !== undefined && /^[RSDITWP]$/u.test(state)) facts.liveCount += 1
+        else facts.unreadableCount += 1
+      } catch { facts.unreadableCount += 1 }
+    }
+  } catch (error) { facts.readError = errorCode(error) }
+  return facts
+}
 
 const spillDir = mkdtempSync(join(tmpdir(), 'dsh-bash-sandbox-spec-'))
 
@@ -659,10 +798,81 @@ describe('background sandbox facts', () => {
     expect(task.sandbox).toEqual({ mode: 'read-only', denied: false, enforcement: 'full' })
   })
 
-  it('disposal kills wrapped background jobs (inherited HMR safety)', async () => {
-    const { ctx, bash } = await setup()
-    const task = bash.start(bash.resolve({ command: 'sleep 30' }))
-    await ctx.fiber.dispose()
-    expect(task.status).toBe('killed')
-  })
+  const runtimeDiagnostics = process.env['DSH_RUNTIME_DIAGNOSTICS'] === '1'
+  // Independent bounded trials are diagnostic samples, never retries of a failed assertion.
+  for (const trial of runtimeDiagnostics ? [1, 2, 3] : [1]) {
+    it(`disposal kills wrapped background jobs (inherited HMR safety)${trial === 1 ? '' : ` [trial ${String(trial)}]`}`, async () => {
+      const startedAt = performance.now()
+      nativeTrace.events = []
+      nativeTrace.scopeName = undefined
+      nativeTrace.startedAt = startedAt
+      const stages: { event: string; elapsedMs: number }[] = []
+      const mark = (event: string): void => {
+        stages.push({ event, elapsedMs: Math.round(performance.now() - startedAt) })
+      }
+      const state: {
+        context?: Context
+        task?: ShellProcess
+        fallbackWarning?: () => boolean
+        facts?: Awaited<ReturnType<typeof failedScopeFacts>>
+        reported: boolean
+      } = { reported: false }
+      const report = (): void => {
+        if (state.reported) return
+        state.reported = true
+        // Fixed stage names and states only; never print command or environment data.
+        process.stderr.write(`${JSON.stringify({ diagnostic: 'sandbox-immediate-disposal', trial, stages,
+          rootFiberState: state.context?.fiber.state, processStatus: state.task?.status,
+          fallback: state.fallbackWarning?.(), native: nativeTrace.events, scopeFacts: state.facts })}\n`)
+      }
+      onTestFailed(async () => {
+        nativeTrace.active = false
+        if (process.platform === 'linux') {
+          state.facts = await failedScopeFacts(nativeTrace.scopeName)
+        }
+        report()
+      })
+      onTestFinished((context) => {
+        nativeTrace.active = false
+        // The failure callback owns collection and emission regardless of hook order.
+        if (runtimeDiagnostics && context.task.result?.state !== 'fail') report()
+      })
+      mark('setup:start')
+      const { ctx, bash } = await setup()
+      state.context = ctx
+      const fallbackWarning = vi.spyOn(ctx.logger, 'warn')
+      state.fallbackWarning = () => fallbackWarning.mock.calls.some(([message]) =>
+        String(message).startsWith('subprocess-local is using weaker process-tree containment'))
+      mark('setup:ready')
+      nativeTrace.active = true
+      const spawn = ctx.subprocess.spawn.bind(ctx.subprocess)
+      vi.spyOn(ctx.subprocess, 'spawn').mockImplementation((spec) => {
+        mark('spawn:start')
+        const handle = spawn(spec)
+        mark('spawn:returned')
+        const terminate = handle.terminate.bind(handle)
+        const waitForExit = handle.waitForExit.bind(handle)
+        vi.spyOn(handle, 'terminate').mockImplementation(() => {
+          mark('terminate:start')
+          try { terminate() } finally { mark('terminate:return') }
+        })
+        vi.spyOn(handle, 'waitForExit').mockImplementation((signal) => {
+          mark('range-wait:start')
+          const waiting = waitForExit(signal)
+          void waiting.then(() => { mark('range-wait:resolved') }, () => { mark('range-wait:rejected') })
+          return waiting
+        })
+        void handle.done.then(() => { mark('direct-done:resolved') }, () => { mark('direct-done:rejected') })
+        return handle
+      })
+      const task = bash.start(bash.resolve({ command: 'sleep 30' }))
+      state.task = task
+      mark('shell-start:returned')
+      mark('root-dispose:start')
+      await ctx.fiber.dispose()
+      mark('root-dispose:resolved')
+      expect(task.status).toBe('killed')
+      if (runtimeDiagnostics) report()
+    })
+  }
 })

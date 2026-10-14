@@ -34,6 +34,7 @@ function latestUser(
   beforeIndex: number,
 ): ContextFamilyGraphNode | undefined {
   return nodes.slice(0, beforeIndex).findLast(node => node.role === 'user'
+    && (node.sourceKind === undefined || node.sourceKind === 'chat')
     && node.owner.sessionId === ownerSessionId)
 }
 
@@ -59,7 +60,10 @@ export function buildBranchReviewInput(input: {
   readonly contents?: Readonly<Record<string, string>>
 }): ContextBranchReviewInput {
   const candidate = input.graph.nodes.find(node => node.id === input.candidateNodeId)
-  if (candidate === undefined || candidate.role !== 'user') throw new Error('Branch candidate input is unavailable')
+  if (candidate === undefined || candidate.role !== 'user'
+    || (candidate.sourceKind !== undefined && candidate.sourceKind !== 'chat')) {
+    throw new Error('Branch candidate input is unavailable')
+  }
   const candidateIndex = input.graph.nodes.indexOf(candidate)
   const active = input.graph.sessions.find(session => session.id === input.graph.activeSessionId)
   if (active === undefined) throw new Error('active Branch Session is unavailable')
@@ -77,6 +81,7 @@ export function buildBranchReviewInput(input: {
   }
   const activePath = input.graph.nodes
     .filter(node => node.sessionIds.includes(input.graph.activeSessionId)
+      && (node.sourceKind === undefined || node.sourceKind === 'chat')
       && input.graph.nodes.indexOf(node) < candidateIndex && node.id !== candidate.id)
     .sort((left, right) => (left.activeEventSeq ?? left.time) - (right.activeEventSeq ?? right.time))
   const localObjective = latestUser(input.graph.nodes, active.id, candidateIndex)
@@ -109,11 +114,10 @@ export function buildBranchReviewInput(input: {
   })
 }
 
-function eventText(event: SessionEvent): string {
+function eventText(event: Extract<SessionEvent, { type: 'user/message' | 'assistant/message' }>): string {
   const message = event.type === 'user/message'
     ? event.data
-    : event.type === 'assistant/message' ? event.data.message : undefined
-  if (message === undefined) return ''
+    : event.data.message
   return message.content.flatMap(block => block.type === 'text' ? [block.text] : block.type === 'image' ? ['[Image]'] : [])
     .join('\n').slice(0, 2_000)
 }
@@ -139,12 +143,14 @@ export function completedTurnCandidate(
   }
   if (startSeq < 0) return null
   const within = events.slice(startSeq + 1, turnEndSeq)
-  const input = within.find(event => event.type === 'user/message'
+  const inputs = within.filter(event => event.type === 'user/message'
     && event.surfaceOp === 'append' && event.data.source.kind === 'user')
+  const input = inputs[0]
   const outputs = within.filter(event => event.type === 'assistant/message'
     && event.surfaceOp === 'append' && event.data.message.content.some(block => block.type === 'text' || block.type === 'image'))
   const output = outputs.at(-1)
-  if (input?.type !== 'user/message' || output?.type !== 'assistant/message') return null
+  // Relocating only a question/answer pair must never omit an in-Turn human correction.
+  if (input?.type !== 'user/message' || inputs.length !== 1 || output?.type !== 'assistant/message') return null
   return Object.freeze({
     sourceSessionId,
     turn: end.data.turn,

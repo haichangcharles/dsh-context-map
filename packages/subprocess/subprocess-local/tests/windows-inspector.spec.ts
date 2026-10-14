@@ -115,6 +115,7 @@ describe('WindowsProcessInspector (injected internals)', () => {
   it('exposes the shell pid as the pseudo foreground group and never proves stdin waits', () => {
     const fake = fakeInternals()
     const inspector = new WindowsProcessInspector(fake.internals)
+    expect(inspector.stdinWaitSupported).toBe(false)
     expect(inspector.foregroundPgid(77)).toBe(77)
     expect(inspector.isStdinWaiting(77, 10)).toBe(false)
     expect(inspector.snapshot().session(77)).toEqual([])

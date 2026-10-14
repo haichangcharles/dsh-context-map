@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
+import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import { Context } from '@deepseek-ai/cordis'
 import {
@@ -90,5 +91,105 @@ describe('post-Turn Branch review', () => {
     expect(parseBranchDecisionText('```json\n{"action":"keep","confidence":0.9,"reason":"same topic"}\n```'))
       .toEqual({ action: 'keep', confidence: 0.9, reason: 'same topic' })
     expect(() => validateBranchDecision({ action: 'suggest_branch', confidence: 2, reason: 'bad' })).toThrow(/confidence/)
+  })
+  it('abstains on incomplete boundaries and turns without a visible output', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    try {
+      const session = ctx.sessions.create(SessionId('incomplete-review'))
+      expect(completedTurnCandidate([], 0, session.id)).toBeNull()
+      const orphan = session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+      expect(completedTurnCandidate(session.snapshotEvents(), orphan.seq, session.id)).toBeNull()
+      session.append('turn/start', { turn: 2 })
+      session.append('user/message', createUserMessage({ content: [{ type: 'text', text: 'question' }],
+        source: { kind: 'user' } }), { surfaceOp: 'append' })
+      const failed = session.append('turn/end', { turn: 2,
+        reason: { kind: 'error', error: { message: 'failed', code: 'UNKNOWN' } } })
+      expect(completedTurnCandidate(session.snapshotEvents(), failed.seq, session.id)).toBeNull()
+      session.append('turn/start', { turn: 3 })
+      const empty = session.append('turn/end', { turn: 3, reason: { kind: 'completed' } })
+      expect(completedTurnCandidate(session.snapshotEvents(), empty.seq, session.id)).toBeNull()
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it('retains visible images while omitting reasoning in relocation previews', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    try {
+      const session = ctx.sessions.create(SessionId('image-review'))
+      session.append('turn/start', { turn: 1 })
+      const attachment = { attachmentId: AttachmentId(`sha256:${'a'.repeat(64)}`),
+        mediaType: 'image/png' as const, bytes: 4, width: 1, height: 1 }
+      session.append('user/message', createUserMessage({ content: [{ type: 'image', attachment }],
+        source: { kind: 'user' } }), { surfaceOp: 'append' })
+      session.append('assistant/message', { stream: [], turn: 1, step: 1,
+        message: createAssistantMessage({ source: { provider: 'mock', model: 'mock' }, content: [
+          { type: 'reasoning', text: 'private' }, { type: 'text', text: 'visible' },
+          { type: 'image', attachment },
+        ] }) }, { surfaceOp: 'append' })
+      const end = session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+      expect(completedTurnCandidate(session.snapshotEvents(), end.seq, session.id)).toMatchObject({
+        inputPreview: '[Image]', outputPreview: 'visible\n[Image]',
+      })
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it.each([
+    [null, /object/], [[], /object/], [{ action: 'navigate', confidence: 1, reason: 'x' }, /action/],
+    [{ action: 'keep', confidence: NaN, reason: 'x' }, /confidence/],
+    [{ action: 'keep', confidence: 'high', reason: 'x' }, /confidence/],
+    [{ action: 'keep', confidence: 0.5, reason: '' }, /reason/],
+    [{ action: 'keep', confidence: 0.5, reason: 1 }, /reason/],
+    [{ action: 'keep', confidence: 0.5, reason: 'x'.repeat(501) }, /reason/],
+  ])('rejects a malformed branch decision %j', (value, error) => {
+    expect(() => validateBranchDecision(value)).toThrow(error)
+  })
+
+  it('rejects prose without a branch decision JSON object', () => {
+    expect(() => parseBranchDecisionText('keep this topic')).toThrow(/JSON object/)
+  })
+
+  it('handles a partial family and inherited objective without inventing sibling goals', () => {
+    const active = SessionId('partial-active')
+    const missing = SessionId('missing-parent')
+    const sibling = SessionId('empty-sibling')
+    const graph: ContextFamilyGraph = { rootSessionId: missing, activeSessionId: active,
+      sessions: [
+        { id: active, parentSessionId: missing, seedLength: 2, depth: 1, tipNodeId: 'candidate' },
+        { id: sibling, parentSessionId: missing, seedLength: 2, depth: 1, tipNodeId: null },
+      ], nodes: [
+        { id: 'inherited', owner: { sessionId: missing, seq: 1 }, role: 'user', preview: 'parent goal',
+          time: 1, branchAtSeq: null, sessionIds: [active], activeEventSeq: null },
+        { id: 'unanswered', owner: { sessionId: active, seq: 2 }, role: 'user', preview: 'unfinished goal',
+          time: 2, branchAtSeq: null, sessionIds: [active], activeEventSeq: null },
+        { id: 'candidate', owner: { sessionId: active, seq: 3 }, role: 'user', preview: 'new request',
+          time: 3, branchAtSeq: null, sessionIds: [active], activeEventSeq: null },
+      ], edges: [] }
+    const input = buildBranchReviewInput({ graph, candidateNodeId: 'candidate', contents: {
+      unanswered: 'exact unfinished goal', candidate: 'exact new request',
+    } })
+    expect(input.currentObjective).toBe('exact unfinished goal')
+    expect(input.candidateInput).toBe('exact new request')
+    expect(input.recentTurns).toEqual([])
+    expect(input.siblingIntents).toEqual([])
+    expect(() => buildBranchReviewInput({ graph, candidateNodeId: 'absent' })).toThrow(/candidate/)
+    expect(() => buildBranchReviewInput({ graph: { ...graph, sessions: [] },
+      candidateNodeId: 'candidate' })).toThrow(/active Branch/)
+    const first = buildBranchReviewInput({ graph: { ...graph, nodes: [graph.nodes[2]!] },
+      candidateNodeId: 'candidate' })
+    expect(first.currentObjective).toBe('')
+    const inherited = buildBranchReviewInput({ graph: { ...graph,
+      nodes: [graph.nodes[0]!, graph.nodes[2]!] }, candidateNodeId: 'candidate' })
+    expect(inherited.currentObjective).toBe('parent goal')
+    const typedGraph = { ...graph, nodes: graph.nodes.map(item => ({ ...item, sourceKind: 'chat' as const })) }
+    expect(buildBranchReviewInput({ graph: typedGraph, candidateNodeId: 'candidate' }).currentObjective)
+      .toBe('unfinished goal')
+    const workerGraph = { ...typedGraph, nodes: typedGraph.nodes.map(item => item.id === 'unanswered'
+      ? { ...item, sourceKind: 'worker' as const } : item) }
+    expect(buildBranchReviewInput({ graph: workerGraph, candidateNodeId: 'candidate' }).currentObjective)
+      .toBe('parent goal')
+    expect(() => buildBranchReviewInput({ graph: { ...typedGraph, nodes: typedGraph.nodes.map(item =>
+      item.id === 'candidate' ? { ...item, sourceKind: 'worker' as const } : item) },
+    candidateNodeId: 'candidate' })).toThrow(/candidate/)
   })
 })

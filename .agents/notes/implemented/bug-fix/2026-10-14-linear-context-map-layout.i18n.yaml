@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-10-14-linear-context-map-layout.md
+2026-10-14-linear-context-map-layout.md: c86bf86a48d8a3111403b2fa55facdacdaf555c0
+2026-10-14-linear-context-map-layout.zh.md: 15eda69aaf3fa717ddc3a5e3f81c6930b0a1b46a

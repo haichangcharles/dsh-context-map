@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, createAssistantMessage } from '@deepseek-ai/dsh-llm'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import ContextCompilerRegistry from '@deepseek-ai/dsh-context-compiler'
 
@@ -149,4 +149,40 @@ describe('ContextCompilerRegistry', () => {
       code: 'COMPILER_VERSION_MISMATCH',
     }))
   })
+
+  it('rejects malformed output from a JavaScript compiler before selecting any message', async () => {
+    const ctx = new Context()
+    await ctx.plugin(ContextCompilerRegistry)
+    const session = Session.create(SessionId('malformed-js-compiler'))
+    appendUser(session, 'An intact source')
+    try {
+      for (const [index, output] of [null, [], {}, { eventSeqs: 'not-an-array' }].entries()) {
+        const provider = { id: `js-output-${String(index)}`, version: 1, select: () => ({ eventSeqs: [] }) }
+        // A JavaScript plugin can violate the TypeScript-only return contract.
+        Reflect.set(provider, 'select', () => output)
+        ctx.contextCompiler.register(provider)
+        ctx.contextCompiler.select(session, provider.id)
+        expect(() => ctx.contextCompiler.compile({ session, turn: 1, step: 1 })).toThrow(/invalid context compiler selection/)
+      }
+      expect(() => ctx.contextCompiler.select(session, 'absent-provider')).toThrow(/not registered/)
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it('rejects a native empty assistant event and keeps a replacement registration after repeated disposal', async () => {
+    const ctx = new Context()
+    await ctx.plugin(ContextCompilerRegistry)
+    const session = Session.create(SessionId('empty-native-message'))
+    const empty = session.append('assistant/message', { stream: [], turn: 1, step: 1,
+      message: createAssistantMessage({ content: [], source: { provider: 'mock', model: 'mock' } }) }, { surfaceOp: 'append' })
+    try {
+      const dispose = ctx.contextCompiler.register({ id: 'temporary-output', version: 1, select: () => ({ eventSeqs: [empty.seq] }) })
+      ctx.contextCompiler.select(session, 'temporary-output')
+      expect(() => ctx.contextCompiler.compile({ session, turn: 1, step: 1 })).toThrow(/does not derive a message/)
+      dispose()
+      ctx.contextCompiler.register({ id: 'temporary-output', version: 1, select: () => ({ eventSeqs: [] }) })
+      dispose()
+      expect(ctx.contextCompiler.compile({ session, turn: 1, step: 1 }).messages).toEqual([])
+    } finally { await ctx.fiber.dispose() }
+  })
+
 })

@@ -71,7 +71,7 @@ kind: "package-reference"
 
 - **`single` 以内存为权威状态。** 每次写入都会更改内存单元、序列化其完整状态，并以原子方式替换 `<unit>.json`。发布失败会恢复先前的内存值。
 - **`per-record` 以目录为权威状态。** 每次 put 或 delete 都会更改一个 `<unit>/<table>/<key>.json` 文档，`loadAll()` 则重新读取目录树。每份文档都带有单元版本戳与一条记录值。
-- **每次调用都持久发布。** 写入过程使用临时文件、fsync、原子 `rename()` 替换，并在 POSIX 上 fsync 父目录。领域层写入链负责安排跨调用的顺序。
+- **每次调用都持久发布。** 写入过程使用临时文件、fsync、原子 `rename()` 替换，并在 POSIX 上 fsync 父目录。领域层写入链负责安排跨调用的顺序。 替换委托给共享的[原子 rename 所有者](../../util/atomic-write/README.zh.md#publishing-a-prepared-file)，保留其 Windows `EACCES`/`EBUSY`/`EPERM` 最多八次的有界重试。不重放其他写入阶段；最终失败仍保留旧目标，并向调用方传播。
 
 ### 文件格式
 

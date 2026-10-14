@@ -71,7 +71,7 @@ The two layouts share atomic publication but assign state ownership differently.
 
 - **`single` keeps memory authoritative.** Each write changes the in-memory unit, serializes its complete state, and atomically replaces `<unit>.json`. A failed publish restores the prior in-memory value.
 - **`per-record` keeps the directory authoritative.** Each put or delete changes one `<unit>/<table>/<key>.json` document, and `loadAll()` rereads the tree. Each document stamps the unit version and carries one record value.
-- **Publication is durable per call.** A write uses a temporary file, fsync, atomic `rename()` replacement, and a parent-directory fsync on POSIX. The domain layer's write chain supplies ordering across calls.
+- **Publication is durable per call.** A write uses a temporary file, fsync, atomic `rename()` replacement, and a parent-directory fsync on POSIX. The domain layer's write chain supplies ordering across calls. Replacement delegates to the shared [atomic-rename owner](../../util/atomic-write/README.md#publishing-a-prepared-file), retaining its eight bounded Windows `EACCES`/`EBUSY`/`EPERM` retries. Other write phases are not replayed; final failure still preserves the old target and propagates to the caller.
 
 ### File formats
 

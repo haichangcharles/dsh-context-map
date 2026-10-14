@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi, type MockInstance } from 'vitest'
 import {
   cliGateOptions,
+  collectDescendants,
   defaultConcurrency,
   formatGateResultReason,
   gatesForMode,
@@ -927,6 +928,42 @@ describe('process-table parsing', () => {
 
   it('drops blank and malformed lines', () => {
     expect(parsePidPpidLines('  123   1\n\ncommand not found\n999 abc\n')).toEqual([[123, 1]])
+  })
+})
+
+describe('process-table descendant traversal', () => {
+  it('does not rediscover the root when a process-table snapshot points it to itself', () => {
+    const rows: Array<[number, number]> = [[100, 100], [201, 100]]
+    expect(collectDescendants(100, rows)).toEqual([201])
+    expect(rows).toEqual([[100, 100], [201, 100]])
+  })
+
+  it('keeps first-discovery breadth-first order through duplicate rows and root back-edges', () => {
+    const rows = parsePidPpidLines('201 100\n202 100\n201 100\n301 201\n302 201\n303 202\n304 301\n100 304\n202 303\n999 888\n')
+    const originalRows = rows.map(([pid, parent]): [number, number] => [pid, parent])
+    const descendants = collectDescendants(100, rows)
+    expect(descendants).toEqual([201, 202, 301, 302, 303, 304])
+    expect(rows).toEqual(originalRows)
+    expect(taskkillArgs(100, descendants).map(args => args[1])).toEqual(['100', '201', '202', '301', '302', '303', '304'])
+  })
+
+  it('terminates a descendant cycle independently of an unrelated cycle in the same table', () => {
+    expect(collectDescendants(100, [[201, 100], [301, 201], [201, 301], [302, 301], [888, 999], [999, 888]]))
+      .toEqual([201, 301, 302])
+  })
+
+  it('returns no descendants for an empty table or a root with no observed child', () => {
+    expect(collectDescendants(100, [])).toEqual([])
+    expect(collectDescendants(100, [[201, 200], [301, 201]])).toEqual([])
+  })
+
+  it('handles a wide ordinary process tree without spreading a child list into call arguments', () => {
+    const grandchildren = Array.from({ length: 200_000 }, (_, index): [number, number] => [index + 1000, 201])
+    const rows: Array<[number, number]> = [[201, 100], ...grandchildren]
+    const descendants = collectDescendants(100, rows)
+    expect(descendants).toHaveLength(200_001)
+    expect(descendants[0]).toBe(201)
+    expect(descendants.slice(1)).toEqual(grandchildren.map(([pid]) => pid))
   })
 })
 

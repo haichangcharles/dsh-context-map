@@ -2,6 +2,8 @@
 
 English | [中文](2026-08-17-context-map-canvas-interactions.zh.md)
 
+This is a historical implementation plan. File references resolve to the current owners after package splits; current behavior is defined by the [Contextify package contract](../../../packages/context/contextify/README.md). A standalone Contextify invariant is omitted; compiler tests verify selected snapshot provenance.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Restore the independent Context Map's click, multi-select, context-menu, live-drag, and Chat-location interactions while keeping Harness Context Plan and native Sessions authoritative.
@@ -19,13 +21,13 @@ English | [中文](2026-08-17-context-map-canvas-interactions.zh.md)
 - Modify `packages/client/ui-contextify/src/client/ContextMapPanel.tsx`: Normal/Selection modes, custom marquee, batch bar, live controlled nodes, and context-menu orchestration.
 - Modify `packages/client/ui-contextify/src/client/ContextMapNode.tsx`: card click and context-menu event handoff while preserving accessible direct controls.
 - Modify `packages/client/ui-contextify/src/client/ContextMapPanel.module.css`: selection toggle, marquee, menu, highlight, and floating action-bar presentation.
-- Create `packages/client/ui-conversation/src/client/chat/message-reveal.ts`: per-Session one-shot reveal request registry.
+- Create `packages/client/ui-conversation/src/client/service.ts`: per-Session one-shot reveal request registry.
 - Modify `packages/client/ui-conversation/src/client/service.ts`: public `revealMessage(sessionId, seq)` request face.
 - Modify `packages/client/ui-conversation/src/client/apply.ts`: bind the reveal registry to Chat view injection and activate the native Chat tab.
 - Modify `packages/client/ui-conversation/src/client/contract/slots.ts`: typed reveal subscription/consume props for ChatView.
-- Modify `packages/client/ui-conversation/src/client/chat/ChatNodeSeat.tsx`: durable message-sequence anchors.
-- Modify `packages/client/ui-conversation/src/client/chat/ChatView.tsx`: consume reveal requests, scroll, and temporary highlight.
-- Modify `packages/client/ui-conversation/src/client/chat/ChatView.module.css`: reveal highlight animation with reduced-motion handling.
+- Modify `packages/client/ui-chat/src/client/chat/ChatNodeSeat.tsx`: durable message-sequence anchors.
+- Modify `packages/client/ui-chat/src/client/chat/ChatView.tsx`: consume reveal requests, scroll, and temporary highlight.
+- Modify `packages/client/ui-chat/src/client/chat/ChatView.module.css`: reveal highlight animation with reduced-motion handling.
 - Modify `packages/client/ui-contextify/src/client/index.ts`: route Locate in Chat to `ctx.conversation.revealMessage`.
 - Modify focused tests in `packages/client/ui-contextify/tests/` and `packages/client/ui-conversation/tests/`; update both package README language pairs and an Agent Note after behavior passes.
 
@@ -178,14 +180,14 @@ Expect menu, dismissal, and live-drag tests to pass. Commit with `feat: restore 
 ### Task 4: Add the native Chat message reveal contract
 
 **Files:**
-- Create: `packages/client/ui-conversation/src/client/chat/message-reveal.ts`
+- Create: `packages/client/ui-conversation/src/client/service.ts`
 - Modify: `packages/client/ui-conversation/tests/service-orchestration.client.spec.ts`
 - Modify: `packages/client/ui-conversation/src/client/service.ts`
 - Modify: `packages/client/ui-conversation/src/client/apply.ts`
 - Modify: `packages/client/ui-conversation/src/client/contract/slots.ts`
-- Modify: `packages/client/ui-conversation/src/client/chat/ChatNodeSeat.tsx`
-- Modify: `packages/client/ui-conversation/src/client/chat/ChatView.tsx`
-- Modify: `packages/client/ui-conversation/src/client/chat/ChatView.module.css`
+- Modify: `packages/client/ui-chat/src/client/chat/ChatNodeSeat.tsx`
+- Modify: `packages/client/ui-chat/src/client/chat/ChatView.tsx`
+- Modify: `packages/client/ui-chat/src/client/chat/ChatView.module.css`
 
 - [ ] **Step 1: Write failing reveal registry and ChatView tests**
 

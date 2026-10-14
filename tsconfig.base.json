@@ -29,6 +29,7 @@
     // under its own tsconfig boundary.
     "paths": {
       "@deepseek-ai/dsh-contextify/types": ["./packages/context/contextify/src/types.ts"],
+      "@deepseek-ai/dsh-contextify/branch-tool": ["./packages/context/contextify/src/branch-tool.ts"],
       "@deepseek-ai/dsh-contextify": ["./packages/context/contextify/src/index.ts"],
       "@deepseek-ai/dsh-client-ui-contextify": ["./packages/client/ui-contextify/src"],
       "@deepseek-ai/dsh-client-ui-contextify/client": ["./packages/client/ui-contextify/src/client/index.ts"],

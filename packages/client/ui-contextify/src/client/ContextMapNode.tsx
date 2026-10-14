@@ -1,4 +1,6 @@
 /** One message-level Context Map node rendered inside React Flow. */
+import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
+import './locales.ts'
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import type { ContextFamilyGraphNode } from '@deepseek-ai/dsh-contextify/types'
@@ -8,7 +10,7 @@ import type { CanvasPoint } from './canvas-interactions.ts'
 export type ContextNodeMode = 'natural' | 'include' | 'exclude'
 
 /** Renderer data attached after deterministic layout. */
-export interface ContextMapNodeData extends Record<string, unknown> {
+export interface ContextMapNodeData extends Record<string, unknown>, PropsLocale<'contextifySteward'> {
   readonly record: ContextFamilyGraphNode
   readonly mode: ContextNodeMode
   readonly included: boolean
@@ -26,14 +28,19 @@ export interface ContextMapNodeData extends Record<string, unknown> {
 /** Compact role, preview, Session, status, and direct actions card. */
 export const ContextMapNode = memo(function ContextMapNode({ data, selected, sourcePosition, targetPosition }: NodeProps) {
   const value = data as ContextMapNodeData
+  const { t } = value
   const record = value.record
-  const emptyPlaceholder = record.replacement !== undefined
-  const preview = emptyPlaceholder ? '' : record.preview || '(empty message)'
-  const role = record.role === 'user' ? 'User' : 'Assistant'
+  const emptyPlaceholder = record.replacement?.kind === 'placeholder'
+  const preview = emptyPlaceholder ? ''
+    : record.replacement?.kind === 'excerpt'
+      ? record.replacement.preview
+      : record.preview || t('node.empty')
+  const role = record.sourceKind === 'web' ? t('node.role.web')
+    : record.sourceKind === 'worker' ? t('node.role.worker') : t(`node.role.${record.role}`)
   return (
     <article
       className={css.mapNode}
-      aria-label={emptyPlaceholder ? `${role} empty placeholder` : `${role} message: ${preview}`}
+      aria-label={emptyPlaceholder ? t('copy.emptyPlaceholder', { p0: role }) : t('copy.message', { p0: role, p1: preview })}
       data-role={record.role}
       data-mode={value.mode}
       data-included={value.included || undefined}
@@ -42,7 +49,7 @@ export const ContextMapNode = memo(function ContextMapNode({ data, selected, sou
       data-search-match={value.searchMatch || undefined}
       data-selected={selected || undefined}
       data-context-node-id={record.id}
-      data-replacement={record.replacement === undefined ? undefined : 'placeholder'}
+      data-replacement={record.replacement?.kind}
       onContextMenu={(event) => {
         event.preventDefault()
         event.stopPropagation()
@@ -51,7 +58,7 @@ export const ContextMapNode = memo(function ContextMapNode({ data, selected, sou
     >
       <Handle type="target" position={targetPosition ?? Position.Top} className={css.handle} />
       <header className={css.nodeHeader}>
-        <span className={css.role}>{record.role === 'user' ? 'User' : 'Assistant'}</span>
+        <span className={css.role}>{role}</span>
         <label
           className={`${css.contextCheckbox} nodrag nopan`}
           onPointerDown={(event) => { event.stopPropagation() }}
@@ -61,18 +68,20 @@ export const ContextMapNode = memo(function ContextMapNode({ data, selected, sou
             type="checkbox"
             checked={value.included}
             disabled={value.pending}
-            aria-label={emptyPlaceholder ? `Include ${role.toLocaleLowerCase()} empty placeholder in context` : `Include ${preview} in context`}
+            aria-label={emptyPlaceholder ? t('copy.includeEmptyPlaceholderInContext', { p0: role.toLocaleLowerCase() }) : t('copy.includeInContext', { p0: preview })}
             onChange={(event) => { value.onIncludedChange(record, event.target.checked) }}
           />
-          <span aria-hidden="true">Context</span>
+          <span aria-hidden="true">{t('copy.context')}</span>
         </label>
       </header>
       <p className={css.preview} data-preview={preview} aria-hidden="true" />
       {(value.recommendation !== undefined || record.replacement !== undefined) && <div className={css.nodeBadges}>
         {value.recommendation !== undefined && <span data-recommendation={value.recommendation}>
-          {value.recommendation === 'include' ? 'Suggested include' : value.recommendation === 'exclude' ? 'Suggested exclude' : 'Archive suggested'}
+          {value.recommendation === 'include' ? t('copy.suggestedInclude') : value.recommendation === 'exclude' ? t('copy.suggestedExclude') : t('copy.archiveSuggested')}
         </span>}
-        {record.replacement !== undefined && <span data-replacement-badge="">Archived</span>}
+        {record.replacement !== undefined && <span data-replacement-badge="">
+          {record.replacement.kind === 'excerpt' ? t('copy.focusedExcerpt') : t('copy.archived')}
+        </span>}
       </div>}
       <div className={css.nodeMeta}>{value.sessionLabel}</div>
       <Handle type="source" position={sourcePosition ?? Position.Bottom} className={css.handle} />

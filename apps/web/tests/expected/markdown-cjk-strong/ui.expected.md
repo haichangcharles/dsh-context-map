@@ -15,8 +15,6 @@
 - button "include context for Render adjacent CJK strong emphasis.": Use
 - button "exclude context for Render adjacent CJK strong emphasis.": Skip
 - button "Locate Render adjacent CJK strong emphasis. in Context Map": Map
-- button "Branch into a new conversation":
-  - img
 - heading "CJK strong emphasis" [level=2]
 - paragraph:
   - strong: 注意：

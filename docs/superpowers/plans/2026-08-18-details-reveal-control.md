@@ -2,6 +2,8 @@
 
 English | [中文](2026-08-18-details-reveal-control.zh.md)
 
+This is a historical plan. Current package owners replace moved file references. Paths under `historical-proposal/` name historical proposed files absent from the current checkout, not current repository files; consult the current package contracts before executing this plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a floating left-arrow on the frame's right edge that reopens the native details column after Context Map or Tool details is closed.
@@ -56,14 +58,14 @@ Run the Step 2 command. Expected: all AppFrame tests pass.
 **Files:**
 - Modify: `packages/client/ui-layout/README.md`
 - Modify: `packages/client/ui-layout/README.zh.md`
-- Verify: `packages/client/ui-conversation/tests/gate-branch-tails.client.spec.tsx`
+- Verify: `packages/client/ui-chat/tests/gate-branch-tails.client.spec.tsx`
 
 - [x] **Step 1: Extend and run the Details switching test**
 
 Run:
 
 ```bash
-pnpm vitest run packages/client/ui-conversation/tests/gate-branch-tails.client.spec.tsx -t "switches pinned content and Tool details"
+pnpm vitest run packages/client/ui-chat/tests/gate-branch-tails.client.spec.tsx -t "switches pinned content and Tool details"
 ```
 
 Expected: PASS, proving Details is clickable without a Tool selection and shows the native empty state; after selection, switching pages retains Tool selection.

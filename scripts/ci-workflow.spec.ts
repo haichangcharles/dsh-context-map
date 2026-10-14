@@ -171,7 +171,8 @@ describe('CI workflow', () => {
       expect(job['runs-on'], `${jobName} runs-on must not use the Linux failover switch`).not.toContain('DSH_CI_FAILOVER_LINUX')
       expect(job['runs-on']).toContain('self-hosted')
       expect(job['runs-on']).toContain('dsh-win-ci')
-      expect(job['runs-on']).toContain('dsh-windows-2025-16core')
+      expect(job['runs-on']).toContain('DSH_CI_WINDOWS_RUNNER')
+      expect(job['runs-on']).toContain('windows-2025')
       expect(job.if).toBe("github.event_name == 'pull_request'")
     }
 
@@ -212,9 +213,9 @@ describe('CI workflow', () => {
       expect(install!.run).not.toContain('$cloneFlag')
     }
 
-    // windows-coverage uses the lower 4-partition profile.
+    // Configured larger Windows pools retain four partitions; ordinary hosted CI uses two.
     expect(windowsCoverage.name).toBe('windows node 24 / coverage')
-    expect(windowsCoverage.env).toMatchObject({ DSH_COVERAGE_PARTITIONS: '4' })
+    expect(windowsCoverage.env).toMatchObject({ DSH_COVERAGE_PARTITIONS: "${{ (vars.DSH_CI_WINDOWS_RUNNER != '' || vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted') && '4' || '2' }}" })
     const coverageSteps = windowsCoverage.steps as unknown[]
     const coverageCommands = coverageSteps.filter((step): step is Record<string, unknown> & { run: string } => (
       isRecord(step) && typeof step.run === 'string'
@@ -246,7 +247,7 @@ describe('CI workflow', () => {
     expect(windowsObservational['continue-on-error']).toBe(true)
 
     // serial-windows: master-only standby, self-hosted, non-blocking, lives in ci-master.
-    expect(serialWindows.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/master'")
+    expect(serialWindows.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/master' && vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted'")
     expect(serialWindows['runs-on']).toEqual(['self-hosted', 'dsh-win-ci', 'windows'])
     expect(serialWindows.name).toBe('serial / windows (self-hosted standby)')
     // Its store must share the ReFS workspace volume for clone; the install
@@ -415,7 +416,8 @@ describe('CI workflow', () => {
       if (!isRecord(job)) throw new TypeError(`${name} must be defined`)
       expect(job.concurrency).toBeUndefined()
       // Standby drills remain post-merge work, but share run cancellation.
-      expect(job.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/master'")
+      expect(job.if).toContain("github.event_name == 'push' && github.ref == 'refs/heads/master'")
+      expect(job.if).toContain("== 'selfhosted'")
     }
 
     // Pin the post-merge runtime, Wine, and standby inventory.
@@ -500,10 +502,8 @@ describe('CI workflow', () => {
         targets: 'node24-linux-x64,node24-win-x64',
         ci: true,
       },
-      secrets: {
-        DEEPSEEK_API_KEY_EXTERNAL: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}',
-      },
     })
+    expect(pythonRuntime.secrets).toBeUndefined()
     expect(aggregate.needs).toContain('python-runtime')
   })
 
@@ -516,7 +516,7 @@ describe('CI workflow', () => {
 })
 
 describe('DeepSeek e2e workflow', () => {
-  it('prepares bubblewrap from the pinned payload without a package transaction', () => {
+  it('prepares bubblewrap from signed current indices without a package transaction', () => {
     const workflow = loadWorkflow('.github/workflows/e2e.yml')
     const e2e = workflowJob(workflow, 'e2e')
     if (!Array.isArray(e2e.steps)) throw new TypeError('DeepSeek e2e workflow must define steps')
@@ -530,7 +530,7 @@ describe('DeepSeek e2e workflow', () => {
 
   it('bounds profile subprocess fan-out to the tested e2e default', () => {
     const workflow = loadWorkflow('.github/workflows/e2e.yml')
-    const e2e = workflowJob(workflow, 'e2e')
+    const e2e = workflowJob(workflow, 'real-api')
     if (!Array.isArray(e2e.steps)) throw new TypeError('DeepSeek e2e workflow must define steps')
 
     const step = e2e.steps.filter(isRecord).find(candidate => candidate.name === 'E2E tests (real DeepSeek API)')
@@ -727,9 +727,8 @@ describe('Python release workflows', () => {
     expect(realApiPreflightPosix).toMatchObject({
       env: { DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}' },
     })
-    expect(String(realApiPreflightPosix.if)).toContain('inputs.ci')
-    expect(String(realApiPreflightPosix.if)).toContain('head.repo.fork')
-    expect(String(realApiPreflightPosix.if)).toContain('dependabot[bot]')
+    expect(String(realApiPreflightPosix.if)).toContain('inputs.real_api')
+    expect(String(realApiPreflightPosix.if)).toContain("github.event_name == 'workflow_dispatch'")
     expect(realApiPreflightWindows).toMatchObject({ shell: 'pwsh' })
     expect(installedRealApiPosix).toMatchObject({
       env: {
@@ -892,7 +891,7 @@ describe('Issue lifecycle workflow', () => {
     expect(lifecyclePullRequest.types).not.toContain('ready_for_review')
     expect(lifecyclePullRequest.types).toContain('review_requested')
     expect(lifecycleReview.types).toEqual(['submitted'])
-    const gated = "${{ github.event_name != 'pull_request_review' || github.event.review.state == 'changes_requested' }}"
+    const gated = "${{ steps.project.outputs.enabled == 'true' && (github.event_name != 'pull_request_review' || github.event.review.state == 'changes_requested') }}"
     const steps = lifecycleJob.steps.filter(isRecord)
     const tokenStep = steps.find(s => s.name === 'Create project token')
     const handleStep = steps.find(s => s.name === 'Handle repository event')
@@ -912,7 +911,7 @@ describe('Issue lifecycle workflow', () => {
     const tokenStep = steps.find(step => step.name === 'Create Project read token')
     const validateStep = steps.find(step => step.name === 'Validate pull request')
     const humanPullRequest =
-      "${{ github.event.pull_request.user.type != 'Bot' && github.event.pull_request.user.type != 'App' }}"
+      "${{ steps.project.outputs.enabled == 'true' && (github.event.pull_request.user.type != 'Bot' && github.event.pull_request.user.type != 'App') }}"
 
     expect(tokenStep).toMatchObject({
       id: 'app-token',
@@ -921,8 +920,8 @@ describe('Issue lifecycle workflow', () => {
       with: {
         'client-id': '${{ vars.DSH_ISSUE_APP_CLIENT_ID }}',
         'private-key': '${{ secrets.DSH_ISSUE_APP_PRIVATE_KEY }}',
-        owner: 'deepseek-harness',
-        repositories: 'deepseek-harness',
+        owner: '${{ github.repository_owner }}',
+        repositories: '${{ github.event.repository.name }}',
         'permission-issues': 'read',
         'permission-organization-projects': 'read',
       },

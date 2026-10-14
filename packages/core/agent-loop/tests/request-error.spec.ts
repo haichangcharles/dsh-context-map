@@ -6,7 +6,7 @@ import ContextCompilerRegistry from '@deepseek-ai/dsh-context-compiler'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import LlmRuntime, { createUserMessage, LlmError  } from '@deepseek-ai/dsh-llm'
 import type { LlmFailure, ResolvedRetryPolicy } from '@deepseek-ai/dsh-llm'
-import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { Session, SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { MockAdapter, textResponse } from './mock-adapter.ts'
@@ -169,4 +169,47 @@ describe('agent/request-error', () => {
       data: { reason: { kind: 'error' } },
     })
   })
+
+  it('keeps an untouched surface compiler transparent on the native request header', async () => {
+    const adapter = new MockAdapter([textResponse('Planning answer')])
+    const ctx = await harness(adapter)
+    try {
+      await ctx.plugin(ContextCompilerRegistry)
+      const agent = await ctx.agentLoop.create(SessionId('surface-compiler-transparent'), { provider: 'mock', model: 'mock' })
+      agent.followup(createUserMessage({ content: [{ type: 'text', text: 'Plan the next writing phase' }], source: { kind: 'user' } }))
+      await agent.whenIdle()
+      expect(adapter.requests).toHaveLength(1)
+      expect(adapter.requests[0]?.messages).toContainEqual(expect.objectContaining({ content: [{ type: 'text', text: 'Plan the next writing phase' }] }))
+      expect(agent.session.requestHeader()?.contextCompiler).toBeUndefined()
+      expect(agent.session.snapshotEvents().some(event => event.type === 'context/compiler')).toBe(false)
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it('refuses replaying a selected compiler when its plugin is absent', async () => {
+    const adapter = new MockAdapter([])
+    const ctx = await harness(adapter)
+    try {
+      const seed = Session.create(SessionId('missing-compiler-replay'))
+      seed.append('context/compiler', { id: 'contextify', version: 3 })
+      await expect(ctx.agentLoop.createAgent(ctx, { sessionId: seed.id, seed: seed.snapshotEvents(), agentOptions: { provider: 'mock', model: 'mock' } })).rejects.toThrow('selected Context Compiler plugin is unavailable')
+      expect(adapter.requests).toEqual([])
+      expect(ctx.agents.get(seed.id)).toBeUndefined()
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it('refuses a durable request compiler header after its plugin becomes unavailable', async () => {
+    const adapter = new MockAdapter([])
+    const ctx = await harness(adapter)
+    try {
+      const agent = await ctx.agentLoop.create(SessionId('missing-header-compiler'), { provider: 'mock', model: 'mock' })
+      agent.session.append('request/header', { header: { config: { provider: 'mock', model: 'mock' }, contextCompiler: { id: 'surface', version: 1 } }, reason: 'resume' })
+      const errors: unknown[] = []
+      ctx.on('agent/error', ({ error }) => { errors.push(error) })
+      agent.followup(createUserMessage({ content: [{ type: 'text', text: 'Continue the project' }], source: { kind: 'user' } }))
+      await agent.whenIdle()
+      expect(errors).toContainEqual(expect.objectContaining({ message: 'The selected Context Compiler plugin is unavailable' }))
+      expect(adapter.requests).toEqual([])
+    } finally { await ctx.fiber.dispose() }
+  })
+
 })

@@ -22,10 +22,10 @@ harness 需要一套钩子子系统：用户像 Claude Code（CC）和 Codex 那
 
 ### 工具流水线为每个阶段赋予一种权限
 
-每次调用遵循 `tools/pre-execute` → guards → `tools/execute` → dispatch → `tools/post-execute` → 由工具定义负责的 `finalizeContent` → `tools/result`。注册表对调用方输入创建快照、实体化并冻结参数、分配一个不透明 token，并在策略开始前对可见定义的最终内容回调创建快照。嵌套调用仅携带父 token。身份始终不可变；只有 `signal` 可在环绕调度时改变。日志、UI 和工具体因此对「执行了什么」达成一致。
+每次调用遵循 `tools/pre-execute` → guards → `tools/execute` → 工具函数体入口复检 guard → dispatch → `tools/post-execute` → 由工具定义负责的 `finalizeContent` → `tools/result`。注册表对调用方输入创建快照、实体化并冻结参数、分配一个不透明 token，并在策略开始前对可见定义的最终内容回调创建快照。嵌套调用仅携带父 token。身份始终不可变；只有 `signal` 可在环绕调度时改变。日志、UI 和工具体因此对「执行了什么」达成一致。
 
 - **`tools/pre-execute`** 是可扩展的 waterfall 门禁。其 `PreToolDecision` 允许、拒绝或询问。拒绝跳过 `tools/execute` 与核心调度。询问通过可选的审批 seam 解析：只有 `allowed-once` 继续通过 guards 和调度；拒绝、取消、通道不可用、审批服务缺失或无 agent 调用均规范化为拒绝。每个已解析的 decision 仍会到达后置策略；监听器抛出的异常会成为最终的规范化失败。
-- **`ctx.tools.guard()`** 在整个 pre-execute waterfall 之后安装同步的、作用域感知的策略。guard 可以拒绝或弃权，永远不能强制允许，因此监听器顺序无法复活一个被最终不变式禁止的操作。
+- **`ctx.tools.guard()`** 在整个 pre-execute waterfall 之后和已注册工具函数体入口安装同步的、作用域感知的策略。guard 可以拒绝或弃权，永远不能强制允许，因此监听器顺序无法复活一个被最终不变式禁止的操作。入口复检阻止排队调用或异步环绕调度包装器沿用函数体启动前已过期的策略决定。guard 必须容许重复求值；已经运行的函数体仍需在不可逆副作用提交时自行校验有效性。
 - **`tools/execute`** 是用于超时、重试和指标插件的环绕调度 waterfall。包装层通过 `next()` 委托给核心调度，在此之前可以替换并恢复必需的 `exec.signal`，但不能移除它；包装层接收抛出异常或未知工具产生的、已完成规范化的规范成功／失败结果。包装层自行产生的成功结果会短路调度，并通过已解析的输出声明重新规范化。
 - **`tools/post-execute`** 是检查／变换 waterfall。其 `PostToolDecision` 接受、以反馈阻止、替换呈现内容或规范值，或附加 `additionalContexts`。替换值会重新校验并重新计算呈现；替换内容会保留程序化值，且不构成保密边界。返回的 decision 是受支持的变换通道。
 - **`ToolDefinition.finalizeContent`** 是一个可选、同步、对所有输入都有定义且仅能处理内容的边界，在调用创建时随可见定义一起被快照。注册表将候选结果规范化并创建无损快照后，它恰好运行一次；候选结果包括绕过后续 waterfall 的 pre、around 或 post 监听器失败，以及为另一个结果字段创建快照时发现的错误。它可以替换 `content`，也可返回 `undefined` 保留原内容，但不能重写 `isError`、结构化错误身份、上下文或呈现元数据。工具在此执行自身最后一道内容不变式，而无需将策略失败转换为更弱的阻止 decision。

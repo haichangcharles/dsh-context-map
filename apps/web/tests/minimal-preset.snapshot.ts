@@ -19,7 +19,7 @@ import {
   webSnapshotMode,
   type WebScaffold,
 } from './scaffold.ts'
-import { newEnglishPage, saveFailureShot } from './support.ts'
+import { newEnglishPage, restoreFullWidthChat, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/minimal-preset', import.meta.url))
 const FIXTURE = join(SNAPSHOT_DIR, 'session.v3.jsonl')
@@ -146,6 +146,10 @@ describe('minimal agent preset', () => {
     await sessionRow.waitFor({ timeout: 10_000 })
     await sessionRow.click()
     await page.getByText('MINIMAL_PRESET_REQUEST_OK', { exact: true }).waitFor({ timeout: 15_000 })
+
+    await restoreFullWidthChat(page)
+    await page.mouse.move(0, 0)
+    await page.getByRole('button', { name: 'Locate MINIMAL_PRESET_REQUEST_OK in Context Map', exact: true }).waitFor()
 
     const process = page.locator('[data-turn-process]')
     await process.waitFor({ timeout: 15_000 })

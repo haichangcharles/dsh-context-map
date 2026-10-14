@@ -24,6 +24,7 @@ The agent can read and edit workspace files, run commands, delegate work, and ma
 
 ## Continue
 
+- [Manage a long conversation with Context Steward](./context-steward.md)
 - [Configure models](./providers.md)
 - [Use the Python SDK](./python-sdk.md)
 - [Use other CLI modes](../../../apps/cli/README.md)

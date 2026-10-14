@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-28-search-inherits-session-sandbox.md
+2026-09-28-search-inherits-session-sandbox.md: 2d892a6246a05e8e3d9111dc565858d43e1cb1d1
+2026-09-28-search-inherits-session-sandbox.zh.md: 1fe647c2c5ee70ddf210195b6dda4d9d16f3241e

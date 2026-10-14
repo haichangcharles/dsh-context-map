@@ -11,7 +11,7 @@ import {
   assertFixtureInventory, compareOrRefreshGolden, launchWebScaffold, seedSession, watchConsole,
   webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { newEnglishPage, saveFailureShot } from './support.ts'
+import { newEnglishPage, restoreFullWidthChat, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./expected/composer-tab-geometry', import.meta.url))
 /** Records platform-neutral distances between the two tabs' card rectangles. */
@@ -251,6 +251,7 @@ describe('web e2e: input card position across view tabs', () => {
     await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
     await openSeededSession(page)
+    await restoreFullWidthChat(page)
     await page.getByRole('tab', { name: 'Chat', exact: true }).waitFor({ timeout: 30_000 })
     await page.getByText(FIXTURE.markers.assistant(FIXTURE.turns), { exact: false }).last()
       .waitFor({ timeout: 30_000 })

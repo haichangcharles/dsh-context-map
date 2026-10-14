@@ -2,6 +2,8 @@
 
 [English](2026-08-17-native-session-context-map.md) | 中文
 
+这是历史实施计划。文件引用对应包拆分后的当前所有者；当前行为以 [Contextify 包约定](../../../packages/context/contextify/README.zh.md) 为准。Contextify 不提供独立 invariant，由 compiler 测试验证所选 snapshot 的来源。
+
 > **对于代理工作人员：** 所需的子技能：使用超级权力：子代理驱动开发（推荐）或超级权力：执行计划来逐个任务地实施该计划。步骤使用复选框 (`- [ ]`) 语法进行跟踪。
 
 **目标：** 将 Contextify 的相同 Session 虚拟分支替换为本机 Session 分叉的真实图，并让 Chat 和 Context Map 控制一个持久消息级 Context Plan。
@@ -26,7 +28,7 @@
 - `packages/client/ui-contextify/src/client/layout.ts`：Dagre 树、思维导图和时间线放置。
 - `packages/client/ui-contextify/src/client/ContextMapPanel.tsx`：React Flow 画布和控件。
 - `packages/client/ui-contextify/src/client/ContextMessageAction.tsx`：Chat 端 Natural、Include、Exclude 和定位操作。
-- `packages/client/ui-conversation/src/client/chat/MessageItem.tsx`：对最终用户消息执行本机 Branch 操作。
+- `packages/client/ui-chat/src/client/chat/MessageItem.tsx`：对最终用户消息执行本机 Branch 操作。
 - `apps/web/tests/contextify-map.e2e.ts`：重放支持的本机分叉和模型输入证明。
 
 ### 任务 1：持久编译器快照事件
@@ -331,7 +333,7 @@ git commit -m "feat: compile revisioned native context plans"
 - 修改：`packages/context/contextify/package.json`
 - 修改：`packages/context/contextify/tsconfig.json`
 - 替换：`packages/context/contextify/tests/service.spec.ts`
-- 修改：`packages/context/contextify/src/invariant.ts`
+- 修改：`packages/context/contextify/tests/compiler.spec.ts`
 
 - [ ] **第 1 步：编写失败的服务测试**
 
@@ -430,7 +432,7 @@ git commit -m "feat: manage context across native Session families"
 **文件：**
 - 修改：`packages/client/ui-workspace/src/client/tree.ts`
 - 修改：`packages/client/ui-workspace/src/client/stores.ts`
-- 修改：`packages/client/ui-workspace/src/client/WorkspaceBrowser.tsx`
+- 修改：`packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.tsx`
 - 修改：`packages/client/ui-workspace/src/client/rows/Rows.tsx`
 - 修改：`packages/client/ui-workspace/src/client/rows/Rows.module.css`
 - 修改：`packages/client/ui-workspace/tests/tree.client.spec.ts`
@@ -478,11 +480,11 @@ git commit -m "feat: nest native Session forks in Workspace tree"
 ### 任务 6：通过完成的回合从用户和助理消息中获取 Branch
 
 **文件：**
-- 修改：`packages/client/ui-conversation/src/client/chat/MessageItem.tsx`
-- 修改：`packages/client/ui-conversation/src/client/chat/TurnTailNodeView.tsx`
-- 修改：`packages/client/ui-conversation/src/client/chat/ChatNodeSeat.tsx`
+- 修改：`packages/client/ui-chat/src/client/chat/MessageItem.tsx`
+- 修改：`packages/client/ui-chat/src/client/chat/TurnTailNodeView.tsx`
+- 修改：`packages/client/ui-chat/src/client/chat/ChatNodeSeat.tsx`
 - 修改：`packages/client/ui-conversation/src/client/contract/slots.ts`
-- 修改：`packages/client/ui-conversation/tests/chat-view.client.spec.tsx`
+- 修改：`packages/client/ui-chat/tests/chat-view.client.spec.tsx`
 - 修改：`packages/client/ui-conversation/tests/apply-inject.client.spec.tsx`
 
 - [ ] **步骤 1：编写失败的用户-Branch 测试**
@@ -499,7 +501,7 @@ expect(h.forkAt.mock.calls).toEqual([[3], [3]])
 
 - [ ] **第 2 步：验证红色**
 
-运行：`pnpm exec vitest run packages/client/ui-conversation/tests/chat-view.client.spec.tsx -t "completed turn"`
+运行：`pnpm exec vitest run packages/client/ui-chat/tests/chat-view.client.spec.tsx -t "completed turn"`
 
 预期：仅存在助手 Branch 按钮，并且它调用助手消息序列。
 
@@ -575,8 +577,8 @@ git commit -m "feat: render Context Map as an interactive graph"
 - 修改：`packages/client/ui-contextify/src/client/index.ts`
 - 修改：`packages/client/ui-contextify/tests/browser-plugin.client.spec.tsx`
 - 修改：`packages/client/ui-conversation/src/client/contract/slots.ts`
-- 修改：`packages/client/ui-conversation/src/client/chat/MessageItem.tsx`
-- 修改：`packages/client/ui-conversation/src/client/chat/TurnTailNodeView.tsx`
+- 修改：`packages/client/ui-chat/src/client/chat/MessageItem.tsx`
+- 修改：`packages/client/ui-chat/src/client/chat/TurnTailNodeView.tsx`
 
 - [ ] **第 1 步：编写失败的组装测试**
 

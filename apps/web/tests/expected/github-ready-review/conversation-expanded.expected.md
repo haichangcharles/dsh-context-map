@@ -43,6 +43,10 @@
   - img
 - button "Bad response":
   - img
+- 'button "natural context for Review complete: no actionable findings." [disabled]': Auto
+- 'button "include context for Review complete: no actionable findings."': Use
+- 'button "exclude context for Review complete: no actionable findings."': Skip
+- 'button "Locate Review complete: no actionable findings. in Context Map"': Map
 - button "Branch into a new conversation":
   - img
 - button "Ran for {{duration}}":

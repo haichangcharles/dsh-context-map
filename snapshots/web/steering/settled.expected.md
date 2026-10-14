@@ -17,6 +17,10 @@
 - text: Use the ask_user_question tool to ask me exactly one question with id "checkpoint", question "Ready to continue?", header "Checkpoint", and options labeled "Yes" and "No". After I answer, reply with one short sentence acknowledging my answer and stop. {{clock}}
 - button "Copy":
   - img
+- button "natural context for Use the ask_user_question tool to ask me exactly one question with id \"checkpoint\", question \"Ready to continue?\", header \"Checkpoint\", and options labeled \"Yes\" and \"No\". After I answer, reply with one short sentence acknowledging my answe" [disabled]: Auto
+- button "include context for Use the ask_user_question tool to ask me exactly one question with id \"checkpoint\", question \"Ready to continue?\", header \"Checkpoint\", and options labeled \"Yes\" and \"No\". After I answer, reply with one short sentence acknowledging my answe": Use
+- button "exclude context for Use the ask_user_question tool to ask me exactly one question with id \"checkpoint\", question \"Ready to continue?\", header \"Checkpoint\", and options labeled \"Yes\" and \"No\". After I answer, reply with one short sentence acknowledging my answe": Skip
+- button "Locate Use the ask_user_question tool to ask me exactly one question with id \"checkpoint\", question \"Ready to continue?\", header \"Checkpoint\", and options labeled \"Yes\" and \"No\". After I answer, reply with one short sentence acknowledging my answe in Context Map": Map
 - button "1 tool call":
   - text: 1 tool call
   - img
@@ -30,6 +34,10 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for Great, let's move forward. BANANA!" [disabled]: Auto
+- button "include context for Great, let's move forward. BANANA!": Use
+- button "exclude context for Great, let's move forward. BANANA!": Skip
+- button "Locate Great, let's move forward. BANANA! in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - button "Ran for {{duration}}":

@@ -14,8 +14,8 @@ export type { ScopeLayer } from './store.ts'
 /** An opaque, identity-compared scope key. */
 export type ScopeKey = object
 
-/** Context tag written by {@link createScope}. */
-const kScope = Symbol('dsh.scope')
+/** Shared tag so source and built copies of this package recognize one scope. */
+const kScope = Symbol.for('dsh.scope')
 
 declare const ScopedBrand: unique symbol
 

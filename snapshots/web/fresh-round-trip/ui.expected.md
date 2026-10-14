@@ -17,6 +17,10 @@
 - text: "Use the bash tool to run exactly: echo WEB_E2E_OK. Then reply with the single word DONE and stop. {{clock}}"
 - button "Copy":
   - img
+- 'button "natural context for Use the bash tool to run exactly: echo WEB_E2E_OK. Then reply with the single word DONE and stop." [disabled]': Auto
+- 'button "include context for Use the bash tool to run exactly: echo WEB_E2E_OK. Then reply with the single word DONE and stop."': Use
+- 'button "exclude context for Use the bash tool to run exactly: echo WEB_E2E_OK. Then reply with the single word DONE and stop."': Skip
+- 'button "Locate Use the bash tool to run exactly: echo WEB_E2E_OK. Then reply with the single word DONE and stop. in Context Map"': Map
 - button "1 tool call":
   - text: 1 tool call
   - img
@@ -27,6 +31,10 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for DONE" [disabled]: Auto
+- button "include context for DONE": Use
+- button "exclude context for DONE": Skip
+- button "Locate DONE in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - button "Ran for {{duration}}":

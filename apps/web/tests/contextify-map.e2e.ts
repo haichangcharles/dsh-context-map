@@ -27,9 +27,10 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
   let browser: Browser
   let page: Page
   let tripwire: ReturnType<typeof watchConsole>
+  let recommendationCall = 0
 
   beforeAll(async () => {
-    let recommendationCall = 0
+    recommendationCall = 0
     scaffold = await launchWebScaffold({
       replayFixture: REPLAY,
       compareReplaySession: false,
@@ -45,40 +46,38 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
           throw new Error('Context recommendation fixture could not resolve projected messages')
         }
         recommendationCall += 1
-        return recommendationCall === 1
-          ? {
-            exclude: [{ nodeId: answerNode.id, reason: 'Exercise explicit approval' }],
-            include: [],
-            archive: [],
-          }
-          : {
-            exclude: [],
-            include: [],
-            archive: [{
-              nodeId: promptNode.id,
-              category: 'obsolete',
-              reason: 'Exercise one-item archive confirmation',
-              evidenceNodeIds: [answerNode.id],
-            }],
-          }
+        return {
+          exclude: [{ nodeId: answerNode.id, reason: 'Exercise explicit approval' }],
+          include: [],
+          archive: [],
+        }
       },
     })
     let deepCall = 0
     const contextify = scaffold.ctx.contextify as unknown as {
       promptSettings: () => ContextifyPromptSettings
-      deepRecommendation: (request: { signal: AbortSignal }) => Promise<{
+      deepRecommendation: (request: { signal: AbortSignal; snapshot: { nodes: readonly { id: string; text: string }[] } }) => Promise<{
         exclude: readonly unknown[]
         include: readonly unknown[]
         archive: readonly unknown[]
       }>
     }
     // This replay owns recommendation calls explicitly. Disable the unrelated
-    // automatic classifier and provide a deterministic Deep runner: first
-    // invocation waits for cancellation, second returns an empty valid diff.
+    // automatic classifier and provide a deterministic Deep runner: archive
+    // review, cancellation, then an empty valid diff.
     contextify.promptSettings = () => ({ ...CONTEXTIFY_DEFAULT_SETTINGS, automaticBranchReview: false })
-    contextify.deepRecommendation = ({ signal }) => {
+    contextify.deepRecommendation = ({ signal, snapshot }) => {
       deepCall += 1
-      if (deepCall > 1) return Promise.resolve({ exclude: [], include: [], archive: [] })
+      if (deepCall === 1) {
+        const promptNode = snapshot.nodes.find(node => node.text === PROMPT)
+        const answerNode = snapshot.nodes.find(node => node.text === 'LIGHTHOUSE')
+        if (promptNode === undefined || answerNode === undefined) throw new Error('Deep archive fixture lost its projected messages')
+        return Promise.resolve({ exclude: [], include: [], archive: [{
+          nodeId: promptNode.id, category: 'obsolete', reason: 'Exercise one-item archive confirmation',
+          evidenceNodeIds: [answerNode.id],
+        }] })
+      }
+      if (deepCall > 2) return Promise.resolve({ exclude: [], include: [], archive: [] })
       return new Promise((_, reject) => {
         signal.addEventListener('abort', () => { reject(new Error('cancelled by assembled replay')) }, { once: true })
       })
@@ -150,14 +149,22 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
     expect(await locatedRow.innerText()).toContain(PROMPT)
     expect(await page.locator('[role="treeitem"][aria-selected="true"]').count()).toBe(1)
 
+    await map.getByRole('button', { name: 'Recommend', exact: true }).click()
+    const review = map.getByRole('dialog', { name: 'Context recommendation review' })
+    await review.waitFor({ timeout: 10_000 })
+    await review.getByText('Local review', { exact: true }).waitFor()
+    expect(recommendationCall).toBe(0)
+    await review.getByRole('button', { name: 'Close recommendation review' }).click()
+
     const beforeProposal = scaffold.ctx.contextify.get(child)
     const beforeProposalMessages = scaffold.ctx.contextCompiler.compile({
       session: child.session, turn: 2, step: 1,
     }).messages
-    await map.getByRole('button', { name: 'Recommend', exact: true }).click()
-    const review = map.getByRole('dialog', { name: 'Context recommendation review' })
+    await map.getByRole('button', { name: 'Recommendation mode' }).click()
+    await map.getByRole('menuitem', { name: 'Fast review', exact: true }).click()
     await review.waitFor({ timeout: 10_000 })
     await review.getByText('Fast review', { exact: true }).waitFor()
+    expect(recommendationCall).toBe(1)
     expect(scaffold.ctx.contextify.get(child).plan.revision).toBe(beforeProposal.plan.revision)
     expect(scaffold.ctx.contextCompiler.compile({ session: child.session, turn: 2, step: 1 }).messages)
       .toEqual(beforeProposalMessages)
@@ -170,7 +177,8 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
     await expect.poll(() => scaffold.ctx.contextify.get(child).plan.excluded.length, { timeout: 5_000 }).toBe(0)
 
     const beforeCleanup = scaffold.ctx.contextify.get(child)
-    await map.getByRole('button', { name: 'Recommend', exact: true }).click()
+    await map.getByRole('button', { name: 'Recommendation mode' }).click()
+    await map.getByRole('menuitem', { name: 'Deep tree review', exact: true }).click()
     await review.waitFor({ timeout: 10_000 })
     expect(scaffold.ctx.contextify.get(child).plan.revision).toBe(beforeCleanup.plan.revision)
     expect(scaffold.ctx.contextCompiler.compile({ session: child.session, turn: 2, step: 1 }).messages

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/superpowers/plans/2026-08-17-native-session-context-map.md
-2026-08-17-native-session-context-map.md: 88e9e11e8a984012512460735098f90bca94aa05
-2026-08-17-native-session-context-map.zh.md: 6c3c0136fad3ad5039e2d6029999cc5fd5dcbe30
+2026-08-17-native-session-context-map.md: dc82ebfc448eefa507c0d2a67cf538700e71d09d
+2026-08-17-native-session-context-map.zh.md: 6c25b57f630f3b9aabf42607d1e66744808e9aaa

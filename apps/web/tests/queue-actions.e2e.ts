@@ -16,7 +16,7 @@ import {
   assertFixtureInventory, captureExpandedTurnProcessAria, captureStableAria, compareOrRefreshGolden,
   launchWebScaffold, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
+import { connectFreshWorkspace, newEnglishPage, restoreFullWidthChat, saveFailureShot, waitForMessageContextControls } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/queue-actions', import.meta.url))
 const FIXTURE = fileURLToPath(new URL('../../../snapshots/web/live-interactions/session.v3.jsonl', import.meta.url))
@@ -105,6 +105,16 @@ describe('web e2e: queue row actions', () => {
     await input.fill(ACTIVE_PROMPT)
     await input.press('Enter')
     await expect.poll(() => existsSync(readyFile), { timeout: 15_000 }).toBe(true)
+    // Native user admission precedes asynchronous graph publication. Wait before
+    // parking the prompt response and observing Sending/Queue snapshots, whose
+    // strict goldens include the active user's four Context actions.
+    await waitForMessageContextControls(page, 1)
+    await restoreFullWidthChat(page)
+    // The native collapse toggle leaves the pointer over its closed-state
+    // sidebar control. Park it outside controls before responsive snapshots;
+    // later explicit Save/Edit/Stop hover assertions remain unchanged.
+    await page.mouse.move(0, 0)
+    await expect.poll(() => page.getByRole('tooltip', { name: 'Open sidebar', exact: true }).count()).toBe(0)
 
     const admitted = page.waitForResponse('**/api/session/prompt')
     const received = Promise.withResolvers<undefined>()
@@ -135,6 +145,9 @@ describe('web e2e: queue row actions', () => {
       await page.locator('[data-sidebar-collapsed="true"]').waitFor({ state: 'detached' })
     } finally {
       release.resolve(undefined)
+      // Settle the response watcher even when an earlier UI assertion fails;
+      // browser teardown must not strand an unobserved rejecting promise.
+      await admitted
     }
     expect((await admitted).ok()).toBe(true)
     await expect.poll(() => page.getByRole('button', { name: 'Remove queued message' }).isEnabled()).toBe(true)
@@ -298,6 +311,12 @@ describe('web e2e: queue row actions', () => {
     await input.press('Enter')
     await expect.poll(() => existsSync(readyFile), { timeout: 15_000 }).toBe(true)
     await page.locator('[data-goal-bar]').waitFor({ timeout: 10_000 })
+    await restoreFullWidthChat(page)
+    // The native collapse toggle leaves the pointer over its closed-state
+    // sidebar control. Park it outside controls before responsive snapshots;
+    // later explicit Save/Edit/Stop hover assertions remain unchanged.
+    await page.mouse.move(0, 0)
+    await expect.poll(() => page.getByRole('tooltip', { name: 'Open sidebar', exact: true }).count()).toBe(0)
 
     const sessions = scaffold.ctx.sessions.list()
     expect(sessions).toHaveLength(1)

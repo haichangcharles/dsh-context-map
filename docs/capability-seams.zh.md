@@ -139,6 +139,7 @@ flowchart LR
   svc_contextify["ctx.contextify<br/>Durable context graph and path controller"]
   pkg_api_remotes["api-remotes"]
   pkg_ui_contextify["ui-contextify"]
+  svc_contextifyRevisionLineage["ctx.contextifyRevisionLineage<br/>Optional source-bound revision lineage runtime"]
   pkg_goal["goal"]
   svc_goals["ctx.goals<br/>Same-session goal domain"]
   pkg_e2b["e2b"]
@@ -261,6 +262,7 @@ flowchart LR
   pkg_compaction_tool_result_pruner --> svc_toolResultPruner
   pkg_context_compiler --> svc_contextCompiler
   pkg_contextify --> svc_contextify
+  pkg_contextify --> svc_contextifyRevisionLineage
   pkg_cordis_host_runner --> svc_cordisInspect
   pkg_cordis_host_runner --> svc_dynamicCordisRunner
   pkg_credentials --> svc_credentials
@@ -483,6 +485,7 @@ flowchart LR
   svc_workspaceRegistry --> pkg_api_workspace_controller
   svc_contextify -. event gate .-> pkg_context_compiler
   svc_contextify -. event gate .-> pkg_ui_contextify
+  svc_contextifyRevisionLineage -. event gate .-> pkg_context_compiler
   svc_fs -. event gate .-> pkg_fs_observation_policy
 ```
 
@@ -535,6 +538,7 @@ flowchart LR
 | `ctx.agentLoop` | `bundle` | [`agent-loop`](../packages/core/agent-loop) | - | [`base`](../packages/bundle/base), [`sdk-minimal`](../packages/bundle/sdk-minimal) | - | 唯一的具体循环插件；扩展包依赖 dsh-agent 的事件和服务，而不依赖此包。 |
 | `ctx.contextCompiler` | `seam` | [`context-compiler`](../packages/context/context-compiler) | - | [`agent-loop`](../packages/core/agent-loop) | - | Selects a versioned compiler per durable session; providers choose logged event sequences while the registry validates and derives the exact model-visible messages. |
 | `ctx.contextify` | `core` | [`contextify`](../packages/context/contextify) | - | [`api-remotes`](../packages/api/remotes) | [`context-compiler`](../packages/context/context-compiler), `ui-contextify` | 投影原生 Session 家族，提交带版本的上下文计划，并注册下一次模型请求使用的 contextify@3 编译器。 |
+| `ctx.contextifyRevisionLineage` | `core` | [`contextify`](../packages/context/contextify) | - | - | [`context-compiler`](../packages/context/context-compiler) | 显式启用的运行时记录委派来源切片与请求读取集合，并在模型 step 前过滤来源过期的 child 消息。 |
 | `ctx.goals` | `core` | [`goal`](../packages/goal/goal) | - | - | - | 从会话日志折叠带修订版本的目标状态，并将实时延续激活保留在进程本地。 |
 | `ctx.e2b` | `core` | [`e2b`](../packages/e2b/e2b) | - | [`fs-e2b`](../packages/e2b/fs-e2b), [`subprocess-e2b`](../packages/e2b/subprocess-e2b) | - | 拥有一个共享的 E2B SDK 句柄、远程工作目录和最终沙箱处置，使两个基础 E2B 提供方处于同一个 Linux 运行时中。 |
 | `ctx.subprocess` | `seam` | [`subprocess`](../packages/subprocess/subprocess) | [`subprocess-local`](../packages/subprocess/subprocess-local), [`subprocess-e2b`](../packages/e2b/subprocess-e2b) | [`bash-local`](../packages/shell/bash-local), [`bash-sandbox`](../packages/shell/bash-sandbox), [`terminal-bash`](../packages/terminal/terminal-bash), [`lsp-stdio`](../packages/lsp/lsp-stdio), [`subagent-acp`](../packages/subagent/subagent-acp), [`subagent-codex`](../packages/subagent/subagent-codex), [`subagent-claude-code`](../packages/subagent/subagent-claude-code) | - | Bash 执行器、PTY shell 后端、LSP Host，以及进程外 ACP、Codex 和 Claude Code subagent 后端都通过 ctx.subprocess 执行 spawn；该服务负责进程坐标、进程树／会话生命周期、stdio 处置、终端机制和 kill 升级。 |

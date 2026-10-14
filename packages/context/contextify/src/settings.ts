@@ -18,5 +18,6 @@ export const ContextifyPromptSettingsSchema: z<ContextifyPromptSettings> = z.obj
   context: promptSection,
   archive: promptSection,
   branch: promptSection,
-  automaticBranchReview: z.boolean().default(true),
+  automaticBranchReview: z.boolean().default(false),
+  deepMaxRequests: z.number().step(1).min(1).max(10).default(3),
 })

@@ -11,7 +11,7 @@ import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, seedSession, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { newEnglishPage, saveFailureShot } from './support.ts'
+import { restoreFullWidthChat, newEnglishPage, saveFailureShot } from './support.ts'
 
 const FIXTURE = fileURLToPath(new URL('../../../snapshots/acp/cancel-tool-calls/session.v3.jsonl', import.meta.url))
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/bash-abort-row', import.meta.url))
@@ -66,6 +66,7 @@ describe.skipIf(MODE === 'record')('web e2e: cancelled Bash row disclosure', () 
     await call.getByText('setInterval(() => {}, 1000)', { exact: false }).waitFor()
     await expect.poll(() => call.getByText('Error: tool call aborted', { exact: true }).count()).toBe(2)
 
+    await restoreFullWidthChat(page)
     const snapshot = (await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd))
       // The borrowed fixture's UTC date is still the previous day in PDT;
       // the disclosure golden must not depend on the runner timezone.

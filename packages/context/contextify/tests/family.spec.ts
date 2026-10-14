@@ -25,6 +25,65 @@ function appendUserTurn(session: Session, turn: number, text: string): number {
 }
 
 describe('projectSessionFamily', () => {
+  it('projects explicit task completion separately from the active path and inherited events', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const root = ctx.sessions.create(SessionId('work-state-root'))
+    appendUserTurn(root, 1, 'Plan the research')
+    const child = ctx.sessions.fork(root, root.snapshotEvents().at(-1)!.seq,
+      SessionId('work-state-child'))
+    appendUserTurn(child, 2, 'Draft the paper')
+    const before = projectSessionFamily({ activeSessionId: root.id,
+      sessions: [inspect(root), inspect(child)] })
+    expect(before.sessions.map(session => [session.id, session.workState])).toEqual([
+      [root.id, 'open'], [child.id, 'parked'],
+    ])
+    root.append('contextify/work-state', { targetSessionId: child.id,
+      state: 'completed', targetEventSeq: child.seq - 1, uiOrigin: 'contextify-client' })
+    const after = projectSessionFamily({ activeSessionId: root.id,
+      sessions: [inspect(root), inspect(child)] })
+    expect(after.sessions.find(session => session.id === child.id)).toMatchObject({
+      workState: 'completed', workStateSource: 'explicit',
+    })
+    expect(after.nodes.map(node => node.preview)).toEqual(before.nodes.map(node => node.preview))
+    appendUserTurn(child, 3, 'Resume the draft')
+    expect(projectSessionFamily({ activeSessionId: root.id,
+      sessions: [inspect(root), inspect(child)] }).sessions.find(session => session.id === child.id))
+      .toMatchObject({ workState: 'open', workStateSource: 'derived' })
+  })
+  it('retains the native Web tool action on visible result nodes', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const session = ctx.sessions.create(SessionId('web-action-family'))
+    session.append('turn/start', { turn: 1 })
+    session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'Find and inspect the policy page' }],
+      source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+    for (const [index, name] of (['web_search', 'web_fetch'] as const).entries()) {
+      const callId = CallId(`web-action-${String(index)}`)
+      session.append('assistant/message', { stream: [], turn: 1, step: index + 1,
+        message: createAssistantMessage({
+          content: [{ type: 'tool-call', id: callId, name, arguments: '{}' }],
+          source: { provider: 'mock', model: 'mock' },
+        }),
+      }, { surfaceOp: 'append' })
+      const call = session.append('tool/call', { turn: 1, step: index + 1, callId,
+        name, arguments: '{}' })
+      session.append('tool/result', { turn: 1, step: index + 1,
+        message: createToolResultMessage({
+          callId, content: [{ type: 'text', text: `${name} result` }], isError: false,
+        }),
+      }, { surfaceOp: 'append', sourceEventSeqs: [call.seq] })
+    }
+    session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    const graph = projectSessionFamily({ activeSessionId: session.id, sessions: [inspect(session)] })
+    expect(graph.nodes.filter(node => node.sourceKind === 'web')
+      .map(node => [node.webAction, node.preview])).toEqual([
+      ['web_search', 'web_search result'], ['web_fetch', 'web_fetch result'],
+    ])
+  })
+
   it('projects only human inputs and visible model outputs', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)
@@ -224,5 +283,33 @@ describe('projectSessionFamily', () => {
       parentSessionId: childA.id,
       depth: 2,
     })
+  })
+
+  it('does not reuse an ancestor owner across a diverged copied event', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const root = ctx.sessions.create(SessionId('owner-cache-root'))
+    const userSeq = appendUserTurn(root, 1, 'shared task')
+    const boundary = root.snapshotEvents().at(-1)!.seq
+    const child = ctx.sessions.fork(root, boundary, SessionId('owner-cache-child'))
+    const grandchild = ctx.sessions.fork(child, boundary, SessionId('owner-cache-grandchild'))
+    const diverge = (session: Session) => {
+      const original = inspect(session)
+      return {
+        ...original,
+        events: original.events.map(event => event.seq === userSeq
+          ? { ...event, time: event.time + 1000 }
+          : event),
+      }
+    }
+    const graph = projectSessionFamily({
+      activeSessionId: grandchild.id,
+      sessions: [inspect(root), diverge(child), diverge(grandchild)],
+    })
+    const rootNode = graph.nodes.find(node => node.id === `${root.id}:${userSeq}`)
+    const childNode = graph.nodes.find(node => node.id === `${child.id}:${userSeq}`)
+    expect(rootNode?.sessionIds).toEqual([root.id])
+    expect(childNode?.sessionIds).toEqual([child.id, grandchild.id])
+    expect(graph.nodes).toHaveLength(2)
   })
 })

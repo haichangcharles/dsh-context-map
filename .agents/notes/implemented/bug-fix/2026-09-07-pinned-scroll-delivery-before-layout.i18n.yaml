@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-07-pinned-scroll-delivery-before-layout.md
-2026-09-07-pinned-scroll-delivery-before-layout.md: f3b428dbe0d2fdc7cbaedf0383d2ab80ea1bfd45
-2026-09-07-pinned-scroll-delivery-before-layout.zh.md: 9b200f45535c67cfbbb75feaf3025c5a3b5c1fa2
+2026-09-07-pinned-scroll-delivery-before-layout.md: 285a5bc0cc58c8b5e56b92329cb0a37842c12945
+2026-09-07-pinned-scroll-delivery-before-layout.zh.md: 0d9e0cdb082214e4a6cbcfc0a83420c20e8bc517

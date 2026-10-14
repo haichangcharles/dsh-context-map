@@ -28,7 +28,7 @@ kind: "package-library"
 
 ### 创建作用域
 
-`createScope(ctx, key)` 在 `ctx` 的 fiber 下创建作用域：其 `ctx` 携带作用域标签，通过它进行的每项注册既具备作用域可见性，也服从作用域生命周期。`dispose()` 撤销通过该作用域进行的每项注册；`rawDispose` 是确切 Cordis disposer，用于把 teardown 嵌套进有序组合 effect。
+`createScope(ctx, key)` 在 `ctx` 的 fiber 下创建作用域：其 `ctx` 携带作用域标签，通过它进行的每项注册既具备作用域可见性，也服从作用域生命周期。即使本包的源码和构建产物作为不同副本加载，它们也共用同一个标签，因此任一副本都能识别另一副本创建的作用域。`dispose()` 撤销通过该作用域进行的每项注册；`rawDispose` 是确切 Cordis disposer，用于把 teardown 嵌套进有序组合 effect。
 
 ```text
 const scope = createScope(ctx, agent)

@@ -384,6 +384,22 @@
       }
     },
     {
+      "name": "request_context_branch",
+      "description": "Request a user-confirmed native conversation branch for the current Q&A. Use this when the direct human explicitly asks to open, create, or move the current exchange to a new branch. This schedules a confirmation card after the final answer; it does not create the branch by itself, so do not claim that the branch already exists.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Short user-facing explanation of why this Q&A should become a separate branch."
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      }
+    },
+    {
       "name": "schedule_create",
       "description": "Create one reminder in the current session. Supply a non-empty prompt and exactly one selector: a positive safe-integer after_seconds delay, at as a strict offset date-time or local date/time object, or safe-integer every_seconds of at least 300. Fixed-rate reminders stay creation-aligned, skip missed occurrences, and batch one latest occurrence per overdue rule. Delivery is session-local: the reminder runs on time only while this session is live and otherwise becomes overdue until the session is resumed.",
       "parameters": {

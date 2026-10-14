@@ -5,6 +5,24 @@ import { createContextMapStore } from '../src/client/store.ts'
 afterEach(() => { localStorage.clear() })
 
 describe('Context Map view store reconciliation', () => {
+  it('keeps graph presentation choices independent and clears explicit overrides', () => {
+    const store = createContextMapStore().create()
+    expect(store.getSnapshot()).toEqual({ layout: 'tree', selectedNodeIds: [], positionOverrides: {} })
+    store.actions.setLayout('timeline')
+    store.actions.setNodeSelected('visible', true)
+    store.actions.setNodeSelected('visible', true)
+    expect(store.getSnapshot().selectedNodeIds).toEqual(['visible'])
+    store.actions.setNodeSelected('visible', false)
+    expect(store.getSnapshot().selectedNodeIds).toEqual([])
+    store.actions.setNodeSelected('other', true)
+    store.actions.setPosition('other', { x: 1, y: 2 })
+    store.actions.setPosition('other', { x: 10, y: 20 })
+    expect(store.getSnapshot().positionOverrides).toEqual({ other: { x: 10, y: 20 } })
+    store.actions.clearSelection()
+    store.actions.clearPositions()
+    expect(store.getSnapshot()).toEqual({ layout: 'timeline', selectedNodeIds: [], positionOverrides: {} })
+  })
+
   it('drops hidden canvas selection but preserves archived family positions for restore', () => {
     const store = createContextMapStore().create()
     store.actions.setNodeSelected('visible', true)

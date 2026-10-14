@@ -11,6 +11,10 @@
 - text: "Assemble the link gallery: write the report and styles, inspect the sources, and summarize. {{clock}}"
 - button "Copy":
   - img
+- 'button "natural context for Assemble the link gallery: write the report and styles, inspect the sources, and summarize." [disabled]': Auto
+- 'button "include context for Assemble the link gallery: write the report and styles, inspect the sources, and summarize."': Use
+- 'button "exclude context for Assemble the link gallery: write the report and styles, inspect the sources, and summarize."': Skip
+- 'button "Locate Assemble the link gallery: write the report and styles, inspect the sources, and summarize. in Context Map"': Map
 - button "16 tool calls" [expanded]:
   - text: 16 tool calls
   - img
@@ -183,6 +187,10 @@
   - img
 - button "Bad response":
   - img
+- 'button "natural context for ## Link gallery Docs: [style guide](https://docs.example.test/guide) and `https://docs.example.test/api`; see [the release notes][rel], contact [the maintainer](mailto:owner@example.test), and check the fine print[^1]. Inert contrasts: `c" [disabled]': Auto
+- 'button "include context for ## Link gallery Docs: [style guide](https://docs.example.test/guide) and `https://docs.example.test/api`; see [the release notes][rel], contact [the maintainer](mailto:owner@example.test), and check the fine print[^1]. Inert contrasts: `c"': Use
+- 'button "exclude context for ## Link gallery Docs: [style guide](https://docs.example.test/guide) and `https://docs.example.test/api`; see [the release notes][rel], contact [the maintainer](mailto:owner@example.test), and check the fine print[^1]. Inert contrasts: `c"': Skip
+- 'button "Locate ## Link gallery Docs: [style guide](https://docs.example.test/guide) and `https://docs.example.test/api`; see [the release notes][rel], contact [the maintainer](mailto:owner@example.test), and check the fine print[^1]. Inert contrasts: `c in Context Map"': Map
 - button "Branch into a new conversation":
   - img
 - button "Ran for {{duration}}":

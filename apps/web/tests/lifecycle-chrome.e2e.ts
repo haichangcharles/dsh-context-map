@@ -23,7 +23,7 @@ import {
   launchWebScaffold, recordFixture, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
 import {
-  connectFreshWorkspace, newEnglishPage, saveFailureShot, writeComposerDraft, ZH_BROWSER_LOCALE,
+  connectFreshWorkspace, newEnglishPage, restoreFullWidthChat, saveFailureShot, writeComposerDraft, ZH_BROWSER_LOCALE,
 } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/lifecycle-chrome', import.meta.url))
@@ -89,18 +89,25 @@ describe('web e2e: lifecycle & chrome (workspace flow / reload / dark mode)', ()
     expect(snapshot).not.toContain('text: Skills')
     expect(snapshot).not.toContain('text: Subagents')
     const launchedBox = await menu.boundingBox()
+    const launchedCard = await input.locator('xpath=ancestor::*[@data-composer-card][1]').boundingBox()
     await page.locator('[data-composer-input]').first().press('Escape')
     await expect.poll(() => menu.count()).toBe(0)
     await writeComposerDraft(page, input, '/')
     await menu.getByRole('option').first().waitFor({ timeout: 10_000 })
     await menu.getByRole('status').waitFor({ state: 'hidden', timeout: 10_000 })
     const typedBox = await menu.boundingBox()
+    const typedCard = await input.locator('xpath=ancestor::*[@data-composer-card][1]').boundingBox()
     expect(launchedBox).not.toBeNull()
     expect(typedBox).not.toBeNull()
+    expect(launchedCard).not.toBeNull()
+    expect(typedCard).not.toBeNull()
     expect(Math.abs(launchedBox!.x - typedBox!.x)).toBeLessThan(1)
-    expect(Math.abs(
-      launchedBox!.y + launchedBox!.height - typedBox!.y - typedBox!.height,
-    )).toBeLessThan(1)
+    // The optional draft-review dock moves the centered hero stack. Both
+    // entry paths must retain the same menu-to-card anchor within one pixel.
+    const launchedGap = launchedCard!.y - launchedBox!.y - launchedBox!.height
+    const typedGap = typedCard!.y - typedBox!.y - typedBox!.height
+    expect(Math.abs(launchedGap - typedGap)).toBeLessThan(1)
+    expect(Math.abs(launchedGap - 8)).toBeLessThan(1)
     await writeComposerDraft(page, input, '/cpt')
     await expect.poll(() => menu.getByRole('option').allTextContents()).toEqual([
       'compactCompact older conversation history',
@@ -290,6 +297,7 @@ describe('web e2e: lifecycle & chrome (workspace flow / reload / dark mode)', ()
     // request would fail the scenario loudly at close().
     await expect.poll(() => page.getByText('LIGHTHOUSE', { exact: true }).count(), { timeout: 15_000 }).toBeGreaterThanOrEqual(1)
     await expect.poll(() => page.locator('[role="treeitem"][aria-selected="true"]').count(), { timeout: 10_000 }).toBe(1)
+    await restoreFullWidthChat(page)
     // Golden of the recovered conversation region: rebuilt from the log, it
     // must render the same settled transcript the live turn produced.
     const snapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd)

@@ -34,7 +34,7 @@ import {
   webSnapshotMode,
   type WebScaffold,
 } from './scaffold.ts'
-import { newEnglishPage, saveFailureShot } from './support.ts'
+import { restoreFullWidthChat, newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./expected/clickable-links-gallery', import.meta.url))
 const UI_EXPECTED = fileURLToPath(new URL('./expected/clickable-links-gallery/ui.expected.md', import.meta.url))
@@ -390,6 +390,7 @@ describe('web e2e: clickable links gallery', () => {
     expect(await page.locator(`a[href="${FETCH_URL}"]`).count()).toBe(1)
     expect(await page.locator(`a[href="${GUIDE_URL}"]`).count()).toBe(2)
 
+    await restoreFullWidthChat(page)
     const snapshot = (await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd))
       .split(SEED_ID).join('{{seededId}}')
       .split(imageUrl).join('{{imageUrl}}')

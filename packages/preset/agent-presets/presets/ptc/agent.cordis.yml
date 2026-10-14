@@ -273,3 +273,8 @@
 
 - id: present
   name: '@deepseek-ai/dsh-tool-present'
+
+# Optional Web Contextify consumer. The host owns the durable Context service;
+# this preset owns whether its model receives the branch confirmation tool.
+- id: contextify-branch-tool
+  name: '@deepseek-ai/dsh-contextify/branch-tool'

@@ -33,6 +33,10 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for DONE" [disabled]: Auto
+- button "include context for DONE": Use
+- button "exclude context for DONE": Skip
+- button "Locate DONE in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - button "Ran for {{duration}}":

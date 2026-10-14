@@ -62,7 +62,11 @@ it('boots the built plugin graph and renders a fixture session end to end', asyn
   // The sidebar renders from the boot graph: every inject layer activated.
   const tree = await screen.findByRole('tree', { name: 'Sessions' }, { timeout: 10_000 })
   if (clientBuildValue('DSH_CLIENT_BUILD_PROFILE') === 'official') {
-    expect(document.querySelector('svg[viewBox="26 0 156 24"]')).not.toBeNull()
+    // The mark decorates the accessible New session button and is intentionally hidden from the accessibility tree.
+    const mark = document.querySelector('svg[role="img"][aria-label="DSH Context Map"]')
+    expect(mark?.getAttribute('viewBox')).toBe('0 0 24 24')
+    expect(mark?.closest('[aria-hidden="true"]')).not.toBeNull()
+    expect(screen.getAllByRole('button', { name: 'New session' })).toContain(mark?.closest('button'))
     expect(screen.queryByText('DSH Local Build')).toBeNull()
   } else {
     expect(document.querySelector('svg[viewBox="0 0 23.16 17.04"]')).not.toBeNull()

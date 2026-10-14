@@ -24,7 +24,7 @@ import {
   captureStableAria, compareOrRefreshGolden, launchWebScaffold, seedSession, watchConsole,
   webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import {
+import { restoreFullWidthChat,
   connectFreshWorkspace, newEnglishPage, saveFailureShot, writeComposerDraft,
 } from './support.ts'
 
@@ -347,6 +347,7 @@ describe('web e2e: agent-preset selection', () => {
     await page.locator('[role="treeitem"]').last().click()
     await page.getByText('Seeded turn.').waitFor({ timeout: 15_000 })
 
+    await restoreFullWidthChat(page)
     const snapshot = await captureStableAria(page, '[class*="titleRow"]', scaffold.workspaceCwd)
 
     await compareOrRefreshGolden(HEADER_EXPECTED, snapshot, MODE)

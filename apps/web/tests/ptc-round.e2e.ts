@@ -11,7 +11,7 @@ import {
   acknowledgeReloadConnectionLoss, captureExpandedTurnProcessAria, compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, recordFixture, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, expandOwningTurnProcess, newEnglishPage, saveFailureShot } from './support.ts'
+import { connectFreshWorkspace, expandOwningTurnProcess, newEnglishPage, restoreFullWidthChat, saveFailureShot } from './support.ts'
 
 const FIXTURE = fileURLToPath(new URL('../../../snapshots/web/ptc-round/session.v3.jsonl', import.meta.url))
 const UI_EXPECTED = fileURLToPath(new URL('../../../snapshots/web/ptc-round/ui.expected.md', import.meta.url))
@@ -95,7 +95,7 @@ describe('web e2e: PTC mode round renders nested sub-calls', () => {
 
   it.skipIf(MODE === 'record')('renders the code parent row with always-visible nested sub-rows', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-ptc-rows'))
-    await expect.poll(() => page.getByText('DONE', { exact: true }).count(), { timeout: 15_000 }).toBeGreaterThanOrEqual(1)
+    await expect.poll(() => page.locator('[data-conversation-scroll]').getByText('DONE', { exact: true }).count(), { timeout: 15_000 }).toBeGreaterThanOrEqual(1)
     // The parent run_code row wears the code variant with the model-authored
     // description as its summary (the presentCall contract).
     const codeRow = page.locator('[data-variant="code"]').first()
@@ -115,8 +115,9 @@ describe('web e2e: PTC mode round renders nested sub-calls', () => {
         const warningStart = tripwire.warnings.length
         await page.reload({ waitUntil: 'load' })
         acknowledgeReloadConnectionLoss(tripwire, warningStart)
-        await page.getByText('DONE', { exact: true }).waitFor({ timeout: 15_000 })
+        await page.locator('[data-conversation-scroll]').getByText('DONE', { exact: true }).waitFor({ timeout: 15_000 })
       }
+      await restoreFullWidthChat(page)
       const nest = page.locator('[data-subcalls]').first()
       const frame = page.locator('[style*="grid-template-columns"]').first()
       expect(await frame.getAttribute('data-rightbar-collapsed')).toBe('true')

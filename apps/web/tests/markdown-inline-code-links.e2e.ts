@@ -15,7 +15,7 @@ import {
   webSnapshotMode,
   type WebScaffold,
 } from './scaffold.ts'
-import { newEnglishPage, saveFailureShot } from './support.ts'
+import { restoreFullWidthChat, newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./expected/markdown-inline-code-links', import.meta.url))
 const UI_EXPECTED = fileURLToPath(new URL('./expected/markdown-inline-code-links/ui.expected.md', import.meta.url))
@@ -134,10 +134,10 @@ describe('web e2e: Markdown inline-code links', () => {
 
     expect(await page.getByText(`curl ${linkUrl}`, { exact: true }).locator('a').count()).toBe(0)
     expect(await page.getByText('javascript:alert(1)', { exact: true }).locator('a').count()).toBe(0)
-    const normalizedLinkUrl = linkUrl.replace(/:\d+\//, ':{{port}}/')
-    const snapshot = (await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd))
-      .split(SEED_ID).join('{{seededId}}')
-      .split(normalizedLinkUrl).join('{{linkUrl}}')
+    await restoreFullWidthChat(page)
+    const snapshot = (await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd, {
+      replacements: [[linkUrl, '{{linkUrl}}']],
+    })).split(SEED_ID).join('{{seededId}}')
     await compareOrRefreshGolden(UI_EXPECTED, snapshot, MODE)
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])

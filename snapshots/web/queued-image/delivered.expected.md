@@ -21,6 +21,10 @@
 - text: Reply with a one-sentence description of event sourcing, then stop. {{clock}}
 - button "Copy":
   - img
+- button "natural context for Reply with a one-sentence description of event sourcing, then stop." [disabled]: Auto
+- button "include context for Reply with a one-sentence description of event sourcing, then stop.": Use
+- button "exclude context for Reply with a one-sentence description of event sourcing, then stop.": Skip
+- button "Locate Reply with a one-sentence description of event sourcing, then stop. in Context Map": Map
 - button "Thought for a while":
   - text: Thought for a while
   - img
@@ -43,6 +47,10 @@
 - text: Compare with this screenshot {{clock}}
 - button "Copy":
   - img
+- button "natural context for [Image] Compare with this screenshot" [disabled]: Auto
+- button "include context for [Image] Compare with this screenshot": Use
+- button "exclude context for [Image] Compare with this screenshot": Skip
+- button "Locate [Image] Compare with this screenshot in Context Map": Map
 - button "Thought for a while":
   - text: Thought for a while
   - img
@@ -53,6 +61,10 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for Event sourcing is a pattern where all changes to an application's state are stored as an immutable, append-only sequence of events, rather than persisting only the current state, enabling full auditability, temporal queries, and event-drive" [disabled]: Auto
+- button "include context for Event sourcing is a pattern where all changes to an application's state are stored as an immutable, append-only sequence of events, rather than persisting only the current state, enabling full auditability, temporal queries, and event-drive": Use
+- button "exclude context for Event sourcing is a pattern where all changes to an application's state are stored as an immutable, append-only sequence of events, rather than persisting only the current state, enabling full auditability, temporal queries, and event-drive": Skip
+- button "Locate Event sourcing is a pattern where all changes to an application's state are stored as an immutable, append-only sequence of events, rather than persisting only the current state, enabling full auditability, temporal queries, and event-drive in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - button "Ran for {{duration}}":
@@ -61,6 +73,10 @@
 - text: {{clock}} Continue with the queued comparison {{clock}}
 - button "Copy":
   - img
+- button "natural context for Continue with the queued comparison" [disabled]: Auto
+- button "include context for Continue with the queued comparison": Use
+- button "exclude context for Continue with the queued comparison": Skip
+- button "Locate Continue with the queued comparison in Context Map": Map
 - button "Thought for a while":
   - text: Thought for a while
   - img
@@ -71,6 +87,10 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for Event sourcing is a pattern where all changes to an application's state are stored as an immutable, append-only sequence of events, rather than persisting only the current state, enabling full auditability, temporal queries, and event-drive" [disabled]: Auto
+- button "include context for Event sourcing is a pattern where all changes to an application's state are stored as an immutable, append-only sequence of events, rather than persisting only the current state, enabling full auditability, temporal queries, and event-drive": Use
+- button "exclude context for Event sourcing is a pattern where all changes to an application's state are stored as an immutable, append-only sequence of events, rather than persisting only the current state, enabling full auditability, temporal queries, and event-drive": Skip
+- button "Locate Event sourcing is a pattern where all changes to an application's state are stored as an immutable, append-only sequence of events, rather than persisting only the current state, enabling full auditability, temporal queries, and event-drive in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - button "Ran for {{duration}}":

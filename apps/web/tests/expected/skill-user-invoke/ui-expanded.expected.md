@@ -17,6 +17,10 @@
 - text: /user-invoke-demo and confirm the fixture wiring {{clock}}
 - button "Copy":
   - img
+- button "natural context for /user-invoke-demo and confirm the fixture wiring" [disabled]: Auto
+- button "include context for /user-invoke-demo and confirm the fixture wiring": Use
+- button "exclude context for /user-invoke-demo and confirm the fixture wiring": Skip
+- button "Locate /user-invoke-demo and confirm the fixture wiring in Context Map": Map
 - button "Thought for a while" [expanded]:
   - text: Thought for a while
   - img
@@ -35,6 +39,10 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for USER_INVOKE_REPLY acknowledged; following the injected skill." [disabled]: Auto
+- button "include context for USER_INVOKE_REPLY acknowledged; following the injected skill.": Use
+- button "exclude context for USER_INVOKE_REPLY acknowledged; following the injected skill.": Skip
+- button "Locate USER_INVOKE_REPLY acknowledged; following the injected skill. in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - button "Ran for {{duration}}":

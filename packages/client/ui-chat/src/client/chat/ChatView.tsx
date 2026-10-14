@@ -321,6 +321,8 @@ export function ChatView({
   const [atBottom, setAtBottom] = useState(() => chatScroll.read() === null)
   const atBottomRef = useRef(atBottom)
   const scrollSamplePendingRef = useRef(false)
+  /** Resize follow postponed by a native scroll burst; consumed when it settles. */
+  const deferredFollowRef = useRef(false)
   const [, setScrollSampleTick] = useState(0)
   const [activeTurn, setActiveTurn] = useState<number | null>(
     () => turnNavigationItems.at(-1)?.turn ?? null,
@@ -367,7 +369,9 @@ export function ChatView({
     atBottomRef.current = false
     setAtBottom(false)
     row.scrollIntoView({ block: 'center' })
-    row.animate?.([{ outline: '2px solid currentColor' }, { outline: '2px solid transparent' }], { duration: 1800 })
+    if (typeof row.animate === 'function') {
+      row.animate([{ outline: '2px solid currentColor' }, { outline: '2px solid transparent' }], { duration: 1800 })
+    }
     setMessageReady(null)
     completeViewRequest()
   }, [messageReady, viewRequest, order, nodeStore, actions, completeViewRequest])
@@ -428,6 +432,7 @@ export function ChatView({
   }, [scheduleActiveTurn])
 
   const toBottom = (el: HTMLElement): void => {
+    deferredFollowRef.current = false
     anchorRef.current = null
     // Returning to the live tail supersedes a jump still landing.
     pendingJumpRef.current = null
@@ -583,10 +588,16 @@ export function ChatView({
     // the current ownership state.
     const floor = Math.max(0, el.scrollHeight - el.clientHeight)
     const movedByReader = readerMovedScroll(el.scrollTop, floor, observedTopRef.current)
+    const returningToTail = movedByReader && el.scrollTop > observedTopRef.current
+    const deferredFollow = deferredFollowRef.current
+    deferredFollowRef.current = false
     const isAtBottom = movedByReader
       ? floor - el.scrollTop <= FOLLOW_THRESHOLD + 1
       : atBottomRef.current
-    if (!movedByReader && isAtBottom) {
+    // A disclosure can grow while End's native scroll is heading to the old
+    // floor. Replay that deferred resize after ownership returns to the tail.
+    // Upward gestures and an ordinary near-floor scroll retain their position.
+    if (isAtBottom && (!movedByReader || (returningToTail && deferredFollow))) {
       toBottom(el)
       return
     }
@@ -627,7 +638,10 @@ export function ChatView({
       scrollSamplePendingRef.current = true
       if (atBottomRef.current) {
         const floor = Math.max(0, el.scrollHeight - el.clientHeight)
-        if (!readerMovedScroll(el.scrollTop, floor, observedTopRef.current)) {
+        // Browser anchoring after a width reflow can advance a pinned reader
+        // exactly onto the new floor. Settle before later composer/flow growth.
+        if (!readerMovedScroll(el.scrollTop, floor, observedTopRef.current)
+          || Math.abs(floor - el.scrollTop) <= 0.5) {
           sample()
           return
         }
@@ -648,7 +662,10 @@ export function ChatView({
   // initializer a function initial value would need never exists.
   const followRef = useRef<(() => void) | null>(null)
   followRef.current = () => {
-    if (scrollSamplePendingRef.current) return
+    if (scrollSamplePendingRef.current) {
+      deferredFollowRef.current = true
+      return
+    }
     const local = listRef.current
     if (local !== null && atBottomRef.current) {
       const el = scrollerOf(local)

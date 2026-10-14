@@ -28,6 +28,8 @@ import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import TokenMeter from '@deepseek-ai/dsh-token-meter'
 import { agentEvents, type Agent, type RequestErrorAction } from '@deepseek-ai/dsh-agent'
 import ToolResultPruner from '@deepseek-ai/dsh-compaction-tool-result-pruner'
+import { compileContextify, createInitialContextPlan, nextPlan, undoPlan } from '../../../context/contextify/src/plan.ts'
+import { childMessageAdmissible, recordDelegationSlice, recordRequestReadSet, revisionLineageSelection } from '../../../context/contextify/src/revision-lineage.ts'
 
 const SIGNAL = new AbortController().signal
 const MODEL = 'test-model'
@@ -898,6 +900,157 @@ describe('optional model-free tool-result pruning', () => {
 })
 
 describe('compaction region transaction', () => {
+  it.each(['before', 'after'] as const)(
+    'projects a mixed checkpoint around a source excluded %s compaction and restores it on Undo',
+    async (editTiming) => {
+      const compact = service()
+      compact.summary = [{ type: 'text', text: 'CHECKPOINT user 1 and user 2' }]
+      const session = conversation(3)
+      const original = [...session.surface.nodes]
+      const initial = createInitialContextPlan()
+      session.append('contextify/plan', initial)
+      const excluded = nextPlan(initial, {
+        excluded: [
+          { nodeId: 'source-a-user', eventSeq: original[0]! },
+          { nodeId: 'source-a-assistant', eventSeq: original[1]! },
+        ], included: [], replacements: [],
+      })
+      if (editTiming === 'before') session.append('contextify/plan', excluded)
+      await compact.compactRegion(original[0]!, original[3]!, agent(session, MODEL), SIGNAL)
+      if (editTiming === 'after') session.append('contextify/plan', excluded)
+
+      const selectedAfterExclude = JSON.stringify(compileContextify({ session, turn: 4, step: 1 }).messages)
+      expect(selectedAfterExclude).not.toContain('user 1')
+      expect(selectedAfterExclude).toContain('user 2')
+
+      const restored = undoPlan(session, excluded)
+      expect(restored).not.toBeNull()
+      session.append('contextify/plan', restored!)
+      const selectedAfterUndo = JSON.stringify(compileContextify({ session, turn: 4, step: 1 }).messages)
+      expect(selectedAfterUndo).toContain('user 1')
+      expect(selectedAfterUndo).toContain('user 2')
+    },
+  )
+
+  it('applies an Archive placeholder to a message shadowed by a mixed checkpoint', async () => {
+    const compact = service()
+    compact.summary = [{ type: 'text', text: 'CHECKPOINT user 1 and user 2' }]
+    const session = conversation(3)
+    const original = [...session.surface.nodes]
+    const initial = createInitialContextPlan()
+    session.append('contextify/plan', initial)
+    await compact.compactRegion(original[0]!, original[3]!, agent(session, MODEL), SIGNAL)
+    const placeholder = session.append('context/compiler-snapshot', {
+      id: 'source-a-user',
+      message: createUserMessage({
+        content: [{ type: 'text', text: '[Placeholder: intentionally empty]' }],
+        source: { kind: 'plugin', plugin: 'contextify' },
+      }),
+    })
+    session.append('contextify/plan', nextPlan(initial, {
+      excluded: [], included: [], replacements: [{
+        nodeId: 'source-a-user', snapshotSeq: placeholder.seq, originalEventSeq: original[0]!,
+        role: 'user', kind: 'placeholder', reason: 'archived',
+      }],
+    }))
+
+    const compiled = JSON.stringify(compileContextify({ session, turn: 4, step: 1 }).messages)
+    expect(compiled).toContain('[Placeholder: intentionally empty]')
+    expect(compiled).not.toContain('user 1')
+    expect(compiled).toContain('user 2')
+  })
+
+  it('keeps reconstructed tool calls and results paired after a shadowed assistant exclusion', async () => {
+    const compact = service()
+    compact.summary = [{ type: 'text', text: 'CHECKPOINT for tool turns 1 and 2' }]
+    const session = toolConversation()
+    const original = [...session.surface.nodes]
+    const initial = createInitialContextPlan()
+    session.append('contextify/plan', initial)
+    await compact.compactRegion(original[0]!, original[5]!, agent(session, MODEL), SIGNAL)
+    session.append('contextify/plan', nextPlan(initial, {
+      excluded: [{ nodeId: 'first-tool-call', eventSeq: original[1]! }],
+      included: [], replacements: [],
+    }))
+
+    const compiled = JSON.stringify(compileContextify({ session, turn: 4, step: 1 }).messages)
+    expect(compiled).not.toContain('call-1')
+    expect(compiled).toContain('call-2')
+    expect(compiled).toContain('result 2')
+  })
+
+  it('unfolds nested checkpoints when their earliest source is excluded', async () => {
+    const compact = service()
+    compact.summary = [{ type: 'text', text: 'CHECKPOINT user 1, user 2, and user 3' }]
+    const session = conversation(3)
+    const original = [...session.surface.nodes]
+    const initial = createInitialContextPlan()
+    session.append('contextify/plan', initial)
+    await compact.compactRegion(original[0]!, original[3]!, agent(session, MODEL), SIGNAL)
+    const firstCheckpoint = session.surface.nodes[0]!
+    await compact.compactRegion(firstCheckpoint, original[5]!, agent(session, MODEL), SIGNAL)
+    session.append('contextify/plan', nextPlan(initial, {
+      excluded: [
+        { nodeId: 'source-a-user', eventSeq: original[0]! },
+        { nodeId: 'source-a-assistant', eventSeq: original[1]! },
+      ], included: [], replacements: [],
+    }))
+
+    const compiled = JSON.stringify(compileContextify({ session, turn: 4, step: 1 }).messages)
+    expect(compiled).not.toContain('user 1')
+    expect(compiled).toContain('user 2')
+    expect(compiled).toContain('user 3')
+  })
+
+  it('rejects a delegated checkpoint derived from an excluded source while retaining its sibling', async () => {
+    const compact = new class extends TestCompactionEngine {
+      override async summarize(input: SummarizationInput, writer: Agent, signal?: AbortSignal) {
+        const result = await super.summarize(input, writer, signal)
+        const text = summarizedText(input)
+        return { ...result, summary: [{ type: 'text' as const,
+          text: text.includes('user 1') ? 'A-DERIVED user 1' : 'B-DERIVED user 2',
+        }] }
+      }
+    }(createContext(), { auto: false })
+    const session = conversation(3)
+    const original = [...session.surface.nodes]
+    const initial = createInitialContextPlan()
+    session.append('contextify/plan', initial)
+    await compact.compactRegion(original[0]!, original[1]!, agent(session, MODEL), SIGNAL)
+    await compact.compactRegion(original[2]!, original[3]!, agent(session, MODEL), SIGNAL)
+    const checkpointA = session.surface.nodes[0]!
+    const checkpointB = session.surface.nodes[1]!
+    const aEvent = session.eventAt(SessionSeq(checkpointA))!
+    const bEvent = session.eventAt(SessionSeq(checkpointB))!
+    expect(aEvent.sourceEventSeqs).toContain(original[0])
+    expect(bEvent.sourceEventSeqs).toContain(original[2])
+    const aChild = SessionId('checkpoint-child-a')
+    const bChild = SessionId('checkpoint-child-b')
+    recordDelegationSlice(session, aChild, [checkpointA])
+    recordDelegationSlice(session, bChild, [checkpointB])
+    const excludedPlan = nextPlan(initial, {
+      excluded: [
+        { nodeId: 'old-user-a', eventSeq: original[0]! },
+        { nodeId: 'old-assistant-a', eventSeq: original[1]! },
+      ], included: [], replacements: [],
+    })
+    session.append('contextify/plan', excludedPlan)
+    expect(childMessageAdmissible(session, aChild)).toBe(false)
+    expect(childMessageAdmissible(session, bChild)).toBe(true)
+    const selected = revisionLineageSelection({ session, turn: 4, step: 1 }).eventSeqs
+    expect(selected).not.toContain(checkpointA)
+    expect(selected).toContain(checkpointB)
+    const readSet = recordRequestReadSet(session, 4, 1, [])
+    expect(readSet.historyEventSeqs).not.toContain(checkpointA)
+    expect(readSet.historyEventSeqs).toContain(checkpointB)
+    expect(readSet.historyEventSeqs).not.toContain(original[0])
+    const restored = undoPlan(session, excludedPlan)
+    expect(restored).not.toBeNull()
+    session.append('contextify/plan', restored!)
+    expect(childMessageAdmissible(session, aChild)).toBe(true)
+    expect(childMessageAdmissible(session, bChild)).toBe(true)
+  })
+
   it('lands a framed, replayable checkpoint with exact source seqs and token price', async () => {
     const compact = service()
     compact.rawOutput = [

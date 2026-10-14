@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-10-14-linux-prelaunch-cancellation.md
+2026-10-14-linux-prelaunch-cancellation.md: 665f402f87a626e63f4a896b4337f1b0bb06b8e0
+2026-10-14-linux-prelaunch-cancellation.zh.md: 99627760fbeb72a08dc45dbc3a4a05e302752313

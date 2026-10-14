@@ -22,7 +22,7 @@ import {
   webSnapshotMode,
   type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, expandOwningTurnProcess, newEnglishPage, saveFailureShot } from './support.ts'
+import { waitForMessageContextControls, restoreFullWidthChat, connectFreshWorkspace, expandOwningTurnProcess, newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./expected/skill-user-invoke', import.meta.url))
 const UI_EXPECTED = join(SNAPSHOT_DIR, 'ui.expected.md')
@@ -147,6 +147,10 @@ describe.skipIf(MODE === 'record')('web e2e: user-explicit skill invocation thro
     await injectionRow.click()
     await process.click()
 
+    await waitForMessageContextControls(page, 2)
+    await restoreFullWidthChat(page)
+    await page.mouse.move(0, 0)
+    await page.getByRole('tooltip', { name: 'Open sidebar', exact: true }).waitFor({ state: 'hidden' })
     const snapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(UI_EXPECTED, snapshot, MODE)
     const expanded = await captureExpandedTurnProcessAria(

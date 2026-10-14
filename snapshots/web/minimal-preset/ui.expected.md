@@ -17,6 +17,10 @@
 - text: "Use the bash tool to run exactly: printf 'MINIMAL_BASH_CARD_OK\\n'. Then reply exactly MINIMAL_PRESET_REQUEST_OK and stop. {{clock}}"
 - button "Copy":
   - img
+- 'button "natural context for Use the bash tool to run exactly: printf ''MINIMAL_BASH_CARD_OK\\n''. Then reply exactly MINIMAL_PRESET_REQUEST_OK and stop." [disabled]': Auto
+- 'button "include context for Use the bash tool to run exactly: printf ''MINIMAL_BASH_CARD_OK\\n''. Then reply exactly MINIMAL_PRESET_REQUEST_OK and stop."': Use
+- 'button "exclude context for Use the bash tool to run exactly: printf ''MINIMAL_BASH_CARD_OK\\n''. Then reply exactly MINIMAL_PRESET_REQUEST_OK and stop."': Skip
+- 'button "Locate Use the bash tool to run exactly: printf ''MINIMAL_BASH_CARD_OK\\n''. Then reply exactly MINIMAL_PRESET_REQUEST_OK and stop. in Context Map"': Map
 - button "1 tool call" [expanded]:
   - text: 1 tool call
   - img
@@ -32,6 +36,10 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for MINIMAL_PRESET_REQUEST_OK" [disabled]: Auto
+- button "include context for MINIMAL_PRESET_REQUEST_OK": Use
+- button "exclude context for MINIMAL_PRESET_REQUEST_OK": Skip
+- button "Locate MINIMAL_PRESET_REQUEST_OK in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - button "Ran for {{duration}}":

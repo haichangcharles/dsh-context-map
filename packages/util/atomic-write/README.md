@@ -38,6 +38,11 @@ await writeFileAtomic('/home/u/.dsh/settings.yaml', text, { mode: 0o600 })
 
 Parent directories are created as needed, and readers observe either the old or the new complete content. On Windows, transient replacement interference reported as `EACCES`, `EBUSY`, or `EPERM` is retried for a bounded interval; any remaining failure removes the temporary file and leaves the target untouched.
 
+<a id="publishing-a-prepared-file"></a>
+### Publishing a prepared file
+
+Use `renameAtomicTemp(temp, filename)` when the caller already owns a complete, closed same-directory temporary file. It reuses the bounded Windows replacement retries without rewriting the file, deleting the target, or changing permissions. The caller retains responsibility for file and directory fsync, and for removing the temporary file if publication fails. The [JSON backend](../../storage/storage-json/README.md) uses this boundary after syncing its complete temporary file.
+
 ### Coordinating writers
 
 For a read-render-commit cycle that a bare atomic commit cannot make safe on its own, hold the writer lock around the operation:
@@ -74,7 +79,7 @@ The package is built on one separation: the atomic commit owns the swap, and the
 
 | File | Role |
 |---|---|
-| [`src/index.ts`](src/index.ts) | `writeFileAtomic` and `withFileLock`, the package's whole surface |
+| [`src/index.ts`](src/index.ts) | `writeFileAtomic`, `renameAtomicTemp` and `withFileLock`, the package's whole surface |
 | — | No runtime invariant companion is published; this pure filesystem primitive owns no event stream or mutable runtime data; its replacement contract is enforced by unit tests. |
 
 ### Write path

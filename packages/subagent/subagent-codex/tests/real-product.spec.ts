@@ -27,8 +27,10 @@ import * as codex from '../src/index.ts'
 import type { CodexPermissionMode } from '../src/run.ts'
 import {
   startResponsesFixture,
+  completeFixtureCommand,
   type ResponsesBehavior,
   type ResponsesFixture,
+  type ResponsesFixtureScript,
 } from './responses-fixture.ts'
 import { cleanupRealProduct } from './real-product-cleanup.ts'
 
@@ -64,7 +66,7 @@ interface RealInstanceFixture {
   readonly workspace: string
 }
 
-type ResponsesScript = readonly ResponsesBehavior[] | ((workspace: string) => readonly ResponsesBehavior[])
+type ResponsesScript = readonly ResponsesBehavior[] | ((workspace: string) => ResponsesFixtureScript)
 
 async function realInstanceFixture(
   script: ResponsesScript,
@@ -473,7 +475,9 @@ describe('real @openai/codex 0.153.4 product', () => {
 
   it('executes an explicitly selected dangerous bypass write in the isolated workspace', async () => {
     const sideEffect = 'bypass-side-effect'
-    const { harness, fixture } = await realHarness((workspace): readonly ResponsesBehavior[] => {
+    const deadline = Date.now() + 60_000
+    let recentToolOutput: string | undefined
+    const { harness, fixture } = await realHarness((workspace) => {
       const target = join(workspace, sideEffect)
       const command = process.platform === 'win32'
         ? `powershell.exe -NoLogo -NoProfile -NonInteractive -Command "Set-Content -LiteralPath '${target.replaceAll("'", "''")}' -Value 'bypass' -NoNewline"`
@@ -492,10 +496,9 @@ describe('real @openai/codex 0.153.4 product', () => {
           },
         },
       ] as const
-      return [
-        { kind: 'advertisedFunctionCall', choices: commandCalls },
-        { kind: 'complete', text: 'bypass complete' },
-      ]
+      return completeFixtureCommand(commandCalls, 'bypass complete', deadline, (output) => {
+        recentToolOutput = output
+      })
     }, 'dangerously-bypass-approvals-and-sandbox')
     const target = join(harness.workspace, sideEffect)
     const run = await harness.ctx.subagents.start('codex', {
@@ -507,7 +510,8 @@ describe('real @openai/codex 0.153.4 product', () => {
       output: [{ type: 'text', text: 'bypass complete' }],
       stopReason: 'completed',
     })
-    expect(existsSync(target), JSON.stringify(fixture.requests.at(-1)?.body.input)).toBe(true)
+    expect(existsSync(target), recentToolOutput).toBe(true)
+    expect(fixture.requests.length).toBeGreaterThanOrEqual(2)
     expect(readFileSync(target, 'utf8').trim()).toBe('bypass')
     await run.dispose()
     await expectQuiescent(harness.handles)

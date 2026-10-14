@@ -6,8 +6,9 @@
  * `.agents/notes/archived/process/2026-07-02-tool-schema-catalog.md`.
  */
 
-import { globSync, readFileSync, writeFileSync } from 'node:fs'
-import { basename, resolve } from 'node:path'
+import { globSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { basename, join, resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'
@@ -15,6 +16,10 @@ import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createScope } from '@deepseek-ai/dsh-scope'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import ContextCompilerRegistry from '@deepseek-ai/dsh-context-compiler'
+import ContextifyService from '../packages/context/contextify/src/index.ts'
+import * as ContextifyBranchTool from '../packages/context/contextify/src/branch-tool.ts'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SqliteSessionQueryEngine from '@deepseek-ai/dsh-session-query-sqlite'
 import GoalService from '@deepseek-ai/dsh-goal'
@@ -188,6 +193,34 @@ export interface ToolPackage {
  * guard proves it is exhaustive against the on-disk glob.
  */
 const TOOL_PACKAGES: ToolPackage[] = [
+  {
+    pkg: '@deepseek-ai/dsh-contextify/branch-tool',
+    dir: 'contextify',
+    source: 'packages/context/contextify/src/branch-tool.ts',
+    requires: ['ctx.tools', 'ctx.contextify', 'a live Agent with a direct human Turn'],
+    writes: ['tool/call', 'tool/result', 'contextify/branch-review after the completed Turn'],
+    async mount(ctx) {
+      const persistenceRoot = mkdtempSync(join(tmpdir(), 'dsh-contextify-catalog-'))
+      ctx.effect(() => () => { rmSync(persistenceRoot, { recursive: true, force: true }) })
+      await ctx.plugin(LlmRuntime)
+      await ctx.plugin(SessionStore)
+      await ctx.plugin(AgentRegistry)
+      await ctx.plugin(JsonlSessionPersistence, { root: persistenceRoot })
+      await ctx.plugin(ContextCompilerRegistry)
+      await ctx.plugin(ContextifyService)
+      await mountCatalogChildScope(ctx, (childCtx) => {
+        childCtx.plugin(ContextifyBranchTool)
+      }, undefined, ['tools', 'contextify'])
+    },
+    scope: (ctx) => {
+      const scope = catalogChildScopes.get(ctx)
+      if (scope === undefined) throw new Error('Contextify catalog scope was not mounted')
+      return scope
+    },
+    note: 'The standard, cordis and PTC presets explicitly compose this optional consumer; minimal does not. '
+      + 'It adds no global tool, remains dormant without the Host Contextify service, and can be disabled with enabled: false. '
+      + 'Calling it schedules a user confirmation after the current direct human Turn; it does not create a branch.',
+  },
   {
     pkg: '@deepseek-ai/dsh-tool-ask-user',
     dir: 'tool-ask-user',
@@ -746,7 +779,7 @@ export function render(catalog: ToolCatalog): string {
     '',
     'This file is GENERATED and verified fresh by `pnpm run verify-tool-catalog` (part of `doc-sync`) — do not edit it by hand. Unlike the cordis catalog (a pure source-AST pass), this generator BOOTS each tool plugin on a real context and reads `ctx.tools.schemas()`, because a tool schema is not statically knowable (runtime-spread enums, concatenated descriptions, config-driven names, raw-JSON-Schema MCP tools). A completeness guard globs `packages/*/tool-*` and fails if any package is missing from the generator\'s boot manifest, so a new tool cannot be silently undocumented.',
     '',
-    'Scope: shipped product tools under `packages/*/tool-*`, each booted with its DEFAULT config, except where a Config field is REQUIRED with no default — there the generator must choose, and the per-package note records which branch this page shows. The registered tool NAME can be a load-time config (e.g. `tool-subagent`\'s `toolName`), so a deployment may expose a package under a different or additional name — a per-package note records those shipped aliases where they exist. The `examples/` demo tools (e.g. `echo`) are excluded, matching the cordis catalog\'s packages-only scope.',
+    'Scope: shipped product tools under `packages/*/tool-*` and explicitly listed plugin subpaths, each booted with its DEFAULT config, except where a Config field is REQUIRED with no default — there the generator must choose, and the per-package note records which branch this page shows. The registered tool NAME can be a load-time config (e.g. `tool-subagent`\'s `toolName`), so a deployment may expose a package under a different or additional name — a per-package note records those shipped aliases where they exist. The `examples/` demo tools (e.g. `echo`) are excluded, matching the cordis catalog\'s packages-only scope.',
     '',
     '## Tool Package Map',
     '',

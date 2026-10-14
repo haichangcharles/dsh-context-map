@@ -15,6 +15,10 @@
 - text: Load the editing-cordis-compositions skill with the skill tool, then reply DONE. {{date}} {{clock}}
 - button "Copy":
   - img
+- button "natural context for Load the editing-cordis-compositions skill with the skill tool, then reply DONE." [disabled]: Auto
+- button "include context for Load the editing-cordis-compositions skill with the skill tool, then reply DONE.": Use
+- button "exclude context for Load the editing-cordis-compositions skill with the skill tool, then reply DONE.": Skip
+- button "Locate Load the editing-cordis-compositions skill with the skill tool, then reply DONE. in Context Map": Map
 - button "1 tool call" [expanded]:
   - text: 1 tool call
   - img
@@ -46,6 +50,10 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for DONE" [disabled]: Auto
+- button "include context for DONE": Use
+- button "exclude context for DONE": Skip
+- button "Locate DONE in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - button "Ran for {{duration}}":

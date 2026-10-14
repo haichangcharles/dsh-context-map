@@ -13,7 +13,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { afterAll, afterEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { PwshLocalExecutor, ENCODING_PREAMBLE, candidatePwshPaths, resolvePwshPath } from '@deepseek-ai/dsh-pwsh-local'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
@@ -262,6 +262,27 @@ describe('spawn construction (pure, every platform)', () => {
     expect(proc.status).toBe('killed')
     expect(proc.readOutput().delta).toContain('unprintable provider failure')
     expect(proc.readOutput().delta).toBe('')
+  })
+
+  it.each(['timeout', 'upstream'] as const)('classifies a settled foreground %s deadline without conflating cancellation', async (kind) => {
+    vi.useFakeTimers()
+    try {
+      const ctx = createContext()
+      const subprocess = new CapturingSubprocessRuntime(ctx)
+      await ctx.plugin(PwshLocalExecutor)
+      const outcome = Promise.withResolvers<SubprocessOutcome>()
+      subprocess.done = outcome.promise
+      const controller = new AbortController()
+      const pending = ctx.shell.run(ctx.shell.resolve({ command: 'Write-Output maybe-ran', timeoutMs: 100, signal: controller.signal }))
+      if (kind === 'timeout') await vi.advanceTimersByTimeAsync(100)
+      else controller.abort('User cancelled foreground work')
+      expect(subprocess.specs[0]?.signal?.aborted).toBe(true)
+      outcome.resolve({ exitCode: 0, signal: null })
+      const result = await pending
+      expect(result.timedOut).toBe(kind === 'timeout')
+      expect(result.aborted).toBe(kind === 'upstream')
+      expect(result.exitCode).toBe(0)
+    } finally { vi.useRealTimers() }
   })
 
   it('preserves an explicit kill stamp and maps an aborted direct outcome to killed', async () => {

@@ -14,7 +14,7 @@ import {
   fixtureUserPrompts, launchWebScaffold, watchConsole, webSnapshotMode,
   type WebScaffold,
 } from './scaffold.ts'
-import {
+import { restoreFullWidthChat,
   connectFreshWorkspace, expandTurnProcesses, newEnglishPage, REPO_ROOT, saveFailureShot,
 } from './support.ts'
 
@@ -204,6 +204,7 @@ describe.skipIf(MODE === 'record')('web e2e: durable workflow run in Chat', () =
     const workflow = page.getByRole('button', { name: /^snapshot-flow/ })
     await workflow.waitFor({ timeout: 15_000 })
     expect(await workflow.getAttribute('aria-expanded')).toBe('false')
+    await restoreFullWidthChat(page)
     const snapshot = await captureStableAria(page, '[data-chat-flow]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(UI_EXPECTED, snapshot, MODE)
     await workflow.click()

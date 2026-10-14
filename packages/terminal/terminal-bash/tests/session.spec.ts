@@ -505,6 +505,21 @@ describe('LocalPtySession readiness and output', () => {
     expect((await operation.done).waitReason).toBe('stdin_read')
   })
 
+  it.each([['echo next', false], ['', true]] as const)('clears prior prompt evidence for input %j (submit %s) even with observation continuation requested', async (text, submit) => {
+    vi.useFakeTimers()
+    const terminal = new FakeTerminal()
+    const session = new LocalPtySession(terminal, config())
+    await initialize(session, terminal)
+    expect(session.controlledPromptReady).toBe(true)
+    const operation = session.startSend({ text, submit }, true)
+    expect(session.controlledPromptReady).toBe(false)
+    await vi.advanceTimersByTimeAsync(0)
+    terminal.emitData('\x1b]133;D;0\x07dsh> ')
+    await vi.advanceTimersByTimeAsync(10)
+    expect((await operation.done).waitReason).toBe('stdin_read')
+    await session.close('test finished')
+  })
+
   it('captures prompt MOTD, writes submit explicitly, and settles exact stdin waits', async () => {
     vi.useFakeTimers()
     const terminal = new FakeTerminal()
@@ -523,6 +538,20 @@ describe('LocalPtySession readiness and output', () => {
     await vi.advanceTimersByTimeAsync(20)
     expect(await operation.done).toMatchObject({ waitReason: 'stdin_read', viewport: 'Python\n>>> ', sessionStatus: { kind: 'running' } })
     expect(operation.cancel()).toBe(false)
+  })
+
+  it('observes an existing stdin wait without requiring departure when no input is sent', async () => {
+    vi.useFakeTimers()
+    const terminal = new FakeTerminal()
+    const inspector = new FakeInspector()
+    const session = makeSession(terminal, inspector, config())
+    await initialize(session, terminal)
+
+    inspector.waiting = true
+    const operation = session.startSend({ text: '', submit: false })
+    await vi.advanceTimersByTimeAsync(20)
+    expect(terminal.writes).toEqual([])
+    expect((await operation.done).waitReason).toBe('stdin_read')
   })
 
   it('does not reuse a pre-write stdin wait as post-write readiness', async () => {
@@ -1111,13 +1140,16 @@ describe('LocalPtySession readiness and output', () => {
     let settled = false
     const initializing = session.initialize().then(() => { settled = true })
 
+    expect(session.controlledPromptReady).toBe(false)
     terminal.emitData('\x1b]133;D;0\x07')
+    expect(session.controlledPromptReady).toBe(false)
     await vi.advanceTimersByTimeAsync(20)
     expect(settled).toBe(false)
 
     terminal.emitData('dsh> ')
     await vi.advanceTimersByTimeAsync(10)
     await initializing
+    expect(session.controlledPromptReady).toBe(true)
     expect(session.motd).toBe('dsh> ')
   })
 

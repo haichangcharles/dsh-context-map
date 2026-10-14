@@ -14,7 +14,7 @@ import {
   assertFixtureInventory, captureExpandedTurnProcessAria, captureStableAria, compareOrRefreshGolden,
   launchWebScaffold, recordFixture, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
+import { restoreFullWidthChat, connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/goal-multi-turn-actions', import.meta.url))
 const FIXTURE = join(SNAPSHOT_DIR, 'session.v3.jsonl')
@@ -163,9 +163,22 @@ describe('web e2e: Goal keeps one assistant action row per completed turn', () =
     await expect.poll(() => branchButtons.count(), { timeout: 15_000 }).toBe(2)
     expect(await branchButtons.evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-disabled'))))
       .toEqual([null, null])
+    // Host completion and the first Map node can precede the controller's next
+    // graph publication. Observe each completed tail's actual Context controls
+    // before capturing; never remove a missing control from the golden.
+    for (const turn of [1, 2]) {
+      const tail = page.locator(`[data-turn-tail="${turn}"]`)
+      for (const mode of ['natural', 'include', 'exclude']) {
+        await tail.getByRole('button', { name: new RegExp(`^${mode} context for`) })
+          .waitFor({ state: 'attached', timeout: 15_000 })
+      }
+      expect(await tail.getByRole('button', { name: /^Locate .* in Context Map$/ }).count()).toBe(1)
+    }
     await branchButtons.last().focus()
+    await restoreFullWidthChat(page)
     const snapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold!.workspaceCwd)
     await compareOrRefreshGolden(UI_EXPECTED, snapshot, MODE)
+    await restoreFullWidthChat(page)
     const expanded = await captureExpandedTurnProcessAria(
       page,
       '[class*="centerCol"]',

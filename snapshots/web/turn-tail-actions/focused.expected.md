@@ -17,6 +17,10 @@
 - text: Begin your reply with the plain sentence "Reading the workspace now." as text, and in that same message call the bash tool with the command "echo alpha". After the tool result, reply with the single word DONE and stop. {{clock}}
 - button "Copy":
   - img
+- button "natural context for Begin your reply with the plain sentence \"Reading the workspace now.\" as text, and in that same message call the bash tool with the command \"echo alpha\". After the tool result, reply with the single word DONE and stop." [disabled]: Auto
+- button "include context for Begin your reply with the plain sentence \"Reading the workspace now.\" as text, and in that same message call the bash tool with the command \"echo alpha\". After the tool result, reply with the single word DONE and stop.": Use
+- button "exclude context for Begin your reply with the plain sentence \"Reading the workspace now.\" as text, and in that same message call the bash tool with the command \"echo alpha\". After the tool result, reply with the single word DONE and stop.": Skip
+- button "Locate Begin your reply with the plain sentence \"Reading the workspace now.\" as text, and in that same message call the bash tool with the command \"echo alpha\". After the tool result, reply with the single word DONE and stop. in Context Map": Map
 - button "1 tool call · 1 message" [expanded]:
   - text: 1 tool call · 1 message
   - img
@@ -40,6 +44,10 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for DONE" [disabled]: Auto
+- button "include context for DONE": Use
+- button "exclude context for DONE": Skip
+- button "Locate DONE in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - button "Usage 15.8K tok":

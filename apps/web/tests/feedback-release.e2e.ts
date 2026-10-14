@@ -15,7 +15,7 @@ import {
   compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, readPersistedEvents, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
+import { waitForMessageContextControls, restoreFullWidthChat, connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/feedback-release', import.meta.url))
 // Both routes borrow the same settled turn; this manifest references its owner.
@@ -183,8 +183,13 @@ describe.each(MODE === 'record' ? ['deepseek-official'] : ['deepseek-official', 
     expect(await page.getByText(/Anonymous user: [0-9a-f-]+\.$/i).count()).toBe(1)
     await expectFeedbackRelease('feedback/record', 1)
 
+    await waitForMessageContextControls(page, 2)
+    await restoreFullWidthChat(page)
+    await page.mouse.move(0, 0)
+    await page.getByRole('tooltip', { name: 'Open sidebar', exact: true }).waitFor({ state: 'hidden' })
     const snapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(ACK_EXPECTED, snapshot, MODE)
+    await restoreFullWidthChat(page)
     const expanded = await captureExpandedTurnProcessAria(
       page,
       '[class*="centerCol"]',

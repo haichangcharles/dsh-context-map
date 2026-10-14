@@ -1,6 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { bindScopeParent, carrierKeyOf, createScope, isScopeCarrier, scopeChainOf, scopeOf, scopeParentOf, scopeTarget } from '@deepseek-ai/dsh-scope'
+import { scopeOf as sourceScopeOf } from '../src/index.ts'
 import type { Scope, Scoped } from '@deepseek-ai/dsh-scope'
 
 declare module '@deepseek-ai/cordis' {
@@ -22,6 +23,14 @@ async function mintScope(ctx: Context, key: object): Promise<Scope> {
 }
 
 describe('createScope', () => {
+  it('recognizes a scope across source and built module copies', async () => {
+    const ctx = new Context()
+    const key = { name: 'shared-tag' }
+    const scope = await mintScope(ctx, key)
+    expect(sourceScopeOf(scope.ctx)).toBe(key)
+    await scope.dispose()
+  })
+
   it('tags contexts and derived contexts, with the nearest tag winning', async () => {
     const ctx = new Context()
     const outerKey = { name: 'outer' }

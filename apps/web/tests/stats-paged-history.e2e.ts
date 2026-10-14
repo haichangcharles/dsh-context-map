@@ -16,7 +16,7 @@ import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden,
   launchWebScaffold, seedSession, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { newEnglishPage, saveFailureShot } from './support.ts'
+import { restoreFullWidthChat, newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./expected/stats-paged-history', import.meta.url))
 const UI_EXPECTED = fileURLToPath(new URL('./expected/stats-paged-history/ui.expected.md', import.meta.url))
@@ -138,6 +138,7 @@ describe('web e2e: whole-session stats survive history paging', () => {
 
   it('matches the paged-stats aria golden', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-stats-paged-aria'))
+    await restoreFullWidthChat(page)
     const snapshot = (await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd))
       .split(SEED_ID).join('{{seededId}}')
     await compareOrRefreshGolden(UI_EXPECTED, snapshot, MODE)

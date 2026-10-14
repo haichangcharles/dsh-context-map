@@ -25,7 +25,7 @@ import {
   acknowledgeReloadConnectionLoss, assertFixtureInventory, captureStableAria, compareOrRefreshGolden,
   launchWebScaffold, readPersistedEvents, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
+import { connectFreshWorkspace, newEnglishPage, restoreFullWidthChat, saveFailureShot } from './support.ts'
 
 const BASE_FIXTURE = fileURLToPath(new URL('../../../snapshots/web/live-interactions/session.v3.jsonl', import.meta.url))
 
@@ -208,6 +208,8 @@ describe.skipIf(MODE === 'record')('web e2e: composer interrupt for a running co
       await page.getByText(/^Explain event sourcing in one sentence\.Your parent agent id is /)
         .waitFor({ timeout: 15_000 })
       expect(await input.isDisabled()).toBe(true)
+      // Addressed execution details do not auto-open the unsupported native family Map.
+      expect(await page.locator('[data-rightbar-col] [data-dockkit-tab]').filter({ hasText: 'Context Map' }).count()).toBe(0)
       const stop = page.getByRole('button', { name: 'Stop generating' })
       expect(await stop.count()).toBe(1)
       expect(await stop.isEnabled()).toBe(true)
@@ -228,6 +230,7 @@ describe.skipIf(MODE === 'record')('web e2e: composer interrupt for a running co
       await page.getByRole('button', { name: 'Edit queued message' }).waitFor({ timeout: 15_000 })
       expect(await page.getByRole('button', { name: 'Remove queued message' }).count()).toBe(1)
       expect(await page.getByRole('button', { name: 'Steer queued message' }).count()).toBe(1)
+      await restoreFullWidthChat(page)
       await compareOrRefreshGolden(
         OFFLINE_COMPOSER_EXPECTED,
         await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd),

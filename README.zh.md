@@ -4,7 +4,7 @@
 
 [产品主页](https://haichangcharles.github.io/dsh-context-map/) · [交互示例](https://haichangcharles.github.io/dsh-context-map/#demo)
 
-DSH Context Map 是一个基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)、由社区独立维护的对话上下文工作区。它把 Harness 原生 Session 分支转换成可检查的 Map，让用户在长周期对话中导航不同分支，并控制哪些已完成的用户输入和模型最终输出进入下一次模型请求。
+DSH Context Map 是一个基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)、由社区独立维护的长周期 Chat 工作区。它把 Harness 原生 Session 分支转换成可检查的 Map，让用户导航不同分支，并选择哪些旧消息和受支持的证据进入每一轮模型请求。
 
 **独立社区项目。** DSH Context Map 由 [haichangcharles](https://github.com/haichangcharles) 独立维护，并非 DeepSeek 官方产品，也不由 DeepSeek AI 维护或背书。
 
@@ -12,13 +12,21 @@ DSH Context Map 是一个基于 [DeepSeek Harness](https://github.com/deepseek-a
 
 - **Context Map** —— 在 Chat 旁边把一组相互连接的 Harness 原生 Session 显示为消息级树。
 - **显式上下文控制** —— Include 或 Exclude 单条用户输入和模型最终输出，同时不改写底层 Session log。
-- **上下文推荐** —— 使用快速的有限候选推荐，或主动开启读取临时完整树快照的深度检查；确认整体替换方案后一次 Apply，也可以一次 Undo。
+- **Context Steward** —— 默认使用零模型 Local 建议，也可以显式选择有界 Fast 或隔离 Deep 审核；来源、目标分支与生命周期建议在确认后才改变状态。
+- **跨轮次复用** —— 把其他分支的来源带入活动 Session，在后续轮次停止使用，再次需要时重新带入，而不删除原始来源。
+- **个性化 Context 建议** —— 把 Client 确认的 Include/Exclude 与 Keep-current 选择作为后续审核的有界示例；建议在确认前绝不改变 Plan。
 - **Branch 推荐** —— 当一个已完成的 Q&A 更适合移动到平行 Session 时，以轻量方式询问用户是否创建原生分支。
 - **单节点 Archive** —— 使用确定性的占位内容隐藏过时语义，同时保留节点、边、原始事件和恢复路径。
 - **Prompt Dashboard** —— 为 Context、Archive 和 Branch 推荐器追加 Profile 级规则，也可以在显式解锁后完整覆盖基础 Prompt。
 - **Harness 原生兼容** —— 继续使用 DeepSeek Harness 已有的 agent loop、工具、模型路由、Session 持久化、Fork、Compiler hook 和 Web UI slot。
 
-Context Map 为每个成功 Turn 保存一个最初用户输入节点和一个最终可见的模型输出节点。Reasoning、工具调用、工具结果、上下文注入、中间模型步骤和未完成输出不会进入 Map。
+Context Map 为每个成功 Turn 保存一个最初用户输入节点和一个最终可见的模型输出节点。受支持的 Web 结果与 worker 回报会作为证据节点出现。Reasoning、中间模型步骤、未完成输出和其他 runtime event 不进入聊天节点视图。
+
+## 跨轮次调整 Context
+
+长对话中的同一来源可能对这一轮有用、对下一轮却造成干扰。活动 Session 持有持久 Context Plan：**Natural** 沿用自身历史消息，**Exclude** 跳过其中一条，**Include** 把另一分支中受支持的来源带入下一请求。跨分支来源恢复为 Natural 后仍留在原分支，只是在当前请求中变为 inactive；它既没有被删除，也没有被归档。用户以后仍能再次 Include。Agent 可以在审核单上建议这些修改，但只有确认后 Plan 才会改变。由用户接受的 Agent 暂时 Exclude 也可以在之后被建议恢复；用户直接执行的 Exclude 仍受保护。
+
+例如，规划分支保存了供应商的六周交期。编辑发布页文案时，该来源保持 inactive；开始排期时，用户可从 Map Include 它；之后审核文案可让它回到 Natural，再次排期时又可 Include。[原生服务回归](packages/context/contextify/tests/service.spec.ts)检查了这三次修改如何改变连续轮次的编译消息，同时原始分支保持不变。
 
 <a id="run"></a>
 ## 运行
@@ -26,10 +34,14 @@ Context Map 为每个成功 Turn 保存一个最初用户输入节点和一个�
 <a id="run-from-source"></a>
 ### 从源码运行
 
-安装受支持的 Node.js 版本和 pnpm，然后运行：
+Context Steward 预览版位于 `codex/context-steward-runtime`（[PR #24](https://github.com/haichangcharles/dsh-context-map/pull/24)）。下面的命令会检出这一分支。
+
+安装 Node.js 22.x（至少 22.19）或 Node.js 24 及以上版本，以及 `package.json` 固定的 pnpm 11.7.0，然后运行：
+
+在 macOS 和 Linux 上，源码构建还需要可作为 `cc` 调用的 C11 编译器，以及包含开发头文件的 Node 安装。
 
 ```sh
-git clone https://github.com/haichangcharles/dsh-context-map.git
+git clone --branch codex/context-steward-runtime --single-branch https://github.com/haichangcharles/dsh-context-map.git
 cd dsh-context-map
 pnpm install
 pnpm run build
@@ -44,13 +56,10 @@ Web UI 默认启动在 `http://127.0.0.1:3080`。运行时密钥沿用 DeepSeek 
 
 DeepSeek Harness 是当前版本唯一已经实现并受支持的 Context Map 宿主 Runtime。Contextify 负责持久消息图和 Context Compiler 行为，Web 插件负责可视化与交互。本项目不会引入第二套 agent loop，也不会从浏览器直接调用模型服务商。
 
+<a id="existing-session-data"></a>
 ### 已有 Session 数据
 
 官方迁移链不接受本分支格式 v0 中的 `context/compiler*` 和 `contextify/*` 事件。后续格式迁移还会改变事件序号，因此不能在缺少跨 Session 引用迁移的情况下直接放行这些记录。支持完整 Session 家族的迁移实现前，已有 Context Map 数据应继续使用旧 Runtime；请在独立的配置和 Session 目录中验证本次升级。此分支不会修改已有数据目录。
-
-### Roadmap：可移植的上下文基础设施
-
-后续将为 Claude Code 与 OpenAI Agents SDK 增加 Context Map 宿主 Runtime Adapter，并进一步探索把同一套持久上下文映射能力应用到 OpenCode 等开源 Agent 产品中。这些 Adapter 属于 Roadmap，并非当前版本已经提供的功能。DeepSeek Harness 已经继承的 Claude Code Subagent 与 Hook 互操作，是底层 Harness 的另一项能力。
 
 内部 `@deepseek-ai/*` 包名会继续保留，以兼容上游 Workspace 和模块图。这些名称说明底层 Runtime 包的来源，并不代表 DSH Context Map 是 DeepSeek 官方发行版。
 
@@ -74,6 +83,10 @@ pnpm run doc-sync
 ```
 
 只在最小的 Contextify 接入位置解决冲突，不要在上游同步分支中混入产品功能。完整维护约定见[项目身份设计](docs/plans/2026-09-07-dsh-context-map-project-identity-design.zh.md)。
+
+## Context Steward 指南
+
+[长对话指南](docs/user/guide/context-steward.zh.md)介绍来源选择、明确草稿导航、分支生命周期、偏好检查与零 API 验证。Local 审核为默认模式；每轮结束后的自动 Branch 分类需要主动开启。内置 30 轮回放导出只含历史信息的 scorer 数据包与分离的构造预期结果。它验证工程行为，不能证明真人个性化收益或模型准确率。
 
 ## 开发
 

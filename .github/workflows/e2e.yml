@@ -1,68 +1,128 @@
-name: E2E (real DeepSeek API)
+name: E2E
 
-# Real-API end-to-end suite (`pnpm run test:e2e`). Unlike ci.yml this job
-# consumes the DEEPSEEK_API_KEY_EXTERNAL secret (mapped to the env var
-# DEEPSEEK_API_KEY the tests read) and hits the external API at
-# https://api.deepseek.com (DEEPSEEK_BASE_URL is pinned to it explicitly so a
-# stray repo-root .env can't redirect the run).
-#
-# pull_request IS a trigger, but GitHub withholds repo secrets from BOTH forked
-# PRs and Dependabot PRs (the latter are same-repo, fork==false, but still
-# keyless). The job-level `if:` below skips the whole job for those untrusted
-# PRs. The Dependabot test keys on the PR AUTHOR (pull_request.user.login), not
-# github.actor (the run trigger) — a maintainer reopening a Dependabot PR would
-# make github.actor human while the PR is still keyless. When the job runs, the
-# secret is expected, so the preflight hard-fails if it's missing (a missing
-# secret would otherwise make the self-skipping suite report a false green). A
-# job skipped by a job-level `if:` reports as a SUCCESSFUL check, so this
-# workflow is safe to use as a required status check if desired.
-#
-# SECURITY — NEVER change this trigger to `pull_request_target`. `pull_request`
-# checks out and runs the PR's HEAD code WITHOUT secrets for forks, which is what
-# keeps an untrusted fork from exfiltrating the key. `pull_request_target` runs
-# in the BASE repo's context WITH secrets while still able to check out untrusted
-# fork code — a textbook key-leak vector, especially once this repo is public.
-# The fork/secret model and its public-repo implications are recorded in
-# .agents/notes/implemented/testing/2026-06-19-real-api-e2e-ci.md.
-#
-# Note: scheduled triggers are auto-disabled after 60 days of repo inactivity;
-# push/pull_request/workflow_dispatch act as backstops.
+# Ordinary events replay saved model responses; model APIs require explicit dispatch.
+# Never use pull_request_target to run untrusted code with repository credentials.
 on:
   workflow_dispatch:
+    inputs:
+      real_api:
+        description: Authorize paid DeepSeek profile and installed-wheel API tests
+        type: boolean
+        required: false
+        default: false
+      runtime_diagnostics:
+        description: Run only keyless native lifecycle and prompt diagnostics
+        type: boolean
+        required: false
+        default: false
   push:
     branches: [main, master]
   pull_request:
-  schedule:
-    # 00:17 UTC nightly = 08:17 Asia/Shanghai — off the top-of-hour cron stampede.
-    - cron: '17 0 * * *'
 
-# Keep only the newest validation in each workflow/ref, including master
-# pushes, nightly runs, and manual dispatches.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Least privilege: this job only reads the repo to run tests.
 permissions:
   contents: read
 
 env:
-  # CI runs must never report to the production telemetry endpoint baked
-  # into apps/cli/cordis.yml (AppCLIEntry disables the row when set).
   DSH_TELEMETRY_DISABLED: '1'
 
 jobs:
   e2e:
+    if: github.event_name != 'workflow_dispatch' || !inputs.runtime_diagnostics
     runs-on: ubuntu-latest
     name: e2e
-    # Run on every trusted event. Skip untrusted PRs (forks + Dependabot) where
-    # the secret is withheld — they would otherwise hard-fail the preflight.
-    if: >-
-      github.event_name != 'pull_request'
-      || !(github.event.pull_request.head.repo.fork || github.event.pull_request.user.login == 'dependabot[bot]')
-    # Profile e2e files can each own several complete dsh subprocess trees, so
-    # four file workers preserve process/PTY headroom. Tests retain 120s/test
-    # and retry 2; 45m still bounds retry storms against a slow API.
+    timeout-minutes: 45
+    env:
+      DEEPSEEK_API_KEY: ''
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install (immutable)
+        run: pnpm install --frozen-lockfile
+      - name: Prepare bubblewrap (unrestrict userns)
+        run: bash scripts/prepare-ci-bubblewrap.sh
+      - name: Install Playwright Chromium and hosted dependencies
+        run: pnpm --filter @deepseek-ai/dsh-web-frontend exec playwright install --with-deps chromium
+      - name: Build full Context Map application
+        run: pnpm run build
+      - name: Replay recorded model Sessions
+        env:
+          DSH_SNAPSHOT: replay
+        run: pnpm run test:snapshot
+      - name: Replay browser end-to-end tests
+        env:
+          DSH_SNAPSHOT: replay
+        run: pnpm run test:web:built
+
+  runtime-diagnostics:
+    if: github.event_name == 'workflow_dispatch' && inputs.runtime_diagnostics
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    name: keyless native runtime diagnostics / ${{ matrix.os }}
+    timeout-minutes: 10
+    env:
+      DEEPSEEK_API_KEY: ''
+      SILICONFLOW_API_KEY: ''
+      OPENAI_API_KEY: ''
+      TYPESAFE_API_KEY: ''
+      JEV_API_KEY: ''
+      DSH_COVERAGE_MAX_WORKERS: '2'
+      DSH_RUNTIME_DIAGNOSTICS: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Enable Windows symlink support
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: >-
+          reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
+          /t REG_DWORD /f /v "AllowDevelopmentWithoutDevLicense" /d "1"
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install immutable dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Prepare Linux native sandbox
+        if: runner.os == 'Linux'
+        run: bash scripts/prepare-ci-bubblewrap.sh
+      - name: Build host native addon
+        run: pnpm run build:native-system
+      - name: Diagnose native lifecycle and owned-prompt readiness
+        # This is a selected, instrumented diagnostic, not the repository
+        # coverage verdict. The ordinary exhaustive lane stays unchanged.
+        env:
+          DSH_COVERAGE_PARTITION_MODE: '1'
+        run: >-
+          pnpm exec vitest run
+          packages/shell/bash-sandbox/tests/sandbox.spec.ts
+          packages/subprocess/subprocess-local/tests/local.spec.ts
+          packages/terminal/terminal-bash/tests/local.spec.ts
+          packages/shell/tool-pwsh-persistent/tests/loader-composition.spec.ts
+          packages/session/session-projection-cache/tests/fixtures.spec.ts
+          --testNamePattern='disposal kills wrapped background jobs|disposal kills still-running processes and awaits their exit|bootstraps a persistent pwsh|preserves cwd and environment across calls|archived version recovery'
+          --testTimeout=90000 --coverage
+          --coverage.include='packages/subprocess/subprocess-local/src/**'
+          --coverage.reportsDirectory=coverage/runtime-diagnostics
+
+  real-api:
+    if: github.event_name == 'workflow_dispatch' && inputs.real_api
+    runs-on: ubuntu-latest
+    name: real DeepSeek API (explicit opt-in)
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
@@ -85,8 +145,8 @@ jobs:
 
       # Guard against a false green: the e2e suites self-skip when the key is
       # absent, so a missing/misconfigured secret would otherwise pass as
-      # "all skipped". This job only runs on trusted events (the `if:` above
-      # excludes keyless PRs), so the secret MUST be present — fail loudly if not.
+      # "all skipped". Explicit dispatch expects the configured secret; fail
+      # loudly rather than appearing to validate a live model.
       - name: Preflight (require DEEPSEEK_API_KEY)
         env:
           # Repo secret DEEPSEEK_API_KEY_EXTERNAL holds the external-API key;
@@ -119,3 +179,14 @@ jobs:
           DSH_E2E_MAX_WORKERS: 4
           DSH_EXAMPLE_MODE: lib
         run: pnpm run test:e2e
+
+  python-real-api:
+    if: github.event_name == 'workflow_dispatch' && inputs.real_api
+    name: installed-wheel real API (explicit opt-in)
+    uses: ./.github/workflows/build-exe-for-python-sdk.yml
+    with:
+      targets: node24-linux-x64,node24-win-x64
+      ci: true
+      real_api: true
+    secrets:
+      DEEPSEEK_API_KEY_EXTERNAL: ${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}

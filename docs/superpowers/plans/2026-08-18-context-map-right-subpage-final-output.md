@@ -2,6 +2,8 @@
 
 English | [中文](2026-08-18-context-map-right-subpage-final-output.zh.md)
 
+This is a historical implementation plan. File references resolve to the current owners after package splits; current behavior is defined by the [Contextify package contract](../../../packages/context/contextify/README.md). A standalone Contextify invariant is omitted; compiler tests verify selected snapshot provenance.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make Context Map a tree-only native details subpage and reduce every Session turn to its genuine input plus completed final assistant output.
@@ -77,14 +79,14 @@ Run the same Vitest command and expect all tests to pass.
 ### Task 3: Route Context Map and Tool details as native subpages
 
 **Files:**
-- Create: `packages/client/ui-conversation/src/client/details-navigation.ts`
+- Create: `packages/client/ui-sidebar-right/src/client/service.ts`
 - Modify: `packages/client/ui-conversation/src/client/service.ts`
 - Modify: `packages/client/ui-conversation/src/client/apply.ts`
 - Modify: `packages/client/ui-conversation/src/client/contract/slots.ts`
-- Modify: `packages/client/ui-conversation/src/client/skeleton/DetailsPanel.tsx`
-- Modify: `packages/client/ui-conversation/src/client/skeleton/DetailsPanel.module.css`
+- Modify: `packages/client/ui-sidebar-right/src/client/shell/SidebarRight.tsx`
+- Modify: `packages/client/ui-sidebar-right/src/client/shell/SidebarRight.module.css`
 - Modify: `packages/client/ui-conversation/tests/apply-inject.client.spec.tsx`
-- Modify: `packages/client/ui-conversation/tests/gate-branch-tails.client.spec.tsx`
+- Modify: `packages/client/ui-chat/tests/gate-branch-tails.client.spec.tsx`
 - Modify: `packages/client/ui-contextify/src/client/index.ts`
 - Modify: `packages/client/ui-contextify/tests/browser-plugin.client.spec.tsx`
 
@@ -97,7 +99,7 @@ Test that opening Tool details selects the Tool page; `conversation.openPinnedDe
 Run:
 
 ```bash
-pnpm vitest run packages/client/ui-conversation/tests/apply-inject.client.spec.tsx packages/client/ui-conversation/tests/gate-branch-tails.client.spec.tsx packages/client/ui-contextify/tests/browser-plugin.client.spec.tsx
+pnpm vitest run packages/client/ui-conversation/tests/apply-inject.client.spec.tsx packages/client/ui-chat/tests/gate-branch-tails.client.spec.tsx packages/client/ui-contextify/tests/browser-plugin.client.spec.tsx
 ```
 
 Expected: FAIL because no details-page registry or subpage tabs exist.

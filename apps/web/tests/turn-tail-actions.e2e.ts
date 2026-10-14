@@ -20,7 +20,7 @@ import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, recordFixture, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
+import { connectFreshWorkspace, newEnglishPage, restoreFullWidthChat, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/turn-tail-actions', import.meta.url))
 const FIXTURE = join(SNAPSHOT_DIR, 'session.v3.jsonl')
@@ -45,14 +45,24 @@ describe('web e2e: assistant IconActions wait for the turn to end', () => {
   let tripwire: ReturnType<typeof watchConsole>
   let sessionEvents: SessionEvent[]
   let sidecarDir: string | undefined
+  let turnCompletion: Promise<{ kind: 'completed' } | { kind: 'failed'; error: unknown }> | undefined
 
   afterEach(async () => {
     // close() carries the fixture-consumption tripwire, so its failure is the
     // scenario's failure; run every teardown step, then rethrow what failed.
     const failures: unknown[] = []
+    const closing = scaffold
+    if (closing !== undefined && turnCompletion !== undefined) {
+      for (const agent of closing.ctx.agents.list()) {
+        if (agent.status !== 'idle') agent.cancel({ kind: 'user' })
+        await agent.whenIdle().catch((error: unknown) => failures.push(error))
+      }
+      const outcome = await turnCompletion
+      if (outcome.kind === 'failed') failures.push(outcome.error)
+      turnCompletion = undefined
+    }
     await browser?.close().catch((error: unknown) => failures.push(error))
     browser = undefined
-    const closing = scaffold
     scaffold = undefined
     await closing?.close().catch((error: unknown) => failures.push(error))
     if (sidecarDir !== undefined) await rm(sidecarDir, { recursive: true, force: true }).catch((error: unknown) => failures.push(error))
@@ -93,13 +103,24 @@ describe('web e2e: assistant IconActions wait for the turn to end', () => {
     await connectFreshWorkspace(page, scaffold.workspaceCwd)
   }
 
+  async function captureContextAria(completed = false): Promise<string> {
+    await page.getByRole('button', { name: `Locate ${PROMPT} in Context Map`, exact: true }).waitFor()
+    if (completed) await page.getByRole('button', { name: 'Locate DONE in Context Map', exact: true }).waitFor()
+    return await captureStableAria(page, '[class*="centerCol"]', scaffold!.workspaceCwd)
+  }
+
   /** Send the recorded prompt with the settled barrier pre-armed (returned wrapped so the caller can act mid-turn). */
   async function sendPrompt(timeoutMs?: number): Promise<{ settled: ReturnType<WebScaffold['whenTurnSettled']> }> {
     const input = page.locator('[data-composer-input]').first()
     await input.waitFor({ timeout: 10_000 })
     const settled = scaffold!.whenTurnSettled(timeoutMs)
+    turnCompletion = settled.then(() => ({ kind: 'completed' as const }),
+      (error: unknown) => ({ kind: 'failed' as const, error }))
     await input.fill(PROMPT)
     await input.press('Enter')
+    await page.getByRole('button', { name: `Locate ${PROMPT} in Context Map`, exact: true }).waitFor()
+    await restoreFullWidthChat(page)
+    await page.mouse.move(0, 0)
     return { settled }
   }
 
@@ -149,7 +170,7 @@ describe('web e2e: assistant IconActions wait for the turn to end', () => {
     await expect.poll(() => copyButtons.count(), { timeout: 10_000 }).toBe(1)
     expect(await page.getByRole('button', { name: 'Branch into a new conversation' }).count()).toBe(0)
     await copyButtons.first().focus()
-    const running = await captureStableAria(page, '[class*="centerCol"]', scaffold!.workspaceCwd)
+    const running = await captureContextAria()
     await compareOrRefreshGolden(RUNNING_EXPECTED, running, MODE)
 
     // Closing the turn from the park is the state change under test: an
@@ -162,7 +183,7 @@ describe('web e2e: assistant IconActions wait for the turn to end', () => {
     await expect.poll(() => copyButtons.count(), { timeout: 10_000 }).toBe(2)
     await expect.poll(() => page.locator('[data-streaming="true"]').count(), { timeout: 10_000 }).toBe(0)
     await copyButtons.last().focus()
-    const settledAria = await captureStableAria(page, '[class*="centerCol"]', scaffold!.workspaceCwd)
+    const settledAria = await captureContextAria()
     await compareOrRefreshGolden(SETTLED_EXPECTED, settledAria, MODE)
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])
@@ -174,6 +195,7 @@ describe('web e2e: assistant IconActions wait for the turn to end', () => {
     const { settled } = await sendPrompt(120_000)
     await settled
 
+    await page.getByRole('button', { name: 'Locate DONE in Context Map', exact: true }).waitFor()
     const trigger = page.getByRole('button', { name: /Usage 15\.8K tok/ })
     await expect.poll(() => trigger.count(), { timeout: 10_000 }).toBe(1)
     expect(await trigger.getAttribute('aria-expanded')).toBe('false')
@@ -206,7 +228,7 @@ describe('web e2e: assistant IconActions wait for the turn to end', () => {
     await page.keyboard.press('Escape')
     await trigger.click()
 
-    const expanded = await captureStableAria(page, '[class*="centerCol"]', scaffold!.workspaceCwd)
+    const expanded = await captureContextAria(true)
     await compareOrRefreshGolden(USAGE_EXPANDED_EXPECTED, expanded, MODE)
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])
@@ -228,7 +250,7 @@ describe('web e2e: assistant IconActions wait for the turn to end', () => {
       element.closest<HTMLElement>('[data-chat-flow-kind="assistant-step"]')?.getBoundingClientRect().top)
     expect(answerTop).toBe((processBottom ?? 0) + 8)
     await process.focus()
-    const completed = await captureStableAria(page, '[class*="centerCol"]', scaffold!.workspaceCwd)
+    const completed = await captureContextAria(true)
     await compareOrRefreshGolden(COMPLETED_EXPECTED, completed, MODE)
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])
@@ -282,7 +304,7 @@ describe('web e2e: assistant IconActions wait for the turn to end', () => {
     await expect.poll(() => process.count(), { timeout: 10_000 }).toBe(1)
     expect(await process.getAttribute('aria-expanded')).toBe('true')
     expect(await tool.evaluate(element => element.ownerDocument.activeElement === element)).toBe(true)
-    const focused = await captureStableAria(page, '[class*="centerCol"]', scaffold!.workspaceCwd)
+    const focused = await captureContextAria(true)
     await compareOrRefreshGolden(FOCUSED_EXPECTED, focused, MODE)
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])

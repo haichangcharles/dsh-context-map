@@ -778,9 +778,41 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'Family metadata, all edges, and the requested canonical node page.',
       },
       {
-        signature: '@Remote(\'recommend\') async recommend( agent: Agent, base: ContextRecommendationBase, objective?: string, mode?: ContextRecommendationMode, ): Promise<ContextRecommendationProposal>',
-        description: 'Analyze one exact graph snapshot in manually selected Fast or Deep mode.',
-        parameters: [{ name: 'agent', description: 'Live idle Agent whose route and native Session family are reviewed.' }, { name: 'base', description: 'Expected plan revision, graph watermark, and active Session identity.' }, { name: 'objective', description: 'Optional review objective; the latest user input is the fallback.' }, { name: 'mode', description: 'Fast bounded classifier (default) or isolated full-tree Harness child.' }],
+        signature: '@Remote(\'setWorkState\') async setWorkState( agent: Agent, targetSessionId: SessionId, state: \'open\' | \'parked\' | \'completed\', expectedGraphRevision: string, uiOrigin?: \'contextify-client\', ): Promise<void>',
+        description: 'Record a reviewed task lifecycle choice without altering the Context Plan.',
+        parameters: [{ name: 'agent', description: 'Live Agent whose Session owns the choice.' }, { name: 'targetSessionId', description: 'Native family Session whose work state changes.' }, { name: 'state', description: 'Explicitly reviewed task lifecycle state.' }, { name: 'expectedGraphRevision', description: 'Family revision shown when the choice was made.' }, { name: 'uiOrigin', description: 'Client-declared action source, not authenticated identity.' }],
+      },
+      {
+        signature: '@Remote(\'stewardProfile\') async stewardProfile(agent: Agent): Promise<ContextStewardProfile>',
+        description: 'Project confirmed Context-management choices across this DSH Profile\'s Sessions. The returned policy changes proposal thresholds only; it cannot authorize mutation.',
+        parameters: [{ name: 'agent', description: 'Live Agent selecting the native Session family.' }],
+        returns: 'A compact, inspectable policy with support counts per action.',
+      },
+      {
+        signature: '@Remote(\'policyEvidence\') async policyEvidence(agent: Agent): Promise<readonly ContextPolicyObservation[]>',
+        description: 'Inspect recent explicit policy evidence without mutating the Profile.',
+        parameters: [{ name: 'agent', description: 'Live Agent selecting the Profile and native Session family.' }],
+        returns: 'At most forty current observations with owned Session event references.',
+      },
+      {
+        signature: '@Remote(\'resetPolicy\') async resetPolicy(agent: Agent, uiOrigin?: \'contextify-client\'): Promise<void>',
+        description: 'Reset learned preferences at exact owned event cursors, retaining logs and Plans.',
+        parameters: [{ name: 'agent', description: 'Live idle Agent whose Session records the Profile reset.' }, { name: 'uiOrigin', description: 'Explicit Client reset action source.' }],
+      },
+      {
+        signature: '@Remote(\'reviewWorkState\') async reviewWorkState(agent: Agent, proposal: ContextRecommendationProposal, sessionId: SessionId, choice: \'accept\' | \'reject\', uiOrigin?: \'contextify-client\'): Promise<void>',
+        description: 'Review one exact pending task lifecycle proposal independently of Context selection.',
+        parameters: [{ name: 'agent', description: 'Live idle Agent owning the reviewed proposal.' }, { name: 'proposal', description: 'Exact currently pending recommendation.' }, { name: 'sessionId', description: 'Proposed native task branch.' }, { name: 'choice', description: 'Explicit acceptance or rejection.' }, { name: 'uiOrigin', description: 'Client action source.' }],
+      },
+      {
+        signature: '@Remote(\'recordManualRoute\') async recordManualRoute(agent: Agent, targetSessionId: SessionId, actionId: string, expectedGraphRevision: string, uiOrigin?: \'contextify-client\', objective?: string): Promise<void>',
+        description: 'Record a successful explicit draft transfer to a native family branch.',
+        parameters: [{ name: 'agent', description: 'Live source Agent whose draft was transferred.' }, { name: 'targetSessionId', description: 'Native destination in the same family.' }, { name: 'actionId', description: 'Unique Client transfer identifier used for idempotence.' }, { name: 'expectedGraphRevision', description: 'Frozen family revision preceding transfer.' }, { name: 'uiOrigin', description: 'Explicit Client action source; passive Locate does not call this method.' }, { name: 'objective', description: 'Transferred draft text.' }],
+      },
+      {
+        signature: '@Remote(\'recommend\') async recommend( agent: Agent, base: ContextRecommendationBase, objective?: string, mode?: ContextRecommendationMode, draftBound?: boolean, ): Promise<ContextRecommendationProposal>',
+        description: 'Analyze one exact graph snapshot in manually selected Local, Fast, or Deep mode.',
+        parameters: [{ name: 'agent', description: 'Live idle Agent whose route and native Session family are reviewed.' }, { name: 'base', description: 'Expected plan revision, graph watermark, and active Session identity.' }, { name: 'objective', description: 'Optional review objective; the latest user input is the fallback.' }, { name: 'mode', description: 'Local policy (default), bounded Fast classifier, or full-tree Harness child.' }, { name: 'draftBound', description: 'True only when the Client reviewed its current unsent composer draft.' }],
         returns: 'An ephemeral, validated proposal that has not mutated the Context Plan.',
       },
       {
@@ -789,21 +821,51 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'agent', description: 'Live Agent identifying the family whose review is cancelled.' }],
       },
       {
+        signature: '@Remote(\'presentRecommendation\') async presentRecommendation(agent: Agent, proposal: ContextRecommendationProposal, uiOrigin?: \'contextify-client\'): Promise<void>',
+        description: 'Record one visible Client rendering of the exact current review, at most once per proposal. This is an impression signal, not a user\'s preference or proof of attention.',
+        parameters: [{ name: 'agent', description: 'Live Agent whose Session owns the pending proposal.' }, { name: 'proposal', description: 'Exact proposal rendered by the Client.' }, { name: 'uiOrigin', description: 'Optional Client-declared source of the render.' }],
+      },
+      {
+        signature: '@Remote(\'reviewRoute\') async reviewRoute( agent: Agent, route: ContextRouteAdvice, choice: \'accept\' | \'reject\', actualTargetSessionId?: SessionId, uiOrigin?: \'contextify-client\', ): Promise<void>',
+        description: 'Record a reviewed route after its native draft transfer succeeds, or a Stay choice.',
+        parameters: [{ name: 'agent', description: 'Live Agent that owns the pending route card.' }, { name: 'route', description: 'Exact revision-bound route card returned by Fast review.' }, { name: 'choice', description: 'Explicit acceptance or rejection of that card.' }, { name: 'actualTargetSessionId', description: 'Native destination after an accepted transfer.' }, { name: 'uiOrigin', description: 'Marks a Client review without claiming authenticated identity.' }],
+      },
+      {
+        signature: '@Remote(\'recordManualBranch\') async recordManualBranch( agent: Agent, childSessionId: SessionId, uiOrigin?: \'contextify-client\', objective?: string, ): Promise<void>',
+        description: 'Record one completed manual Context Map fork as a positive Branch choice.',
+        parameters: [{ name: 'agent', description: 'Live Agent whose family contains the fork.' }, { name: 'childSessionId', description: 'Native child created by the manual fork.' }, { name: 'uiOrigin', description: 'Marks a Client action without claiming authenticated identity.' }, { name: 'objective', description: 'Draft that was transferred into the child after the fork.' }],
+      },
+      {
+        signature: '@Remote(\'dismissRecommendation\') async dismissRecommendation(agent: Agent, proposal: ContextRecommendationProposal, uiOrigin?: \'contextify-client\', declinedNodeIds?: readonly string[]): Promise<void>',
+        description: 'Log an explicit dismissal of the exact current review without changing Context selection. A stale review is consumed without a preference event.',
+        parameters: [{ name: 'agent', description: 'Live Agent whose Session owns the pending proposal.' }, { name: 'proposal', description: 'Exact reviewed proposal shown by the Client.' }, { name: 'uiOrigin', description: 'Optional Client-declared source of the dismissal.' }, { name: 'declinedNodeIds', description: 'Items explicitly kept current before the sheet closed.' }],
+      },
+      {
+        signature: 'requestExplicitBranch(agent: Agent, reason: string): void',
+        description: 'Convert one explicit model tool call into a post-Turn user confirmation.',
+        parameters: [{ name: 'agent', description: 'Live Agent whose direct human Turn owns the request.' }, { name: 'reason', description: 'Short explanation displayed in the user confirmation.' }],
+      },
+      {
         signature: '@Remote(\'prepareBranchSuggestion\') prepareBranchSuggestion(agent: Agent, suggestionId: string): ContextBranchRelocationPreparation',
         description: 'Validate a suggestion and return the exact native Host fork boundary.',
         parameters: [{ name: 'agent', description: 'Live idle Agent whose source Session owns the reviewed Turn.' }, { name: 'suggestionId', description: 'Durable suggestion identity returned by `get`.' }],
         returns: 'The source Session and stable Turn start for native Host before-Turn fork.',
       },
       {
-        signature: '@Remote(\'setNodeMode\') async setNodeMode( agent: Agent, ref: ContextPlanRef, node: ContextMessageRef, mode: \'natural\' | \'include\' | \'exclude\', ): Promise<ContextifyView>',
+        signature: '@Remote(\'keepBranchSuggestion\') keepBranchSuggestion(agent: Agent, suggestionId: string, uiOrigin?: \'contextify-client\'): void',
+        description: 'Record the user\'s explicit choice to keep one reviewed Q&A in this Branch.',
+        parameters: [{ name: 'agent', description: 'Live idle Agent whose Session owns the suggestion.' }, { name: 'suggestionId', description: 'Suggestion identity returned by `get`.' }, { name: 'uiOrigin', description: 'Optional Client-declared origin for the visible Keep action.' }],
+      },
+      {
+        signature: '@Remote(\'setNodeMode\') async setNodeMode( agent: Agent, ref: ContextPlanRef, node: ContextMessageRef, mode: \'natural\' | \'include\' | \'exclude\', uiOrigin?: \'contextify-client\', ): Promise<ContextifyView>',
         description: 'Set or clear one message\'s explicit context mode.',
-        parameters: [{ name: 'agent', description: 'Live Agent whose Session receives durable events.' }, { name: 'ref', description: 'Expected current plan revision.' }, { name: 'node', description: 'Message location in one Session in the active family.' }, { name: 'mode', description: 'Natural behavior or the meaningful on-path/off-path override.' }],
+        parameters: [{ name: 'agent', description: 'Live Agent whose Session receives durable events.' }, { name: 'ref', description: 'Expected current plan revision.' }, { name: 'node', description: 'Message location in one Session in the active family.' }, { name: 'mode', description: 'Natural behavior or the meaningful on-path/off-path override.' }, { name: 'uiOrigin', description: 'Optional Client-declared origin for a visible node action.' }],
         returns: 'The view after the mutation commits.',
       },
       {
-        signature: '@Remote(\'setNodeModes\') async setNodeModes( agent: Agent, ref: ContextPlanRef, mutations: readonly ContextNodeMutation[], expectedGraphRevision?: string, ): Promise<ContextifyView>',
+        signature: '@Remote(\'setNodeModes\') async setNodeModes( agent: Agent, ref: ContextPlanRef, mutations: readonly ContextNodeMutation[], expectedGraphRevision?: string, uiOrigin?: \'contextify-client\', reviewedDeclinedNodeIds?: readonly string[], ): Promise<ContextifyView>',
         description: 'Apply several node-mode changes as one Context Plan revision.',
-        parameters: [{ name: 'agent', description: 'Live Agent whose Session receives durable events.' }, { name: 'ref', description: 'Expected current plan revision.' }, { name: 'mutations', description: 'Ordered message-mode replacements.' }, { name: 'expectedGraphRevision', description: 'Optional family revision required by recommendation acceptance.' }],
+        parameters: [{ name: 'agent', description: 'Live Agent whose Session receives durable events.' }, { name: 'ref', description: 'Expected current plan revision.' }, { name: 'mutations', description: 'Ordered message-mode replacements.' }, { name: 'expectedGraphRevision', description: 'Optional family revision required by recommendation acceptance.' }, { name: 'uiOrigin', description: 'Optional Client-declared origin for a visible plan action.' }, { name: 'reviewedDeclinedNodeIds', description: 'Explicit Keep-current choices within the reviewed proposal.' }],
         returns: 'The view after one complete plan commits.',
       },
       {
@@ -813,9 +875,21 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'The committed v3 Contextify view.',
       },
       {
-        signature: '@Remote(\'acceptBranchSuggestion\') async acceptBranchSuggestion( agent: Agent, suggestionId: string, childSessionId: SessionId, ): Promise<ContextBranchRelocationResult>',
+        signature: '@Remote(\'focusNodeExcerpt\') async focusNodeExcerpt( agent: Agent, ref: ContextPlanRef, nodeRef: ContextMessageRef, start: number, end: number, reason: string, uiOrigin?: \'contextify-client\', ): Promise<ContextifyView>',
+        description: 'Keep one exact, user-reviewed span of a mixed chat message in future requests. The source message and graph node remain intact for inspection and Undo.',
+        parameters: [{ name: 'agent', description: 'Live idle Agent owning the active Context Plan.' }, { name: 'ref', description: 'Expected current plan revision.' }, { name: 'nodeRef', description: 'Active chat message to focus.' }, { name: 'start', description: 'Inclusive Unicode code-point offset into its sole text block.' }, { name: 'end', description: 'Exclusive Unicode code-point offset into its sole text block.' }, { name: 'reason', description: 'Human-readable purpose of the focus operation.' }, { name: 'uiOrigin', description: 'Optional declaration that the shipped Client confirmed this action.' }],
+        returns: 'The committed view containing the exact source-bound excerpt.',
+      },
+      {
+        signature: '@Remote(\'getNodeText\') async getNodeText(agent: Agent, nodeRef: ContextMessageRef): Promise<string>',
+        description: 'Return one active plain-text chat message for exact-span review in the Client.',
+        parameters: [{ name: 'agent', description: 'Live Agent selecting the current Session family.' }, { name: 'nodeRef', description: 'Native message location to inspect.' }],
+        returns: 'The exact plain-text source message.',
+      },
+      {
+        signature: '@Remote(\'acceptBranchSuggestion\') async acceptBranchSuggestion( agent: Agent, suggestionId: string, childSessionId: SessionId, uiOrigin?: \'contextify-client\', ): Promise<ContextBranchRelocationResult>',
         description: 'Move one suggested completed Q&A into a deterministic native child Branch.',
-        parameters: [{ name: 'agent', description: 'Live idle Agent whose source Session owns the reviewed Turn.' }, { name: 'suggestionId', description: 'Durable suggestion identity returned by `get`.' }, { name: 'childSessionId', description: 'Native Agent-backed child created from the prepared boundary.' }],
+        parameters: [{ name: 'agent', description: 'Live idle Agent whose source Session owns the reviewed Turn.' }, { name: 'suggestionId', description: 'Durable suggestion identity returned by `get`.' }, { name: 'childSessionId', description: 'Native Agent-backed child created from the prepared boundary.' }, { name: 'uiOrigin', description: 'Optional Client-declared origin for the visible Move action.' }],
         returns: 'The native child Session created by, or recovered for, this relocation.',
       },
       {
@@ -841,6 +915,19 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Restore the next Context Plan state as a new durable revision.',
         parameters: [{ name: 'agent', description: 'Live Agent whose plan changes.' }, { name: 'ref', description: 'Expected current plan revision.' }],
         returns: 'The committed next-state view.',
+      },
+    ],
+  },
+  {
+    key: 'contextifyRevisionLineage',
+    summary: 'Mount after Contextify to enforce recorded dependencies at parent pre-step.',
+    description: 'Mount after Contextify to enforce recorded dependencies at parent pre-step. A Contextify Session is upgraded before its first request only if its previous assistant messages already have read sets. Legacy Sessions keep ordinary Contextify selection rather than claiming retrospective lineage.',
+    methods: [
+      {
+        signature: 'quarantinedFor(sessionId: SessionId): readonly UserMessage[]',
+        description: 'Rejected late reports retained in memory for inspection, not auto-replay.',
+        parameters: [{ name: 'sessionId', description: 'Native Session that received the reports.' }],
+        returns: 'A copy of its current quarantined reports.',
       },
     ],
   },
@@ -2745,7 +2832,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'guard(guard: ToolGuard): () => void',
-        description: 'Register a monotonic guard after the extensible `tools/pre-execute` waterfall. A plain-context guard applies globally; one registered through `agent.ctx` applies only to that agent. Any matching guard may deny by returning a reason, while no guard can force-allow a call another guard denied. The exact effect disposer is returned for ordered ownership and HMR cleanup.',
+        description: 'Register a monotonic guard after the extensible `tools/pre-execute` waterfall and again immediately before the tool body starts. A guard must tolerate repeated evaluation. A plain-context guard applies globally; one registered through `agent.ctx` applies only to that agent. Any matching guard may deny by returning a reason, while no guard can force-allow a call another guard denied. The exact effect disposer is returned for ordered ownership and HMR cleanup.',
         parameters: [{ name: 'guard', description: 'synchronous check; a returned string denies the execution.' }],
         returns: 'the exact disposer that unregisters the guard.',
       },
@@ -4085,7 +4172,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContextFamilyGraphNode',
-    declaration: 'export interface ContextFamilyGraphNode {\n    readonly id: string;\n    readonly owner: ContextMessageRef;\n    readonly role: \'user\' | \'assistant\';\n    readonly preview: string;\n    readonly time: number;\n    readonly branchAtSeq: number | null;\n    readonly sessionIds: readonly SessionId[];\n    readonly activeEventSeq: number | null;\n    readonly replacement?: ContextReplacementView;\n}',
+    declaration: 'export interface ContextFamilyGraphNode {\n    readonly id: string;\n    readonly owner: ContextMessageRef;\n    readonly role: \'user\' | \'assistant\' | \'tool\';\n    readonly sourceKind?: \'chat\' | \'web\' | \'worker\';\n    readonly webAction?: \'web_search\' | \'web_fetch\';\n    readonly preview: string;\n    readonly time: number;\n    readonly branchAtSeq: number | null;\n    readonly sessionIds: readonly SessionId[];\n    readonly activeEventSeq: number | null;\n    readonly replacement?: ContextReplacementView;\n}',
   },
   {
     name: 'ContextFamilyGraphPage',
@@ -4093,7 +4180,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContextFamilySession',
-    declaration: 'export interface ContextFamilySession {\n    readonly id: SessionId;\n    readonly parentSessionId?: SessionId;\n    readonly seedLength: number;\n    readonly depth: number;\n    readonly tipNodeId: string | null;\n}',
+    declaration: 'export interface ContextFamilySession {\n    readonly id: SessionId;\n    readonly parentSessionId?: SessionId;\n    readonly seedLength: number;\n    readonly depth: number;\n    readonly tipNodeId: string | null;\n    readonly workState?: \'open\' | \'parked\' | \'completed\';\n    readonly workStateSource?: \'derived\' | \'explicit\';\n}',
   },
   {
     name: 'ContextFormed',
@@ -4124,24 +4211,44 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ContextPlanSnapshot {\n    readonly kind: \'contextify/plan\';\n    readonly version: 3;\n    readonly revision: number;\n    readonly stateRevision: number;\n    readonly history: {\n        readonly past: readonly number[];\n        readonly future: readonly number[];\n    };\n    readonly excluded: readonly ContextExcludedNode[];\n    readonly included: readonly ContextIncludedNode[];\n    readonly replacements: readonly ContextReplacementNode[];\n}',
   },
   {
+    name: 'ContextPolicyAction',
+    declaration: 'export type ContextPolicyAction = \'include\' | \'navigate\' | \'branch\' | \'return\' | \'release\' | \'park\' | \'complete\' | \'reopen\';',
+  },
+  {
+    name: 'ContextPolicyEstimate',
+    declaration: 'export interface ContextPolicyEstimate {\n    readonly acceptRate: number;\n    readonly support: number;\n}',
+  },
+  {
+    name: 'ContextPolicyObservation',
+    declaration: 'export interface ContextPolicyObservation {\n    readonly sourceSessionId?: SessionId;\n    readonly sourceEventSeq?: number;\n    readonly action: ContextPolicyAction;\n    readonly choice: \'accept\' | \'reject\';\n    readonly origin: \'explicit-review\' | \'manual-action\';\n    readonly objective?: string;\n    readonly targetNodeId?: string;\n    readonly targetSessionId?: SessionId;\n    readonly displayedIndex?: number;\n    readonly onActiveBranch?: boolean;\n    readonly activity?: \'planning\' | \'writing\' | \'brainstorming\' | \'other\';\n    readonly sourceKind?: \'chat\' | \'web\' | \'worker\';\n    readonly branchDepth: number;\n    readonly at: number;\n    readonly weight?: number;\n    readonly undone?: boolean;\n}',
+  },
+  {
+    name: 'ContextPolicyRule',
+    declaration: 'export interface ContextPolicyRule extends ContextPolicyEstimate {\n    readonly action: ContextPolicyAction;\n    readonly sourceKind?: ContextPolicyObservation[\'sourceKind\'];\n    readonly activity?: ContextPolicyObservation[\'activity\'];\n    readonly tendency: \'favor\' | \'avoid\';\n}',
+  },
+  {
     name: 'ContextRecommendationBase',
     declaration: 'export interface ContextRecommendationBase {\n    readonly planRevision: number;\n    readonly graphRevision: string;\n    readonly activeSessionId: SessionId;\n}',
   },
   {
     name: 'ContextRecommendationMode',
-    declaration: 'export type ContextRecommendationMode = \'fast\' | \'deep\';',
+    declaration: 'export type ContextRecommendationMode = \'local\' | \'fast\' | \'deep\';',
   },
   {
     name: 'ContextRecommendationProposal',
-    declaration: 'export interface ContextRecommendationProposal {\n    readonly mode: ContextRecommendationMode;\n    readonly base: ContextRecommendationBase;\n    readonly currentNodeIds: readonly string[];\n    readonly proposedNodeIds: readonly string[];\n    readonly addedNodeIds: readonly string[];\n    readonly removedNodeIds: readonly string[];\n    readonly selection: readonly ContextSelectionRecommendation[];\n    readonly archive: readonly ContextArchiveCandidate[];\n}',
+    declaration: 'export interface ContextRecommendationProposal {\n    readonly mode: ContextRecommendationMode;\n    readonly base: ContextRecommendationBase;\n    readonly currentNodeIds: readonly string[];\n    readonly proposedNodeIds: readonly string[];\n    readonly addedNodeIds: readonly string[];\n    readonly removedNodeIds: readonly string[];\n    readonly selection: readonly ContextSelectionRecommendation[];\n    readonly archive: readonly ContextArchiveCandidate[];\n    readonly route?: ContextRouteAdvice;\n    readonly workStates?: readonly ContextWorkStateAdvice[];\n}',
   },
   {
     name: 'ContextReplacementNode',
-    declaration: 'export interface ContextReplacementNode {\n    readonly nodeId: string;\n    readonly snapshotSeq: number;\n    readonly originalEventSeq: number | null;\n    readonly role: \'user\' | \'assistant\';\n    readonly kind: \'placeholder\';\n    readonly reason: string;\n}',
+    declaration: 'export type ContextReplacementNode = (ContextReplacementBase & {\n    readonly kind: \'placeholder\';\n}) | (ContextReplacementBase & {\n    readonly kind: \'excerpt\';\n    readonly start: number;\n    readonly end: number;\n});',
   },
   {
     name: 'ContextReplacementView',
-    declaration: 'export interface ContextReplacementView {\n    readonly preview: string;\n    readonly original: string;\n    readonly reason: string;\n    readonly role: \'user\' | \'assistant\';\n    readonly originalAvailable: true;\n}',
+    declaration: 'export interface ContextReplacementView {\n    readonly kind: \'placeholder\' | \'excerpt\';\n    readonly preview: string;\n    readonly original: string;\n    readonly reason: string;\n    readonly role: \'user\' | \'assistant\';\n    readonly originalAvailable: true;\n}',
+  },
+  {
+    name: 'ContextRouteAdvice',
+    declaration: 'export interface ContextRouteAdvice {\n    readonly action: \'navigate\' | \'branch\' | \'return\';\n    readonly base: ContextRecommendationBase;\n    readonly objective: string;\n    readonly targetSessionId?: SessionId;\n    readonly reason: string;\n}',
   },
   {
     name: 'ContextSelection',
@@ -4154,6 +4261,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ContextSnapshotSection',
     declaration: 'export interface ContextSnapshotSection {\n    readonly name: string;\n    readonly text: string;\n}',
+  },
+  {
+    name: 'ContextStewardProfile',
+    declaration: 'export interface ContextStewardProfile {\n    readonly evidence: ContextPolicyEstimate;\n    readonly destination: ContextPolicyEstimate;\n    readonly branch: ContextPolicyEstimate;\n    readonly return: ContextPolicyEstimate;\n    readonly release: ContextPolicyEstimate;\n    readonly thresholds: {\n        readonly evidence: number;\n        readonly destination: number;\n    };\n    readonly rules: readonly ContextPolicyRule[];\n}',
+  },
+  {
+    name: 'ContextWorkStateAdvice',
+    declaration: 'export interface ContextWorkStateAdvice {\n    readonly sessionId: SessionId;\n    readonly state: \'open\' | \'parked\' | \'completed\';\n    readonly reason: string;\n}',
   },
   {
     name: 'ContinuableCreateRequest',
@@ -6065,7 +6180,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SubprocessTerminalForeground',
-    declaration: 'export interface SubprocessTerminalForeground {\n    processGroupId: number;\n    inputWaiting: boolean;\n}',
+    declaration: 'export interface SubprocessTerminalForeground {\n    processGroupId: number;\n    inputWaiting: boolean;\n    stdinWaitSupported?: boolean;\n}',
   },
   {
     name: 'SubprocessTerminalHandle',

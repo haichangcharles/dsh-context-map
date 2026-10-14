@@ -16,7 +16,7 @@ import {
   compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, recordFixture, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
+import { restoreFullWidthChat, connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/steering', import.meta.url))
 const FIXTURE = join(SNAPSHOT_DIR, 'session.v3.jsonl')
@@ -134,6 +134,7 @@ describe('web e2e: mid-turn steering lands durably and visibly', () => {
       expect(await page.getByText(STEER, { exact: true }).count()).toBe(1)
       expect(await pendingSteering.count()).toBe(1)
       expect(await page.getByRole('button', { name: 'Edit queued message' }).count()).toBe(0)
+      await restoreFullWidthChat(page)
       const snapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd)
       await compareOrRefreshGolden(MID_EXPECTED, snapshot, MODE)
     }
@@ -170,10 +171,20 @@ describe('web e2e: mid-turn steering lands durably and visibly', () => {
     expect(await pendingSteering.count()).toBe(0)
     await expect.poll(() => page.getByText('BANANA', { exact: false }).count(), { timeout: 10_000 }).toBeGreaterThanOrEqual(2)
     expect(await page.locator('[data-question-key]').count()).toBe(0)
+    // Host completion precedes the graph poll: wait for the final native reply's own controls.
+    for (const mode of ['natural', 'include', 'exclude']) {
+      await page.getByRole('button', { name: `${mode} context for Great, let's move forward. BANANA!`, exact: true })
+        .waitFor({ state: 'attached', timeout: 15_000 })
+    }
+    expect(await page.getByRole('button', { name: "Locate Great, let's move forward. BANANA! in Context Map", exact: true }).count()).toBe(1)
     // Settled golden: steer text between the question round trip and the
     // obeying reply, composer takeover gone.
+    await restoreFullWidthChat(page)
+    await page.mouse.move(0, 0)
+    await page.getByRole('tooltip', { name: 'Open sidebar', exact: true }).waitFor({ state: 'hidden' })
     const snapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(SETTLED_EXPECTED, snapshot, MODE)
+    await restoreFullWidthChat(page)
     const expanded = await captureExpandedTurnProcessAria(
       page,
       '[class*="centerCol"]',
@@ -398,6 +409,7 @@ describe('web e2e: empty-draft Cmd+Enter steers the whole queue', () => {
     // for the block to settle so the mid snapshot does not race its transient
     // visually-hidden Running label while the question keeps the turn open.
     await page.locator('[data-variant="think"][data-state="ok"]').first().waitFor({ timeout: 10_000 })
+    await restoreFullWidthChat(page)
     const mid = await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(STEER_ALL_MID, mid, MODE)
 
@@ -418,8 +430,17 @@ describe('web e2e: empty-draft Cmd+Enter steers the whole queue', () => {
     await expect.poll(() => page.getByText(STEER_ONE, { exact: true }).count(), { timeout: 15_000 }).toBe(1)
     await expect.poll(() => page.getByText(STEER_TWO, { exact: true }).count(), { timeout: 15_000 }).toBe(1)
     expect(await page.locator('[data-pending-steering]').count()).toBe(0)
+    // Chat completion precedes the next Context graph poll; observe the final
+    // message's own controls rather than capture only an earlier publication.
+    for (const mode of ['natural', 'include', 'exclude']) {
+      await page.getByRole('button', { name: `${mode} context for Got it: BANANA and ORANGE.`, exact: true })
+        .waitFor({ state: 'attached', timeout: 15_000 })
+    }
+    expect(await page.getByRole('button', { name: 'Locate Got it: BANANA and ORANGE. in Context Map', exact: true }).count()).toBe(1)
+    await restoreFullWidthChat(page)
     const snapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(STEER_ALL_SETTLED, snapshot, MODE)
+    await restoreFullWidthChat(page)
     const expanded = await captureExpandedTurnProcessAria(
       page,
       '[class*="centerCol"]',

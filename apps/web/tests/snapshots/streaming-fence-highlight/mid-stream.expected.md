@@ -17,6 +17,10 @@
 - text: Stream one TypeScript fence for the highlighting snapshot. {{clock}}
 - button "Copy":
   - img
+- button "natural context for Stream one TypeScript fence for the highlighting snapshot." [disabled]: Auto
+- button "include context for Stream one TypeScript fence for the highlighting snapshot.": Use
+- button "exclude context for Stream one TypeScript fence for the highlighting snapshot.": Skip
+- button "Locate Stream one TypeScript fence for the highlighting snapshot. in Context Map": Map
 - button "Context injection @deepseek-ai/dsh-system-prompt":
   - img
   - img

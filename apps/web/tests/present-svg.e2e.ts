@@ -12,7 +12,7 @@ import {
   fixtureUserPrompts, launchWebScaffold, recordFixture, watchConsole,
   webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspaceZh, ZH_BROWSER_LOCALE } from './support.ts'
+import { waitForMessageContextControls, restoreFullWidthChat, connectFreshWorkspaceZh, ZH_BROWSER_LOCALE } from './support.ts'
 
 const DIR = fileURLToPath(new URL('../../../snapshots/web/present-svg', import.meta.url))
 const FIXTURE = join(DIR, 'session.v3.jsonl')
@@ -117,6 +117,8 @@ describe('web e2e: requested SVG is explicitly delivered', () => {
     await assertFinalWorkspaceSnapshot(DIR, cwd)
     await expect.poll(() => page.getByRole('button', { name: `${FILE} 的更多文件操作`, exact: true }).isDisabled()).toBe(true)
     // Delivery owns the transcript; navigation and composer chrome have separate scenarios.
+    await restoreFullWidthChat(page)
+    await waitForMessageContextControls(page, 2, 'zh')
     const aria = await captureExpandedTurnProcessAria(page, '[data-chat-flow]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(join(DIR, 'ui.expected.md'), aria, MODE)
   })

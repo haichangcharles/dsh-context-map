@@ -14,13 +14,14 @@ import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, parseSeedFixture, renderSeedFixture, seedSession, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { newEnglishPage, saveFailureShot } from './support.ts'
+import { expandOwningTurnProcess, newEnglishPage, restoreFullWidthChat, saveFailureShot, writeComposerDraft } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/message-actions', import.meta.url))
 // Borrowed read-only: this scenario needs any settled user+assistant pair, not
 // a new recording (workspace-management / sidebar-scrollbar pattern).
 const SEED = fileURLToPath(new URL('../../../snapshots/web/seeded-history/session.v3.jsonl', import.meta.url))
 const UI_EXPECTED = join(SNAPSHOT_DIR, 'ui.expected.md')
+const DRAFT_REVIEW_EXPECTED = join(SNAPSHOT_DIR, 'draft-review.expected.md')
 const FORK_EXPECTED = join(SNAPSHOT_DIR, 'fork.expected.md')
 const MODE = webSnapshotMode()
 const SEED_ID = 'message-actions-web-e2e'
@@ -179,30 +180,77 @@ describe('web e2e: message IconActions and clocks on settled history', () => {
     const sessionRow = page.locator('[role="treeitem"]').nth(1)
     await sessionRow.waitFor({ timeout: 10_000 })
     await sessionRow.click()
-    await expect.poll(() => page.getByText(MID_TURN_TEXT, { exact: true }).count(), { timeout: 15_000 }).toBe(1)
-    await expect.poll(() => page.getByText('DONE', { exact: true }).count(), { timeout: 15_000 }).toBe(1)
+    await restoreFullWidthChat(page)
+    await expect.poll(() => page.locator('[data-conversation-scroll]').getByText(MID_TURN_TEXT, { exact: true }).count(), { timeout: 15_000 }).toBe(1)
+    await expect.poll(() => page.locator('[data-conversation-scroll]').getByText('DONE', { exact: true }).count(), { timeout: 15_000 }).toBe(1)
     await expect.poll(
       () => page.getByRole('button', { name: 'System prompt', exact: true }).count(),
       { timeout: 10_000 },
     ).toBe(2)
 
     // Focus-reveal the footers (hover:hover keeps them opacity-hidden until
-    // hover/focus-within). Contextify adds native Branch to finalized user
-    // messages; assistant Branch remains enabled only at a completed tail.
+    // hover/focus-within). Assistant Branch remains enabled only at a
+    // completed tail; user-message branching is available in the graph menu.
+    await expandOwningTurnProcess(page, page.locator('[data-conversation-scroll]').getByText(MID_TURN_TEXT, { exact: true }))
     const copyButtons = page.getByRole('button', { name: 'Copy' })
     await expect.poll(() => copyButtons.count(), { timeout: 10_000 }).toBeGreaterThanOrEqual(4)
     await copyButtons.first().focus()
     const branchButtons = page.getByRole('button', { name: 'Branch into a new conversation' })
-    await expect.poll(() => branchButtons.count(), { timeout: 5_000 }).toBe(3)
+    await expect.poll(() => branchButtons.count(), { timeout: 5_000 }).toBe(2)
     await expect.poll(
       () => branchButtons.evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-disabled'))),
       { timeout: 5_000 },
-    ).toEqual(['true', null, null])
+    ).toEqual(['true', null])
     await branchButtons.first().focus()
     await expect.poll(() => page.getByRole('tooltip').textContent(), { timeout: 5_000 })
       .toBe('Available only on the last message of a completed turn')
     await expect.poll(() => page.getByRole('button', { name: 'Edit' }).count(), { timeout: 5_000 }).toBe(0)
+
+    // Verify the third branching affordance at its current user-message venue.
+    await page.locator('[data-conversation-scroll]').getByRole('button', {
+      name: `Locate ${SECOND_PROMPT} in Context Map`, exact: true,
+    }).click()
+    const map = page.getByRole('region', { name: 'Context Map', exact: true })
+    const user = map.getByRole('article', { name: `User message: ${SECOND_PROMPT}`, exact: true })
+    await user.waitFor({ timeout: 15_000 })
+    await user.click({ button: 'right' })
+    await expect.poll(() => map.getByRole('menuitem', { name: 'Branch from Here', exact: true }).isEnabled()).toBe(true)
+    await page.keyboard.press('Escape')
+    await restoreFullWidthChat(page)
   }, 60_000)
+
+  it.skipIf(MODE === 'record')('offers keyless draft-bound Context review before Send', async () => {
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-draft-context-review'))
+    const groupRow = page.locator('[role="treeitem"]').first()
+    await groupRow.waitFor({ timeout: 15_000 })
+    const sessionRow = page.locator('[role="treeitem"]').nth(1)
+    if (await sessionRow.count() === 0) await groupRow.click()
+    await sessionRow.waitFor({ timeout: 10_000 })
+    await sessionRow.click()
+    await restoreFullWidthChat(page)
+    const input = page.locator('[data-composer-input][contenteditable="true"]').last()
+    await input.waitFor({ timeout: 10_000 })
+    await writeComposerDraft(page, input, 'Use the earlier Web evidence for this answer')
+    try {
+      const review = page.getByRole('button', { name: 'Review context for draft' })
+      await review.waitFor({ timeout: 10_000 })
+      const snapshot = await captureStableAria(page, '[data-contextify-draft-review]', scaffold.workspaceCwd)
+      await compareOrRefreshGolden(DRAFT_REVIEW_EXPECTED, snapshot, MODE)
+      expect(await input.innerText()).toBe('Use the earlier Web evidence for this answer')
+      expect(scaffold.ctx.agents.list().every(agent => agent.status !== 'running')).toBe(true)
+    } finally {
+      // Use the editor-owned keyboard deletion path. Playwright fill('') can
+      // leave Lexical's draft intact even after its DOM gesture is acknowledged.
+      // Verify both the edited surface and dependent controls before sharing
+      // this page with the following strict transcript/composer snapshot.
+      await writeComposerDraft(page, input, '')
+      await expect.poll(() => input.textContent(), { timeout: 10_000 }).toBe('')
+      await expect.poll(() => page.getByRole('button', { name: 'Review context for draft', exact: true }).count(),
+        { timeout: 10_000 }).toBe(0)
+      await expect.poll(() => page.getByRole('button', { name: 'Send message', exact: true }).isDisabled(),
+        { timeout: 10_000 }).toBe(true)
+    }
+  })
 
   it.skipIf(MODE === 'record')('matches the conversation aria golden with IconActions and clocks', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-message-actions-aria'))
@@ -211,7 +259,12 @@ describe('web e2e: message IconActions and clocks on settled history', () => {
     await page.getByText(/Cache hit \d+%/u).first().waitFor({ timeout: 10_000 })
     // Keep a footer focused so opacity-hidden actions stay in the a11y tree
     // as an active/focused control during the capture.
-    await page.getByRole('button', { name: 'Copy' }).first().focus()
+    const focusedCopy = page.getByRole('button', { name: 'Copy' }).first()
+    await focusedCopy.focus()
+    // The original golden deliberately includes this tooltip. Programmatic
+    // focus can precede tooltip publication after the keyboard draft gesture.
+    await focusedCopy.hover()
+    await page.getByRole('tooltip', { name: 'Copy', exact: true }).waitFor()
     const snapshot = (await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd))
       .split(SEED_ID).join('{{seededId}}')
     await compareOrRefreshGolden(UI_EXPECTED, snapshot, MODE)
@@ -278,6 +331,6 @@ describe('web e2e: message IconActions and clocks on settled history', () => {
   it.skipIf(MODE === 'record')('issued zero model calls and kept a closed inventory', async () => {
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])
-    await assertFixtureInventory(SNAPSHOT_DIR, ['fork.expected.md', 'ui.expected.md'])
+    await assertFixtureInventory(SNAPSHOT_DIR, ['draft-review.expected.md', 'fork.expected.md', 'ui.expected.md'])
   })
 })
