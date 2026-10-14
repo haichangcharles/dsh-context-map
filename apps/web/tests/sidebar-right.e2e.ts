@@ -153,7 +153,11 @@ async function collapseAutoOpenedMap(page: Page): Promise<Locator> {
   await map.locator('[data-dockkit-tab-close]').click()
   await expect.poll(() => column.locator('[data-sidebar-right-open]').count()).toBe(0)
   await expandOf(page).waitFor({ timeout: 15_000 })
-  expect(await page.locator('[class*="frame"]').first().getAttribute('data-rightbar-collapsed')).toBe('true')
+  const frame = page.locator('[class*="frame"]').first()
+  expect(await frame.getAttribute('data-rightbar-collapsed')).toBe('true')
+  // The state marker precedes the grid-track transition. Geometry must read
+  // one settled layout rather than boxes taken at different animation frames.
+  await frame.evaluate(async (node) => { await Promise.allSettled(node.getAnimations().map(animation => animation.finished)) })
   return column
 }
 

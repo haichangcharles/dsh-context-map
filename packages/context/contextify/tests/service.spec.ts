@@ -4333,4 +4333,82 @@ describe('Contextify public operation boundaries', () => {
     } finally { await history.fiber.dispose(); await ctx.fiber.dispose() }
   })
 
+  it.each([0, 1])('orders equal-time native Branch feedback by Session and event cursor before the real 32-choice window (offset %s)', async (offset) => {
+    const { ctx, start } = await harness()
+    try {
+      // Create the lexically later family first so catalog insertion order cannot
+      // accidentally substitute for the cross-family timestamp tie-break.
+      const later = ctx.sessions.create(SessionId(`zz-window-history-${String(offset)}`))
+      const earlier = ctx.sessions.create(SessionId(`aa-window-history-${String(offset)}`))
+      const at = Date.now()
+      const laterChoiceSeqs: number[] = []
+      let earlierChoiceSeq = -1
+      const clock = vi.spyOn(Date, 'now').mockReturnValue(at)
+      try {
+        for (const [session, count] of [[later, 32], [earlier, 1]] as const) {
+          clock.mockReturnValue(session === earlier ? at + offset : at)
+          appendClosedTurn(session, 0, 'The existing website plan', 'Shared constraints')
+          for (let turn = 1; turn <= count; turn++) {
+            const prior = appendClosedTurn(session, turn, `Compare website stage ${String(turn)}`, 'The stage comparison')
+            const suggestion = { id: `${session.id}-review-${String(turn)}`, sourceSessionId: session.id, turn,
+              boundaryBefore: prior.userSeq - 2, boundaryAfter: prior.boundary,
+              input: { sessionId: session.id, seq: prior.userSeq },
+              output: { sessionId: session.id, seq: prior.boundary - 1 },
+              inputPreview: `Compare website stage ${String(turn)}`, outputPreview: 'The stage comparison',
+              confidence: 0.9, reason: 'A separate completed stage', planRevision: 1, graphRevision: 'native-history' }
+            session.append('contextify/branch-review', { suggestion, turnEndSeq: prior.boundary })
+            // 24 Moves plus 8 Keeps in the 32-choice family. The first Keep is
+            // displaced only when the other family's Move is genuinely newer.
+            const choice = session === earlier || (turn >= 2 && turn <= 25) ? 'move' : 'keep'
+            const event = session.append('contextify/branch-choice', {
+              suggestionId: suggestion.id, choice, turnEndSeq: prior.boundary, uiOrigin: 'contextify-client',
+            })
+            if (session === later) laterChoiceSeqs.push(event.seq)
+            else earlierChoiceSeq = event.seq
+          }
+        }
+      } finally { clock.mockRestore() }
+
+      const current = ctx.sessions.create(SessionId(`mm-window-current-${String(offset)}`))
+      const { agent } = start(current, { provider: 'mock', model: 'mock' })
+      appendClosedTurn(current, 1, 'The current website brief', 'Brief acknowledged')
+      const evidence = await ctx.contextify.policyEvidence(agent)
+      expect(evidence).toHaveLength(33)
+      const laterCursors = laterChoiceSeqs.map(seq => [later.id, seq])
+      const earlierCursor = [earlier.id, earlierChoiceSeq]
+      expect(evidence.map(item => [item.sourceSessionId, item.sourceEventSeq]))
+        .toEqual(expect.arrayContaining([earlierCursor, ...laterCursors]))
+      expect(evidence.filter(item => item.sourceSessionId === later.id).map(item => item.sourceEventSeq))
+        .toEqual(laterChoiceSeqs)
+      expect(evidence.find(item => item.sourceSessionId === earlier.id))
+        .toMatchObject({ sourceSessionId: earlier.id, sourceEventSeq: earlierChoiceSeq, at: at + offset })
+      expect(evidence.map(item => item.at)).toEqual(offset === 0
+        ? Array.from({ length: 33 }, () => at)
+        : [...Array.from({ length: 32 }, () => at), at + 1])
+      expect((await ctx.contextify.stewardProfile(agent)).branch.support).toBe(33)
+
+      await ctx.plugin(ContextTestSettings)
+      await ctx.settings.update('contextify', { automaticBranchReview: true })
+      const adapter = new MockAdapter([textResponse('{"action":"keep","confidence":0.8,"reason":"One planning task"}')])
+      ctx.llm.registerAdapter(['mock'], adapter)
+      const next = appendClosedTurn(current, 2, 'Compare another website stage', 'The next stage comparison')
+      await vi.waitFor(() => {
+        const review = current.snapshotEvents().findLast(event => event.type === 'contextify/branch-review')
+        expect(review?.type === 'contextify/branch-review' && review.data.turnEndSeq).toBe(next.boundary)
+        const suggestion = review?.type === 'contextify/branch-review' ? review.data.suggestion : null
+        if (offset === 0) expect(suggestion).toBe(null)
+        else expect(suggestion).toMatchObject({
+          confidence: 26 / 34,
+          reason: 'You moved most earlier reviewed conversations to new branches; review this placement.',
+        })
+      })
+      const view = ctx.contextify.get(agent)
+      if (offset === 0) expect(view.branchSuggestion).toBeUndefined()
+      else expect(view.branchSuggestion).toMatchObject({ sourceSessionId: current.id, confidence: 26 / 34 })
+      expect(adapter.requests).toHaveLength(1)
+      expect(ctx.sessions.list()).toHaveLength(3)
+      expect(view.plan.replacements).toEqual([])
+    } finally { await ctx.fiber.dispose() }
+  })
+
 })

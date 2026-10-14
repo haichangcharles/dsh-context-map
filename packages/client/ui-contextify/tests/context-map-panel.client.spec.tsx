@@ -1477,6 +1477,9 @@ describe('Context Map recovery and explicit evidence boundaries', () => {
     act(() => { flowHarness.props?.onPaneClick?.(new MouseEvent('click') as unknown as React.MouseEvent) })
     expect(screen.queryByRole('menu')).toBeNull()
     fireEvent.contextMenu(card)
+    // Search/initial fit can start after a right-click; it owns no user gesture.
+    act(() => { flowHarness.props?.onMoveStart?.(null, { x: 0, y: 0, zoom: 1 }) })
+    expect(screen.getByRole('menu')).toBeTruthy()
     act(() => { flowHarness.props?.onMoveStart?.(new MouseEvent('pointerdown'), { x: 0, y: 0, zoom: 1 }) })
     expect(screen.queryByRole('menu')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Selection mode' }))

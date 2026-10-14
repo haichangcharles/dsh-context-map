@@ -26,6 +26,8 @@ kind: "package-reference"
 
 第一批完成测量的 graph 只会 frame 一次。随后每个 React Flow card 会把真实 bounding box 反馈给 Dagre，因此即使 output 很长，下一层也会从上一张 card 的实际底部之后开始。此后的 polling、字体导致的重新测量与普通 graph update 都会保留用户当前的 pan 和 zoom；只有 search/Map focus request 会有意移动 viewport。`Re-layout` 会清除全部手动拖拽位置、恢复确定性的 tree coordinate 并 frame 完整 graph，在画布难以阅读时提供明确的恢复操作。
 
+程序调整 viewport 会保留已打开的节点菜单；真实用户移动、空白处点击与 Escape 会关闭它。这能防止延迟的 search 或初始取景在指针交互期间移除操作。参见[移动归属决策](../../../.agents/notes/implemented/bug-fix/2026-10-14-context-map-move-ownership.zh.md)。
+
 控件、无障碍名称与计数模板使用有类型的 Client locale。切换语言会更新 graph card 的标签，但不会翻译对话正文、Agent 给出的理由或已保存的操作值。graph 刷新会保留 card 的测量尺寸。search 会等待目标完成测量；首次取景后，只有新的 search 或 Map 请求才会移动 viewport，无关 card 的重新测量会保留当前 pan 与 zoom。
 
 沿用独立版画布，节点操作集中在不透明的右键菜单：Locate in Chat、Branch from Here、Archive node、仅在存在 manual override 时显示的 Restore automatic，以及 Archive 后的 Show original/Restore node。Branch 会在消息对应的 completed Turn boundary 调用 Harness 原生 `sessions.fork`，把未变更的待发送草稿及附件转移到空白的 child 输入框，将成功的手动 fork 与转移的有界草稿记为一次 Context 策略选择，然后打开 child Session。如果 fork 期间草稿变更或 child 无法接收草稿，当前 Session 保持选中。Locate 会打开所属原生 Session、切换到 Chat、在需要时加载较早 history，并滚动和高亮准确的持久消息。Batch mode 会在一个 plan revision 中 include、exclude 或恢复多个画布选中节点。Clear manual changes 会移除全部 Include、Exclude 与 Archive overlay，但不会重置 graph layout；Undo 和 Redo 操作持久 plan history。

@@ -14,7 +14,7 @@ import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, parseSeedFixture, renderSeedFixture, seedSession, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { expandOwningTurnProcess, newEnglishPage, restoreFullWidthChat, saveFailureShot } from './support.ts'
+import { expandOwningTurnProcess, newEnglishPage, restoreFullWidthChat, saveFailureShot, writeComposerDraft } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/message-actions', import.meta.url))
 // Borrowed read-only: this scenario needs any settled user+assistant pair, not
@@ -230,7 +230,7 @@ describe('web e2e: message IconActions and clocks on settled history', () => {
     await restoreFullWidthChat(page)
     const input = page.locator('[data-composer-input][contenteditable="true"]').last()
     await input.waitFor({ timeout: 10_000 })
-    await input.fill('Use the earlier Web evidence for this answer')
+    await writeComposerDraft(page, input, 'Use the earlier Web evidence for this answer')
     try {
       const review = page.getByRole('button', { name: 'Review context for draft' })
       await review.waitFor({ timeout: 10_000 })
@@ -239,10 +239,11 @@ describe('web e2e: message IconActions and clocks on settled history', () => {
       expect(await input.innerText()).toBe('Use the earlier Web evidence for this answer')
       expect(scaffold.ctx.agents.list().every(agent => agent.status !== 'running')).toBe(true)
     } finally {
-      await input.fill('')
-      // fill() acknowledges the DOM gesture before the editor/controller may
-      // publish the empty draft. This shared-page test must settle that state
-      // before the following strict transcript/composer snapshot.
+      // Use the editor-owned keyboard deletion path. Playwright fill('') can
+      // leave Lexical's draft intact even after its DOM gesture is acknowledged.
+      // Verify both the edited surface and dependent controls before sharing
+      // this page with the following strict transcript/composer snapshot.
+      await writeComposerDraft(page, input, '')
       await expect.poll(() => input.textContent(), { timeout: 10_000 }).toBe('')
       await expect.poll(() => page.getByRole('button', { name: 'Review context for draft', exact: true }).count(),
         { timeout: 10_000 }).toBe(0)
@@ -258,7 +259,12 @@ describe('web e2e: message IconActions and clocks on settled history', () => {
     await page.getByText(/Cache hit \d+%/u).first().waitFor({ timeout: 10_000 })
     // Keep a footer focused so opacity-hidden actions stay in the a11y tree
     // as an active/focused control during the capture.
-    await page.getByRole('button', { name: 'Copy' }).first().focus()
+    const focusedCopy = page.getByRole('button', { name: 'Copy' }).first()
+    await focusedCopy.focus()
+    // The original golden deliberately includes this tooltip. Programmatic
+    // focus can precede tooltip publication after the keyboard draft gesture.
+    await focusedCopy.hover()
+    await page.getByRole('tooltip', { name: 'Copy', exact: true }).waitFor()
     const snapshot = (await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd))
       .split(SEED_ID).join('{{seededId}}')
     await compareOrRefreshGolden(UI_EXPECTED, snapshot, MODE)

@@ -697,7 +697,10 @@ export function ContextMapPanel({
             }}
             onInit={setInstance}
             onPaneClick={() => { setMenu(null) }}
-            onMoveStart={() => { setMenu(null) }}
+            onMoveStart={(event) => {
+              // A delayed fitView has no pointer owner and must not dismiss node actions.
+              if (event !== null) setMenu(null)
+            }}
             minZoom={0.18}
             maxZoom={1.8}
             nodesDraggable={interactionMode === 'normal'}

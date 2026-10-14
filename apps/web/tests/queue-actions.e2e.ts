@@ -110,6 +110,11 @@ describe('web e2e: queue row actions', () => {
     // strict goldens include the active user's four Context actions.
     await waitForMessageContextControls(page, 1)
     await restoreFullWidthChat(page)
+    // The native collapse toggle leaves the pointer over its closed-state
+    // sidebar control. Park it outside controls before responsive snapshots;
+    // later explicit Save/Edit/Stop hover assertions remain unchanged.
+    await page.mouse.move(0, 0)
+    await expect.poll(() => page.getByRole('tooltip', { name: 'Open sidebar', exact: true }).count()).toBe(0)
 
     const admitted = page.waitForResponse('**/api/session/prompt')
     const received = Promise.withResolvers<undefined>()
@@ -307,6 +312,11 @@ describe('web e2e: queue row actions', () => {
     await expect.poll(() => existsSync(readyFile), { timeout: 15_000 }).toBe(true)
     await page.locator('[data-goal-bar]').waitFor({ timeout: 10_000 })
     await restoreFullWidthChat(page)
+    // The native collapse toggle leaves the pointer over its closed-state
+    // sidebar control. Park it outside controls before responsive snapshots;
+    // later explicit Save/Edit/Stop hover assertions remain unchanged.
+    await page.mouse.move(0, 0)
+    await expect.poll(() => page.getByRole('tooltip', { name: 'Open sidebar', exact: true }).count()).toBe(0)
 
     const sessions = scaffold.ctx.sessions.list()
     expect(sessions).toHaveLength(1)
