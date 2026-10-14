@@ -16,6 +16,8 @@ Status: implemented
 
 队列操作快照还会在暂停 prompt 响应前，等待已接纳的当前用户消息的 Context 控件。模型回放的 hang-ready 标志证明模型推进，并不证明 Client graph 已发布。共享页面的 draft-review 测试通过既有 `writeComposerDraft` 键盘路径（点击、编辑器所属 Select All、Backspace）清空草稿后，等待编辑器 `textContent` 为空、草稿检查按钮消失且 Send 禁用，再进入下一项对话截图；这样就不会继承尚未完成状态发布的草稿。Lexical 的空段落可能在 `innerText` 中表现为布局换行，但并无文本节点内容。Playwright 的空 fill 则选择 DOM Range 并发送 Delete；Lexical 另有编辑器 selection，只有 editor commit 才发布草稿。源码路径有差别，但 CI 的具体 selection 事件时序仍未证实。原基准刻意包含的 Copy 提示先明确悬停并等待；Queue 初始准备则将指针移离原生侧栏开关，仅等待其偶然提示消失。
 
+Web observation 夹具先等待准确的来源 article，再读取节点标签列表。绑定 Session 不代表 Client graph 已发布；既有等待必须位于列表断言之前。
+
 built-boot 测试验证准确的 SVG 属性、装饰性祖先以及其所属按钮确实位于可访问的 New session 控件列表中。多个独立的 New session 按钮是合法的。基准仅加入逐项核对过的合法 Context 控件。原始 Session/model JSONL、回放请求、文件内容、图片几何、反馈释放及队列顺序断言保持不变。
 
 ## Alternatives considered
@@ -30,4 +32,4 @@ built-boot 测试验证准确的 SVG 属性、装饰性祖先以及其所属按�
 
 ## Testing
 
-五个负责的文件共含 19 项无需密钥的测试。第一轮定向执行通过两项 built-boot 和两项 SVG 测试，同时暴露其余文件的指针悬停与初始发布竞态。修复这些前提后，第二轮通过 feedback-release、queue-image 与 skill-user-invoke 的全部 15 项测试。负责范围的 lint 与 diff 检查通过。后续 CI 又在 steering 中发现相同的最终回复发布竞态，并发现官方构建中的第二个合法 New session 按钮。显式等待最终回复控件、准确核对品牌所属按钮，修复了这两项测试前提；随后两个负责文件的全部八项测试在无需密钥的执行中通过。后续 CI 提交又暴露初始队列发布竞态和共享页面的草稿清理竞态。加入显式就绪检查后，queue-actions 文件的三项测试及 message-actions 的五项测试分别通过；所有既有基准与记录保持不变。986 提交的完整 E2E lane 通过，而 artifact lane 暴露了空 fill 后保留草稿及偶然侧栏悬停。改用既有原生编辑器手势并明确提示前提后，进一步定向执行通过两个负责文件的全部八项测试（18.04 秒），包含 Queue 的全部四次回放；原基准和 Session/model 记录保持不变。没有调用提供方 API；上述范围内的证据不代表完整远端 CI 已通过。
+五个负责的文件共含 19 项无需密钥的测试。第一轮定向执行通过两项 built-boot 和两项 SVG 测试，同时暴露其余文件的指针悬停与初始发布竞态。修复这些前提后，第二轮通过 feedback-release、queue-image 与 skill-user-invoke 的全部 15 项测试。负责范围的 lint 与 diff 检查通过。后续 CI 又在 steering 中发现相同的最终回复发布竞态，并发现官方构建中的第二个合法 New session 按钮。显式等待最终回复控件、准确核对品牌所属按钮，修复了这两项测试前提；随后两个负责文件的全部八项测试在无需密钥的执行中通过。后续 CI 提交又暴露初始队列发布竞态和共享页面的草稿清理竞态。加入显式就绪检查后，queue-actions 文件的三项测试及 message-actions 的五项测试分别通过；所有既有基准与记录保持不变。986 提交的完整 E2E lane 通过，而 artifact lane 暴露了空 fill 后保留草稿及偶然侧栏悬停。改用既有原生编辑器手势并明确提示前提后，进一步定向执行通过两个负责文件的全部八项测试（18.04 秒），包含 Queue 的全部四次回放；原基准和 Session/model 记录保持不变。原生 Web evidence 文件后续暴露列表断言早于既有 article 等待；将该等待前移，保留原断言后，全部三项负责用例通过。没有调用提供方 API；上述范围内的证据不代表完整远端 CI 已通过。

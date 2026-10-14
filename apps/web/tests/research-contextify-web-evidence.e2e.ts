@@ -85,11 +85,11 @@ it('edits a native Web result through the assembled Context Map and restores it 
     await workspace.attachSession(agent.session.id)
     await page.getByRole('treeitem').filter({ hasText: 'Web evidence check' }).click()
     const map = page.getByRole('region', { name: 'Context Map' })
+    const evidence = map.getByRole('article', { name: `Web source message: ${webText}`, exact: true })
+    await evidence.waitFor()
     const browserNodes = await map.locator('article[aria-label]').evaluateAll(nodes =>
       nodes.map(node => node.getAttribute('aria-label')))
     expect(browserNodes).toContain(`Web source message: ${webText}`)
-    const evidence = map.getByRole('article', { name: `Web source message: ${webText}`, exact: true })
-    await evidence.waitFor()
     const before = JSON.stringify(scaffold.ctx.contextCompiler.compile({
       session: agent.session, turn: 2, step: 1,
     }).messages)
