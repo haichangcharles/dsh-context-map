@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-10-14-deferred-scroll-follow.md
-2026-10-14-deferred-scroll-follow.md: ea9ec59bfb8bd37b474ed6a70e038ad0b2bbbc03
-2026-10-14-deferred-scroll-follow.zh.md: a8e2c96cb4646537887dbf8a4326ad14c12d8516
+2026-10-14-deferred-scroll-follow.md: 2bb62cde7da086c3f25a72d6c55a30f0a947943d
+2026-10-14-deferred-scroll-follow.zh.md: 88dfc3e4e5ee6b9f6ccb427ae57e3b5005e24b0f

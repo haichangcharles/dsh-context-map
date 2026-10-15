@@ -12,7 +12,7 @@ Status: implemented
 
 ## Decision
 
-公开的[浏览器辅助函数](../../../../apps/web/tests/support.ts) `waitForMessageContextControls` 根据场景明确的原生消息数量，等待每条消息的四个 Context 按钮，再截图。反馈与 skill 场景先等待发布，再收起 Map、移开指针，并确认开关提示消失。排队图片用例分别检查初始用户控件和最终五条原生消息；被中止的部分助手输出仍不进入 Context graph。
+公开的[浏览器辅助函数](../../../../apps/web/tests/support.ts) `waitForMessageContextControls` 根据场景明确的原生消息数量，等待每条消息的四个 Context 按钮，再截图。反馈与 skill 场景先等待发布，再收起 Map、移开指针，并确认开关提示消失。排队图片用例还会在两次恢复 Chat 宽度后移开指针，等待偶然的侧栏提示消失。该用例分别检查初始用户控件和最终五条原生消息；被中止的部分助手输出仍不进入 Context graph。
 
 队列操作快照还会在暂停 prompt 响应前，等待已接纳的当前用户消息的 Context 控件。模型回放的 hang-ready 标志证明模型推进，并不证明 Client graph 已发布。共享页面的 draft-review 测试通过既有 `writeComposerDraft` 键盘路径（点击、编辑器所属 Select All、Backspace）清空草稿后，等待编辑器 `textContent` 为空、草稿检查按钮消失且 Send 禁用，再进入下一项对话截图；这样就不会继承尚未完成状态发布的草稿。Lexical 的空段落可能在 `innerText` 中表现为布局换行，但并无文本节点内容。Playwright 的空 fill 则选择 DOM Range 并发送 Delete；Lexical 另有编辑器 selection，只有 editor commit 才发布草稿。源码路径有差别，但 CI 的具体 selection 事件时序仍未证实。原基准刻意包含的 Copy 提示先明确悬停并等待；Queue 初始准备则将指针移离原生侧栏开关，仅等待其偶然提示消失。
 

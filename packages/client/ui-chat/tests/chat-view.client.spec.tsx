@@ -2689,6 +2689,34 @@ describe('ChatView', () => {
     }
   })
 
+  it('saves the final pending reader sample before a view-tab unmount', () => {
+    const h = makeHarness({ nodes: [user(1, 'q'), assistant(2, 'a')] })
+    const view = render(<h.ChatView {...h.props} />)
+    const scroller = view.container.querySelector('[class*="scroll"]') as HTMLDivElement
+    installScrollMetrics(scroller, 1_000, 300)
+    readerScroll(scroller, 500)
+    expect(h.chatScroll.read()?.scrollTop).toBe(500)
+    scroller.scrollTop = 400
+    fireEvent.scroll(scroller)
+    view.unmount()
+    expect(h.chatScroll.read()?.scrollTop).toBe(400)
+  })
+
+  it('keeps an own-send jump when its reply arrives before a reader sample settles', () => {
+    const h = makeHarness({ nodes: [user(1, 'q'), assistant(2, 'a')] })
+    const view = render(<h.ChatView {...h.props} />)
+    const scroller = view.container.querySelector('[class*="scroll"]') as HTMLDivElement
+    installScrollMetrics(scroller, 1_000, 300)
+    readerScroll(scroller, 500)
+    scroller.scrollTop = 400
+    fireEvent.scroll(scroller)
+    act(() => { h.setChat({ nodes: [user(1, 'q'), assistant(2, 'a'), user(3, 'new question')] }) })
+    act(() => { h.setChat({ nodes: [user(1, 'q'), assistant(2, 'a'), user(3, 'new question'), assistant(4, 'fast reply')] }) })
+    fireEvent(scroller, new Event('scrollend'))
+    expect(scroller.scrollTop).toBe(700)
+    expect(h.chatScroll.read()).toBeNull()
+  })
+
   it('uses the last delivered top when compositor scrolling precedes scroll delivery', () => {
     const h = makeHarness({ nodes: [user(1, 'q'), assistant(2, 'a')] })
     const view = render(<h.ChatView {...h.props} />)
