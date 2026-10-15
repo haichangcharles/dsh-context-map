@@ -92,32 +92,41 @@ function sourceClosureAllowed(session: Session, state: LineageState, seq: number
   return allowed
 }
 
-function validEvent(session: Session, state: LineageState, seq: number,
+/** Compaction may hide a valid ancestor; releasing a borrowed snapshot may not. */
+function validDependency(session: Session, state: LineageState, seq: number,
   cache: Map<number, boolean>, visiting: Set<number>): boolean {
-  if (!state.selected.has(seq)) return false
   const cached = cache.get(seq)
   if (cached !== undefined) return cached
   if (visiting.has(seq)) return false
   visiting.add(seq)
   const event = session.eventAt(SessionSeq(seq))
-  let valid = event !== undefined && sourceClosureAllowed(session, state, seq, new Set())
+  let valid = event !== undefined
+    && (event.type !== 'context/compiler-snapshot' || state.selected.has(seq))
+    && sourceClosureAllowed(session, state, seq, new Set())
+    && (event.sourceEventSeqs ?? []).every(sourceSeq =>
+      validDependency(session, state, sourceSeq, cache, visiting))
   if (event?.type === 'user/message'
     && (event.data.source.kind === 'agent-message' || event.data.source.kind === 'subagent-settled')) {
     const slice = state.slices.get(event.data.source.senderSessionId)
     valid = valid && slice !== undefined && slice.sourceEventSeqs.every(sourceSeq =>
-      validEvent(session, state, sourceSeq, cache, visiting))
+      validDependency(session, state, sourceSeq, cache, visiting))
   } else if (event?.type === 'assistant/message') {
     const readSet = state.readSets.get(stepKey(event.data.turn, event.data.step))
     valid = valid && readSet !== undefined
-      && readSet.historyEventSeqs.every(sourceSeq => validEvent(session, state, sourceSeq, cache, visiting))
+      && readSet.historyEventSeqs.every(sourceSeq => validDependency(session, state, sourceSeq, cache, visiting))
       && readSet.acceptedMessageIds.every((id) => {
         const messageSeq = state.messageSeqs.get(id)
-        return messageSeq !== undefined && validEvent(session, state, messageSeq, cache, visiting)
+        return messageSeq !== undefined && validDependency(session, state, messageSeq, cache, visiting)
       })
   }
   visiting.delete(seq)
   cache.set(seq, valid)
   return valid
+}
+
+function validEvent(session: Session, state: LineageState, seq: number,
+  cache: Map<number, boolean>, visiting: Set<number>): boolean {
+  return state.selected.has(seq) && validDependency(session, state, seq, cache, visiting)
 }
 
 /**
