@@ -310,6 +310,24 @@ it('shows the exact personal case used by the Context Agent without making it an
   expect(screen.getByText('Superseded outline')).toBeTruthy()
   expect(screen.getByText(/Decision examples are not added to the answer Context/)).toBeTruthy()
 })
+it.each([true, false])('distinguishes empty model evidence from disabled personalization (%s)', (enabled) => {
+  reviewSheet(proposal({ personalization: { enabled, reviewer: 'local', examples: [], calibrationSources: [], thresholdSources: [] } }))
+  expect(screen.getByText(enabled ? 'No historical examples were sent to the decision model.' : 'Personalization was disabled for this review.')).toBeTruthy()
+  expect(screen.queryByText(/Context calibration source records/)).toBeNull()
+})
+
+it('separates a declined model example from calibration and branch-threshold source records', () => {
+  reviewSheet(proposal({ personalization: { enabled: true, reviewer: 'jev',
+    examples: [{ objective: 'Earlier optional context', action: 'include', choice: 'reject' }],
+    calibrationSources: ['calibration-family:7'], thresholdSources: ['routing-family:9'] } }))
+  expect(screen.getByText('Earlier optional context')).toBeTruthy()
+  expect(screen.getByText('Declined')).toBeTruthy()
+  expect(screen.getByText('calibration-family:7')).toBeTruthy()
+  expect(screen.getByText('routing-family:9')).toBeTruthy()
+  expect(screen.getByText(/Context calibration source records/)).toBeTruthy()
+  expect(screen.getByText(/Branch threshold source records/)).toBeTruthy()
+})
+
 describe('Context recommendation review public decisions', () => {
   it('tracks partial and reversed choices and applies only the final declined IDs', async () => {
     const h = reviewSheet()
