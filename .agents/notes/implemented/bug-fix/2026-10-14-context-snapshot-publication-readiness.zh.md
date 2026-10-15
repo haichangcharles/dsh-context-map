@@ -20,6 +20,8 @@ Web observation 夹具先等待准确的来源 article，再读取节点标签�
 
 built-boot 测试验证准确的 SVG 属性、装饰性祖先以及其所属按钮确实位于可访问的 New session 控件列表中。多个独立的 New session 按钮是合法的。基准仅加入逐项核对过的合法 Context 控件。原始 Session/model JSONL、回放请求、文件内容、图片几何、反馈释放及队列顺序断言保持不变。
 
+SDK的手写`subagent-list-agents`轨迹同样要求子任务结算通知出现在父任务的独立下一轮。场景通过patch列表复用现有`subagent-send-message`事件屏障，防止快速子任务在父任务仍运行的启动轮内结算。此处只改变测试调度，生产continuation语义、超时和golden均不变。所属SDK语料在Node24下18项全通过，精确案例在Node22下也通过。此前远端120秒超时缺少临时日志，未确认其直接原因；此屏障消除的是另外核实可达的时序依赖。
+
 ## Alternatives considered
 
 - **隐藏 Context 操作或过滤快照。** 这会掩盖实际产品行为。

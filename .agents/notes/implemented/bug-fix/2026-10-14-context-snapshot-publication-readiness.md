@@ -20,6 +20,8 @@ The Web-observation fixture waits for its exact source article before reading th
 
 The built-boot test verifies the exact SVG attributes and decorative ancestor, plus membership of its owning button in the accessible New session controls. Multiple independent New session buttons are legitimate. Goldens add only inspected, legitimate Context controls. Original Session/model JSONL, replay packets, file content, image geometry, feedback release and queue-order assertions remain unchanged.
 
+The authored SDK `subagent-list-agents` transcript also requires settlement in a separate parent turn. It reuses the existing `subagent-send-message` event fence through the scenario's patch list: a fast child cannot settle into the parent's still-running spawn turn. This changes only test scheduling; production continuation semantics, timeouts and goldens stay unchanged. The owning SDK corpus passes all18 cases on Node24, and the exact case also passes on Node22. A preceding remote120-second timeout was not causally confirmed from its missing temporary logs; this fence removes a separately verified reachable timing dependency.
+
 ## Alternatives considered
 
 - **Hide Context actions or filter snapshots.** This would conceal shipped behavior.
