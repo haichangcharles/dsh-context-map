@@ -82,7 +82,7 @@ Package 还导出供研究集成使用的可选 revision-lineage compiler，以�
 
 需要可复用的可选路径时，在 ContextifyService 后安装 `@deepseek-ai/dsh-contextify/revision-lineage-runtime`。它在新 Contextify Session 的第一次模型请求前选择 lineage compiler，在每个 pre-step 过滤过期 child 消息并记录请求 read set，还为每个 Session 在内存中保留最多 64 条被拒消息供检查。已有 assistant 历史但缺少读集的旧 Session 保留其当前 surface 或 Contextify compiler，不会获得 lineage 保护或伪造读集。该 runtime 提供 `list_context_sources`，对当前选中的纯文本 human 或 Web 来源分页展示，每页最多 16 条短预览；`delegate_context_sources` 在启动无工具 child 前重新校验一至八个所选事件序号并记录来源切片。受保护 Session 中，普通 `subagent*` 和 `send_message` 工具调用会被拒绝，因为它们缺少或可能改变这个来源切片；旧 Session 保留这些工具。30 例原生 fork 回放和无密钥 Loader 组合 Web 测试覆盖来源绑定 child；已发布 profile 在第一次 Context 编辑前保留 surface 选择，之后使用普通 Contextify；只有安装该可选 runtime 才使用 lineage compiler。
 
-原生来源追踪还会检查所引用 assistant 回答的已记录读集，以及所引用 worker 报告的来源切片。摘要不能仅因只引用回答或报告，就保留已经失效的祖先。合法压缩可以隐藏原始消息而不撤销其有效性；释放导入的 compiler snapshot 仍会使其后代失效。这些检查依赖已记录的依赖关系，不会从任意摘要文本中推断来源。
+原生来源追踪还会检查所引用 assistant 回答及失败尝试的已记录读集，以及所引用 worker 报告的来源切片。摘要不能仅因只引用回答或报告，就保留已经失效的祖先。隐藏的消息祖先只有通过当前仍选中、有效且记录了来源的压缩记录才可被接纳。单调不动点检查会撤销无效 checkpoint 的来源授权，包括被当前轮保护保留的 checkpoint；追踪在已排除的祖先处停止。排除 checkpoint 或移除完整工具组后，其他摘要不能重新引入其隐藏消息。释放导入的 compiler snapshot 仍会使其后代失效。这些检查依赖已记录的依赖关系，不会从任意摘要文本中推断来源。
 
 <a id="model-experience"></a>
 ## 模型体验

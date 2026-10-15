@@ -36,6 +36,7 @@ declare module '@deepseek-ai/dsh-session/types' {
 
 interface LineageState {
   readonly selected: Set<number>
+  readonly compactedSources: Set<number>
   readonly deniedSources: Set<number>
   readonly sourceClosureCache: Map<number, boolean>
   readonly slices: Map<SessionId, DelegationSliceRecord>
@@ -54,6 +55,24 @@ function lineageState(session: Session, selectedEventSeqs: readonly number[]): L
     ...plan.excluded.map(item => item.eventSeq),
     ...plan.replacements.flatMap(item => item.originalEventSeq === null ? [] : [item.originalEventSeq]),
   ])
+  const compactedSources = new Set<number>()
+  const collectCompactedSource = (seq: number): void => {
+    if (compactedSources.has(seq) || deniedSources.has(seq)) return
+    compactedSources.add(seq)
+    const event = session.eventAt(SessionSeq(seq))
+    assert(event, `Compacted source event ${String(seq)} is unavailable`)
+    for (const sourceSeq of event.sourceEventSeqs ?? []) collectCompactedSource(sourceSeq)
+  }
+  const compactRoots = new Map<number, readonly number[]>()
+  for (const seq of selected) {
+    const event = session.eventAt(SessionSeq(seq))
+    if (event?.type === 'user/message' && event.data.source.kind === 'plugin'
+      && event.data.source.plugin === 'compact' && typeof event.surfaceOp === 'object') {
+      // Session replacement validation requires every shadowed surface source.
+      assert(event.sourceEventSeqs, 'Compaction replacement requires recorded sources')
+      compactRoots.set(seq, event.sourceEventSeqs)
+    }
+  }
   const slices = new Map<SessionId, DelegationSliceRecord>()
   const readSets = new Map<string, RequestReadSetRecord>()
   const messageSeqs = new Map<string, number>()
@@ -72,7 +91,22 @@ function lineageState(session: Session, selectedEventSeqs: readonly number[]): L
         break
     }
   }
-  return { selected, deniedSources, sourceClosureCache: new Map(), slices, readSets, messageSeqs }
+  const state = { selected, compactedSources, deniedSources, sourceClosureCache: new Map<number, boolean>(),
+    slices, readSets, messageSeqs }
+  // Hidden messages need a surviving checkpoint, not merely a base-plan entry.
+  // Remove invalid authorization roots monotonically, then recheck dependants.
+  for (;;) {
+    compactedSources.clear()
+    for (const [seq, sources] of compactRoots) {
+      if (!deniedSources.has(seq)) {
+        for (const sourceSeq of sources) collectCompactedSource(sourceSeq)
+      }
+    }
+    const cache = new Map<number, boolean>()
+    const invalid = [...compactRoots.keys()].filter(seq => !validDependency(session, state, seq, cache, new Set()))
+    if (invalid.length === 0) return state
+    for (const seq of invalid) compactRoots.delete(seq)
+  }
 }
 
 function sourceClosureAllowed(session: Session, state: LineageState, seq: number,
@@ -102,6 +136,7 @@ function validDependency(session: Session, state: LineageState, seq: number,
   const event = session.eventAt(SessionSeq(seq))
   let valid = event !== undefined
     && (event.type !== 'context/compiler-snapshot' || state.selected.has(seq))
+    && (state.selected.has(seq) || state.compactedSources.has(seq) || session.deriveEventMessage(event) === null)
     && sourceClosureAllowed(session, state, seq, new Set())
     && (event.sourceEventSeqs ?? []).every(sourceSeq =>
       validDependency(session, state, sourceSeq, cache, visiting))
@@ -110,7 +145,7 @@ function validDependency(session: Session, state: LineageState, seq: number,
     const slice = state.slices.get(event.data.source.senderSessionId)
     valid = valid && slice !== undefined && slice.sourceEventSeqs.every(sourceSeq =>
       validDependency(session, state, sourceSeq, cache, visiting))
-  } else if (event?.type === 'assistant/message') {
+  } else if (event?.type === 'assistant/message' || event?.type === 'assistant/attempt') {
     const readSet = state.readSets.get(stepKey(event.data.turn, event.data.step))
     valid = valid && readSet !== undefined
       && readSet.historyEventSeqs.every(sourceSeq => validDependency(session, state, sourceSeq, cache, visiting))

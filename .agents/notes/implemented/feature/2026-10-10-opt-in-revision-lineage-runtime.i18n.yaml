@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-10-opt-in-revision-lineage-runtime.md
-2026-10-10-opt-in-revision-lineage-runtime.md: c245585c6eb14b3c5f70f81f840a7411ac73b743
-2026-10-10-opt-in-revision-lineage-runtime.zh.md: 6ff75319e38e296aea18948c9074c620cc8b5706
+2026-10-10-opt-in-revision-lineage-runtime.md: 899eda2ff6cf95229585f841ee9fdeb34a8ef9a5
+2026-10-10-opt-in-revision-lineage-runtime.zh.md: a256ef10ffbc4cf21a4ddb7b420651b27417cac4

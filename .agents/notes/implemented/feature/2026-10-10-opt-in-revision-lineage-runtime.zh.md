@@ -14,7 +14,7 @@ Contextify 已导出 lineage compiler 和 request-read-set 辅助函数，但研
 
 可选 runtime 还注册两个模型可用工具。`list_context_sources` 每页列出最多 16 条当前选中的纯文本人类消息、原生 Web 结果或导入的 Web recall，并限制预览长度。`delegate_context_sources` 接受一到八个事件序号，再次按当前 Plan 校验、记录来源切片，并启动禁用全局工具的 spawn child。在受保护的父 Session 中，guard 拒绝可能引入未绑定 child 输入的普通 `subagent*` 与 `send_message` 工具调用；旧 Session 保留普通工具行为。单独导出的 runtime 入口允许 Web profile patch 安装这条路径，不改变默认 profile。
 
-原生来源引用会递归校验 assistant 读集与 worker 委托切片，包括经过结构事件的间接引用。顶层选择和祖先有效性分开：普通压缩可以隐藏仍有效的历史依赖，而明确排除、被替换的原文和已释放的 compiler snapshot 会使派生内容失效。失效回答或报告的摘要会被移除，独立证据仍然可用。重新启用来源会恢复有效后代。跨越读集与原生引用的循环会被拒绝。
+原生来源引用会经过结构事件递归校验 assistant 读集（包括失败尝试）与 worker 委托切片。顶层选择和祖先有效性分开：隐藏的消息依赖需要当前仍选中、有效的压缩记录及其已记录来源，追踪在被明确否决的祖先处停止。单调剔除会撤销无效 checkpoint 的隐藏来源授权，即使当前轮保护将其保留在基础选择中。排除 checkpoint 或工具组不能再为其隐藏消息提供接纳依据。明确排除、被替换的原文和已释放的 compiler snapshot 会使派生内容失效。失效回答或报告的摘要会被移除，独立证据仍然可用。重新启用来源会恢复有效后代。跨越读集与原生引用的循环会被拒绝。
 
 ## Alternatives considered
 
@@ -32,4 +32,4 @@ Contextify 已导出 lineage compiler 和 request-read-set 辅助函数，但研
 
 来源绑定工具入口现已实现，并在无密钥的真实 Loader Web 组合中验证：工具 schema 进入父 agent 的模型请求；A、B worker 同时运行时，排除 Web 来源 B 会让它从来源列表消失、拒绝新的 B 委托，保留后来返回的 A 报告，同时从下一次父请求中排除 B 报告。这不能证明 child 的完整输入来源：环境提示词、绕过工具的服务调用对 child 的追加消息、外部读取以及已启动的副作用仍不在所记录切片内。默认 Web profile 暂不改变，直到这些路径与旧会话重启行为获得产品级覆盖。
 
-手工编写的 `contextify-lineage-provenance` 会话快照通过已发布 headless profile 启动源码版 Contextify 插件。测试专用工具记录固定来源、委托切片、合成 worker 报告、其摘要以及完整压缩生命周期。下一次组装出的模型请求保留有效 checkpoint 和当前输入，同时排除被撤销的来源及派生载体。源码级负对照在请求断言处拒绝原始 compiler；恢复修复后，无密钥回放通过。该 fixture 不启动 worker，也不测量模型质量。
+手工编写的 `contextify-lineage-provenance` 会话快照通过已发布 headless profile 和 Contextify 公开 package 入口，在源码及构建模式下启动。测试专用工具记录固定来源、委托切片、合成 worker 报告、其摘要以及完整压缩生命周期。下一次组装出的模型请求保留有效 checkpoint 和当前输入，同时排除被撤销的来源及派生载体。负对照在请求断言处拒绝原始 compiler；恢复修复后，无密钥回放通过。该 fixture 不启动 worker，也不测量模型质量。

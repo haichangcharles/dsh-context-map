@@ -5,8 +5,7 @@ import { CompactionId, compactCheckpointSource } from '@deepseek-ai/dsh-compacti
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { currentContextPlan, nextPlan } from '../../src/plan.ts'
-import { recordDelegationSlice } from '../../src/revision-lineage.ts'
+import { currentContextPlan, nextPlan, recordDelegationSlice } from '@deepseek-ai/dsh-contextify'
 
 /** Loader fixture plugin name. */
 export const name = 'lineage-snapshot'

@@ -11,9 +11,9 @@
     compression: none
 - insert:
     - id: contextify
-      name: '../../../packages/context/contextify/src/index.ts'
+      name: '@deepseek-ai/dsh-contextify'
     - id: contextify-revision-lineage
-      name: '../../../packages/context/contextify/src/revision-lineage-runtime.ts'
+      name: '@deepseek-ai/dsh-contextify/revision-lineage-runtime'
     - id: lineage-snapshot
       name: '../../../packages/context/contextify/tests/fixtures/lineage-snapshot.ts'
     - id: llm-replay
