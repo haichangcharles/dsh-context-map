@@ -132,6 +132,11 @@ const SDK_ASSERTIONS: Readonly<Record<string, SdkAssertions>> = {
   'subagent-continuable': {
     environment: { DSH_SNAPSHOT_HUMAN_STEER: '1' },
   },
+  'subagent-list-agents': {
+    // This authored transcript places settlement in a separate parent turn.
+    // Reuse the existing event fence rather than depending on runner speed.
+    patches: [fileURLToPath(new URL('./subagent-send-message/cordis.yml', import.meta.url))],
+  },
   'subagent-dsh-sdk-diagnostic': {
     environment: { DSH_TEST_CHILD_PATCH: dshSdkDiagnosticChildPatch },
   },

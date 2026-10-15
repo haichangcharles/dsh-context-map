@@ -497,7 +497,11 @@ export function ChatView({
   }
 
   useLayoutEffect(() => {
-    if (scrollSamplePendingRef.current) return
+    const appendedUser = lastKey !== lastKeyRef.current && lastNode?.kind === 'user'
+    const appendedSteering = lastSteeringId !== null && lastSteeringId !== lastSteeringIdRef.current
+    const appendedSubmission = lastSubmissionId !== null && lastSubmissionId !== lastSubmissionIdRef.current
+    const ownInput = appendedUser || appendedSteering || appendedSubmission
+    if (scrollSamplePendingRef.current && !ownInput) return
     const local = listRef.current
     /* v8 ignore next -- ref-null guard: React attaches the ref before layout effects run. */
     if (local === null) return
@@ -554,9 +558,6 @@ export function ChatView({
     firstSeqRef.current = firstSeq
     // Own words must be visible: a new trailing user node force-scrolls
     // (send lives in the composer, so arrival is detected here, not armed there).
-    const appendedUser = lastKey !== lastKeyRef.current && lastNode?.kind === 'user'
-    const appendedSteering = lastSteeringId !== null && lastSteeringId !== lastSteeringIdRef.current
-    const appendedSubmission = lastSubmissionId !== null && lastSubmissionId !== lastSubmissionIdRef.current
     const tipMoved = followSigRef.current !== followSig
     lastKeyRef.current = lastKey
     lastSteeringIdRef.current = lastSteeringId
@@ -564,7 +565,7 @@ export function ChatView({
     followSigRef.current = followSig
     // Follow new flow content while pinned; do NOT re-pin on every render
     // merely because atBottomRef is true (scroll threshold → setState → snap).
-    if (appendedUser || appendedSteering || appendedSubmission || (tipMoved && atBottomRef.current)) {
+    if (ownInput || (tipMoved && atBottomRef.current)) {
       toBottom(el)
       return
     }
@@ -616,6 +617,14 @@ export function ChatView({
     observedTopRef.current = el.scrollTop
     scheduleActiveTurn()
   }
+
+  // A view-tab switch can precede scrollend and the interval sample. Save
+  // the final reader position while layout cleanup still owns attached refs.
+  useLayoutEffect(() => () => {
+    if (!scrollSamplePendingRef.current) return
+    scrollSamplePendingRef.current = false
+    onScrollRef.current()
+  }, [])
 
   // Non-reader pinned deliveries must settle before layout growth invalidates
   // their floor. Reader movement stays pending even inside the follow threshold,

@@ -1016,6 +1016,13 @@ describe('compaction region transaction', () => {
     const original = [...session.surface.nodes]
     const initial = createInitialContextPlan()
     session.append('contextify/plan', initial)
+    // These fixed assistant sentences depend only on their corresponding user
+    // sentence. Declare that synthetic fixture scope; uncertified legacy
+    // assistant messages must not become trusted through compaction.
+    for (let turn = 1; turn <= 3; turn += 1) {
+      session.append('contextify/request-read-set', { turn, step: 1, planRevision: initial.revision,
+        historyEventSeqs: [original[(turn - 1) * 2]!], acceptedMessageIds: [] })
+    }
     await compact.compactRegion(original[0]!, original[1]!, agent(session, MODEL), SIGNAL)
     await compact.compactRegion(original[2]!, original[3]!, agent(session, MODEL), SIGNAL)
     const checkpointA = session.surface.nodes[0]!
