@@ -80,6 +80,27 @@ function ProposalReview({
       <button type="button" aria-label={t('copy.closeRecommendationReview')} onClick={() => { run(() => dismiss(keptCurrent)) }}>×</button>
     </div>
     {stale && <div className={css.stale} role="alert">{t('copy.theConversationOrContextPlanChangedDismissAnd')}</div>}
+    {proposal.personalization !== undefined && <details className={css.section}>
+      <summary>{t('memory.title')} · {proposal.personalization.examples.length}</summary>
+      <p>{t('memory.hint')}</p>
+      {!proposal.personalization.enabled ? <p>{t('memory.disabled')}</p>
+        : proposal.personalization.examples.length === 0 ? <p>{t('memory.empty')}</p>
+          : <ul>{proposal.personalization.examples.map((example, index) => <li key={index}>
+            <strong>{example.objective}</strong>
+            <p>{t(example.action === 'exclude' ? 'policy.action.release' : `policy.action.${example.action}`)}</p>
+            {example.choice !== undefined && <small>{t(`policy.${example.choice}`)}</small>}
+            {example.content !== undefined && <p>{example.content}</p>}
+            {example.sourceSessionId !== undefined && <small>{example.sourceSessionId}:{example.sourceEventSeq}</small>}
+          </li>)}</ul>}
+      {(proposal.personalization.calibrationSources?.length ?? 0) > 0 && <details>
+        <summary>{t('memory.calibration')} · {proposal.personalization.calibrationSources?.length}</summary>
+        <ul>{proposal.personalization.calibrationSources?.map(source => <li key={source}>{source}</li>)}</ul>
+      </details>}
+      {(proposal.personalization.thresholdSources?.length ?? 0) > 0 && <details>
+        <summary>{t('memory.thresholds')} · {proposal.personalization.thresholdSources?.length}</summary>
+        <ul>{proposal.personalization.thresholdSources?.map(source => <li key={source}>{source}</li>)}</ul>
+      </details>}
+    </details>}
     {route !== undefined && !routeDismissed && <section className={css.section} aria-label={t('copy.draftRouteRecommendation')}>
       <h4>{t('copy.whereThisDraftBelongs')}</h4>
       <p>{route.reason}</p>

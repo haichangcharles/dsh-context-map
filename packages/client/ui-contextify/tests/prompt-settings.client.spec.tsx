@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { useSyncExternalStore } from 'react'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { CONTEXTIFY_DEFAULT_PROMPTS, CONTEXTIFY_DEFAULT_SETTINGS } from '@deepseek-ai/dsh-contextify/types'
@@ -42,6 +42,17 @@ function scopeFixture(language: 'en' | 'zh' = 'en') {
 }
 
 describe('ContextifyPromptSettingsView', () => {
+  it('lets the user choose Jev and disable personal decision evidence', async () => {
+    const fixture = scopeFixture()
+    render(<fixture.Harness />)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Fast Context reviewer' }), { target: { value: 'jev' } })
+    await act(async () => {})
+    expect(fixture.set).toHaveBeenCalledWith('fastDecisionProvider', 'jev')
+    fireEvent.click(screen.getByRole('checkbox', { name: /Learn from confirmed Context choices/ }))
+    await act(async () => {})
+    expect(fixture.set).toHaveBeenCalledWith('personalizationEnabled', false)
+  })
+
   it('renders complete Chinese prompt labels rather than assembling English fragments', () => {
     const fixture = scopeFixture('zh')
     render(<fixture.Harness />)

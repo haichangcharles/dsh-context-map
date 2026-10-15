@@ -2,6 +2,18 @@
 
 /** Simplified Chinese dictionary and key-set authority. */
 export const zh = {
+  'settings.fastReviewer': '快速 Context 决策模型',
+  'settings.parentReviewer': '当前聊天模型',
+  'settings.jevReviewer': 'Jev 1.13.0',
+  'settings.jevHint': 'Jev 每次快速检查调用一次，需要在 Host 配置 TYPESAFE_API_KEY。调用可能收费。',
+  'settings.personalization': '参考已确认的 Context 选择',
+  'settings.personalizationHint': '使用此 Profile 跨会话的明确选择。撤销和重置会移除对应的学习证据；历史案例不加入回答 Context。',
+  'memory.title': '传给决策模型的历史选择',
+  'memory.calibration': 'Context 校准的历史选择记录',
+  'memory.thresholds': '分支策略阈值的历史选择记录',
+  'memory.hint': '决策案例不会加入回答的 Context。',
+  'memory.disabled': '本次检查未启用个性化。',
+  'memory.empty': '本次没有向决策模型提供历史案例。',
   'canvas.controls': '图视图控制',
   'canvas.zoomIn': '放大',
   'canvas.zoomOut': '缩小',
@@ -272,6 +284,18 @@ export type StewardKey = keyof typeof zh
 
 /** English dictionary with the same keys as the Chinese source. */
 export const en = {
+  'settings.fastReviewer': 'Fast Context reviewer',
+  'settings.parentReviewer': 'Current chat model',
+  'settings.jevReviewer': 'Jev 1.13.0',
+  'settings.jevHint': 'Jev makes one call per Fast review and requires TYPESAFE_API_KEY on the Host. Calls may incur a charge.',
+  'settings.personalization': 'Learn from confirmed Context choices',
+  'settings.personalizationHint': 'Reuse explicit choices across this Profile. Undo and reset remove learning evidence; past examples are not answer Context.',
+  'memory.title': 'Historical choices sent to the decision model',
+  'memory.calibration': 'Context calibration source records',
+  'memory.thresholds': 'Branch threshold source records',
+  'memory.hint': 'Decision examples are not added to the answer Context.',
+  'memory.disabled': 'Personalization was disabled for this review.',
+  'memory.empty': 'No historical examples were sent to the decision model.',
   'canvas.controls': 'Control Panel',
   'canvas.zoomIn': 'Zoom In',
   'canvas.zoomOut': 'Zoom Out',

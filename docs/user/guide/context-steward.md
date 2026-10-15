@@ -56,6 +56,8 @@ The Preferences view summarizes repeated confirmed Context choices across native
 
 Reset learning clears the derived preference projection using logged Session watermarks. It retains conversations, their original choice records and the current Context Plan. Later explicit choices can build fresh evidence. This policy memory describes Context-management habits, not general personality or personal facts.
 
+In Context Map prompt settings, Fast Context reviewer selects the current chat model or Jev. Jev requires `TYPESAFE_API_KEY` on the Host and may incur a charge; selecting it does not make a request. Learn from confirmed Context choices controls historical examples and personal calibration for future reviews. Expand a review sheet to inspect the model examples and the separate calibration records. A policy reset or settings change cancels running reviews that retain older evidence.
+
 <a id="verify-without-an-api"></a>
 ## Verify without an API
 

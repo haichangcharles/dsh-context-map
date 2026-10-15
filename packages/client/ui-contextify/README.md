@@ -50,6 +50,8 @@ Ordinary Chat user and finalized assistant messages expose compact Auto/Use/Skip
 
 The Workspace sidebar uses the upstream Session list. The map provides the detailed branch-family navigation surface.
 
+The Context prompt settings let users select the current chat model or Jev for Fast review, and enable or disable historical choice reuse. A review sheet separates the examples sent to the model from deterministic calibration and branch-threshold source records; accepted and rejected choices remain distinct. These records describe management advice and are not added to answer Context.
+
 <a id="model-experience"></a>
 ## Model Experience
 

@@ -63,6 +63,13 @@ export function ContextifyPromptSettingsView({ scope, snapshot, t }: ContextifyP
     setPending(kind)
     try { await scope.set(kind, section) } finally { setPending(null) }
   }
+  const saveDecisionSetting = (field: 'fastDecisionProvider' | 'personalizationEnabled', value: 'parent-model' | 'jev' | boolean): void => {
+    setPending('context')
+    setSettingsError(null)
+    void scope.set(field, value).catch((cause: unknown) => {
+      setSettingsError(cause instanceof Error ? cause.message : String(cause))
+    }).finally(() => { setPending(null) })
+  }
 
   if (snapshot.status === 'loading') return <div className={css.state}>{t('copy.loadingContextMapPrompts')}</div>
   if (snapshot.status !== 'ready') {
@@ -74,6 +81,24 @@ export function ContextifyPromptSettingsView({ scope, snapshot, t }: ContextifyP
       <h2>{t('copy.contextMapPrompts')}</h2>
       <p>{t('copy.packageDefaultsStayVisibleAndReadOnlyAdd')}</p>
     </header>
+    <label className={css.card}>
+      <span>{t('settings.fastReviewer')}</span>
+      <select aria-label={t('settings.fastReviewer')} value={settings.fastDecisionProvider}
+        disabled={!snapshot.writable || pending !== null} onChange={(event) => {
+          if (event.target.value === 'parent-model' || event.target.value === 'jev') saveDecisionSetting('fastDecisionProvider', event.target.value)
+        }}>
+        <option value="parent-model">{t('settings.parentReviewer')}</option>
+        <option value="jev">{t('settings.jevReviewer')}</option>
+      </select>
+      <small>{t('settings.jevHint')}</small>
+    </label>
+    <label className={css.card}>
+      <span>{t('settings.personalization')}</span>
+      <input type="checkbox" aria-label={t('settings.personalization')} checked={settings.personalizationEnabled}
+        disabled={!snapshot.writable || pending !== null}
+        onChange={(event) => { saveDecisionSetting('personalizationEnabled', event.target.checked) }} />
+      <small>{t('settings.personalizationHint')}</small>
+    </label>
     <label className={css.card}>
       <span>{t('copy.automaticBranchReview')}</span>
       <input

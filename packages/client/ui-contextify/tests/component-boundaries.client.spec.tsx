@@ -123,7 +123,7 @@ describe('public Context component boundaries', () => {
     expect(data.onContextMenu).toHaveBeenCalledWith(data.record, { x: 90, y: 120 })
     const roles = ['worker', 'web', 'chat'] as const
     for (const sourceKind of roles) h.rerender(draw({ ...data, record: node({ sourceKind, role: 'tool' }), included: true, pending: true, active: true, focused: true, searchMatch: true, recommendation: 'include' }, true))
-    expect(screen.getByRole('checkbox')).toHaveProperty('disabled', true)
+    for (const checkbox of screen.getAllByRole('checkbox')) expect(checkbox).toHaveProperty('disabled', true)
     expect(screen.getByRole('article').getAttribute('data-selected')).toBe('true')
     for (const recommendation of ['exclude', 'archive'] as const) h.rerender(draw({ ...data, recommendation }))
     const replacement = { kind: 'placeholder' as const, preview: '', original: 'original', reason: 'obsolete', role: 'user' as const, originalAvailable: true as const }
@@ -260,7 +260,7 @@ describe('prompt settings public scope lifecycle', () => {
     expect(h.container.textContent).toContain('unavailable')
     fixture.update({ status: 'ready', writable: false })
     expect(screen.getByRole('button', { name: 'Save request limit' })).toHaveProperty('disabled', true)
-    expect(screen.getByRole('checkbox')).toHaveProperty('disabled', true)
+    for (const checkbox of screen.getAllByRole('checkbox')) expect(checkbox).toHaveProperty('disabled', true)
     h.unmount()
     expect(fixture.listeners.size).toBe(0)
   })
@@ -301,6 +301,15 @@ function reviewSheet(value = proposal(), overrides: Partial<ContextRecommendatio
     reportError: vi.fn(), reviewWorkState: vi.fn(async () => {}), t, ...overrides }
   return { ...render(<ContextRecommendationReview {...props} />), props }
 }
+
+it('shows the exact personal case used by the Context Agent without making it answer Context', () => {
+  reviewSheet({ ...proposal(), personalization: { enabled: true, reviewer: 'jev',
+    examples: [{ objective: 'Earlier writing task', action: 'exclude', content: 'Superseded outline',
+      sourceSessionId: root, sourceEventSeq: 12 }] } })
+  expect(screen.getByText('Earlier writing task')).toBeTruthy()
+  expect(screen.getByText('Superseded outline')).toBeTruthy()
+  expect(screen.getByText(/Decision examples are not added to the answer Context/)).toBeTruthy()
+})
 describe('Context recommendation review public decisions', () => {
   it('tracks partial and reversed choices and applies only the final declined IDs', async () => {
     const h = reviewSheet()

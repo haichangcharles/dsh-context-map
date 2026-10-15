@@ -56,6 +56,8 @@ Preferences 视图汇总同一 Profile 内不同原生 Session 家族中反复�
 
 重置学习利用已记录的 Session 水位清空派生偏好投影。对话、原始选择记录和当前 Context Plan 会保留。之后的明确选择可以积累新证据。这种 policy memory 描述上下文管理习惯，不是一般人格或个人事实。
 
+在 Context Map 提示词设置中，快速 Context 决策模型可选择当前聊天模型或 Jev。Jev 需要 Host 配置 `TYPESAFE_API_KEY`，调用可能收费；仅切换选项不会发出请求。“参考已确认的 Context 选择”控制后续检查使用的历史案例与个人校准。展开审核表可分别查看模型案例和校准记录。策略重置或设置变化会取消持有旧证据的运行中检查。
+
 <a id="verify-without-an-api"></a>
 ## 无需 API 的验证
 

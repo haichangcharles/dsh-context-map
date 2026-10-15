@@ -50,6 +50,8 @@ Map 也会订阅 Harness 原生的 Workspace archive set。仅属于已归档 Se
 
 Workspace 左侧栏使用上游 Session 列表。Map 提供完整的分支家族导航界面。
 
+Context 提示词设置允许用户为 Fast 检查选择当前聊天模型或 Jev，并启用或关闭历史选择复用。审核表分别展示发送给模型的案例、确定性校准来源记录和分支阈值来源记录，并区分接受与拒绝的选择。这些记录用于管理建议，不加入回答 Context。
+
 <a id="model-experience"></a>
 ## 模型体验
 

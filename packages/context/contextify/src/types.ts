@@ -21,6 +21,10 @@ export interface ContextifyPromptSettings {
   readonly branch: ContextifyPromptSection
   /** Opt-in auxiliary classifier; explicit Branch requests do not require it. */
   readonly automaticBranchReview: boolean
+  /** Reuse confirmed, undo-aware choices in review packets and calibration. */
+  readonly personalizationEnabled: boolean
+  /** Jev is a structured decision scorer; the parent-model path uses the current LLM route. */
+  readonly fastDecisionProvider: 'parent-model' | 'jev'
   /** Maximum model requests in one explicitly selected Deep review. */
   readonly deepMaxRequests: number
 }
@@ -111,6 +115,8 @@ export const CONTEXTIFY_DEFAULT_SETTINGS: ContextifyPromptSettings = Object.free
   archive: Object.freeze({ additional: '', override: '' }),
   branch: Object.freeze({ additional: '', override: '' }),
   automaticBranchReview: false,
+  personalizationEnabled: true,
+  fastDecisionProvider: 'parent-model',
   deepMaxRequests: 3,
 })
 
@@ -360,6 +366,23 @@ export interface ContextRecommendationProposal {
   readonly removedNodeIds: readonly string[]
   readonly selection: readonly ContextSelectionRecommendation[]
   readonly archive: readonly ContextArchiveCandidate[]
+  /** Bounded evidence actually supplied to this decision, separate from answer Context. */
+  readonly personalization?: {
+    readonly enabled: boolean
+    readonly reviewer: 'parent-model' | 'jev' | 'local'
+    /** Owned event identities available to deterministic selection calibration. */
+    readonly calibrationSources?: readonly string[]
+    /** Owned event identities in the recent per-action threshold input pools. */
+    readonly thresholdSources?: readonly string[]
+    readonly examples: readonly {
+      readonly objective: string
+      readonly action: ContextPolicyAction | 'exclude'
+      readonly choice?: 'accept' | 'reject'
+      readonly content?: string
+      readonly sourceSessionId?: SessionId
+      readonly sourceEventSeq?: number
+    }[]
+  }
   /** Optional draft-bound Session route, reviewed separately from Context edits. */
   readonly route?: ContextRouteAdvice
   /** Separate review-only task lifecycle advice; never changes prompt inclusion. */
