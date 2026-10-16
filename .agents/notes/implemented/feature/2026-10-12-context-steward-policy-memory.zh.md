@@ -14,7 +14,7 @@ Contextify 从同一 DSH Profile 下多个原生 Session 家族的已确认 Cont
 
 投影采用平滑的动作估计。当活动、来源类型或邻近分支深度的分组少于四次有效观测时，退回 Profile 总体估计。同一动作的重复选择只有在有效观测达到四次后才形成有类型的偏好或回避规则。原生事件日志仍是证据记录；摘要报告证据量，不能授权修改 Session 或 Context Plan。`stewardProfile` Remote 提供可检查的投影。Navigate 和 Return 从明确的路由卡选择或成功的手动草稿导航获得证据；被动 Locate 不提供标签。[关闭时明确拒绝的条目](2026-10-10-selective-context-review.zh.md) 形成分数权重的拒绝证据，即使历史家族中没有已应用编辑也会读取；Later 和未决定的条目不提供标签。拒绝用于校准被建议的动作，不会变成相反动作的正向风格案例。
 
-Fast Include/Exclude 建议也使用同一 Profile 中最近 32 条已确认且未被 Undo 撤销的编辑。带类型的来源、工具动作与路径偏好，加上强收缩的相关性残差，可以在新的 Session 家族中排序跨分支来源及活动路径上的较早来源，并校准待审建议。模型可见的 Fast 案例及成组计划仍只来自当前家族，因此其他无关 Session 的原文不会作为偏好案例发给模型。Host 从事件日志重建这个派生视图，不额外持久化第二份 persona 文档。
+Fast Include/Exclude 建议读取 Profile 范围内最近 32 条已确认、未撤销的编辑。[个人决策案例策略](2026-10-15-personal-context-decision-cases.zh.md) 定义模型可见的跨家族案例、固定候选准入，以及任务示例与确定性校准的区别。带类型的 Web 来源习惯和当前家族编辑可校准已审核建议。Host 从事件日志重建该派生视图，不持久化第二份 persona 文档。
 
 这里把 [Generative Agents](https://arxiv.org/abs/2304.03442) 的观测、反思、检索模式和 [Mem0](https://arxiv.org/abs/2504.19413) 的整合思想用于 Context 管理策略。系统不存储一般个人事实，也不声称这些借鉴机制本身是新方法。
 

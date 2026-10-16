@@ -826,9 +826,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'agent', description: 'Live Agent whose Session owns the pending proposal.' }, { name: 'proposal', description: 'Exact proposal rendered by the Client.' }, { name: 'uiOrigin', description: 'Optional Client-declared source of the render.' }],
       },
       {
-        signature: '@Remote(\'reviewRoute\') async reviewRoute( agent: Agent, route: ContextRouteAdvice, choice: \'accept\' | \'reject\', actualTargetSessionId?: SessionId, uiOrigin?: \'contextify-client\', ): Promise<void>',
+        signature: '@Remote(\'reviewRoute\') async reviewRoute( agent: Agent, route: ContextRouteAdvice, choice: \'accept\' | \'reject\', actualTargetSessionId?: SessionId, uiOrigin?: \'contextify-client\', carryContext?: boolean, ): Promise<void>',
         description: 'Record a reviewed route after its native draft transfer succeeds, or a Stay choice.',
-        parameters: [{ name: 'agent', description: 'Live Agent that owns the pending route card.' }, { name: 'route', description: 'Exact revision-bound route card returned by Fast review.' }, { name: 'choice', description: 'Explicit acceptance or rejection of that card.' }, { name: 'actualTargetSessionId', description: 'Native destination after an accepted transfer.' }, { name: 'uiOrigin', description: 'Marks a Client review without claiming authenticated identity.' }],
+        parameters: [{ name: 'agent', description: 'Live Agent that owns the pending route card.' }, { name: 'route', description: 'Exact revision-bound route card returned by Fast review.' }, { name: 'choice', description: 'Explicit acceptance or rejection of that card.' }, { name: 'actualTargetSessionId', description: 'Native destination after an accepted transfer.' }, { name: 'uiOrigin', description: 'Marks a Client review without claiming authenticated identity.' }, { name: 'carryContext', description: 'Approve complete Context at the final destination; manual conflicts preserve its Plan.' }],
       },
       {
         signature: '@Remote(\'recordManualBranch\') async recordManualBranch( agent: Agent, childSessionId: SessionId, uiOrigin?: \'contextify-client\', objective?: string, ): Promise<void>',
@@ -4220,7 +4220,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContextPolicyObservation',
-    declaration: 'export interface ContextPolicyObservation {\n    readonly sourceSessionId?: SessionId;\n    readonly sourceEventSeq?: number;\n    readonly action: ContextPolicyAction;\n    readonly choice: \'accept\' | \'reject\';\n    readonly origin: \'explicit-review\' | \'manual-action\';\n    readonly objective?: string;\n    readonly targetNodeId?: string;\n    readonly targetSessionId?: SessionId;\n    readonly displayedIndex?: number;\n    readonly onActiveBranch?: boolean;\n    readonly activity?: \'planning\' | \'writing\' | \'brainstorming\' | \'other\';\n    readonly sourceKind?: \'chat\' | \'web\' | \'worker\';\n    readonly branchDepth: number;\n    readonly at: number;\n    readonly weight?: number;\n    readonly undone?: boolean;\n}',
+    declaration: 'export interface ContextPolicyObservation {\n    readonly sourceSessionId?: SessionId;\n    readonly sourceEventSeq?: number;\n    readonly action: ContextPolicyAction;\n    readonly choice: \'accept\' | \'reject\';\n    readonly origin: \'explicit-review\' | \'manual-action\';\n    readonly objective?: string;\n    readonly routeContext?: {\n        readonly source: string;\n        readonly target?: string;\n        readonly parent?: string;\n    };\n    readonly targetNodeId?: string;\n    readonly targetSessionId?: SessionId;\n    readonly forkParentSessionId?: SessionId;\n    readonly displayedIndex?: number;\n    readonly onActiveBranch?: boolean;\n    readonly activity?: \'planning\' | \'writing\' | \'brainstorming\' | \'other\';\n    readonly sourceKind?: \'chat\' | \'web\' | \'worker\';\n    readonly branchDepth: number;\n    readonly at: number;\n    readonly weight?: number;\n    readonly undone?: boolean;\n}',
   },
   {
     name: 'ContextPolicyRule',
@@ -4236,7 +4236,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContextRecommendationProposal',
-    declaration: 'export interface ContextRecommendationProposal {\n    readonly mode: ContextRecommendationMode;\n    readonly base: ContextRecommendationBase;\n    readonly currentNodeIds: readonly string[];\n    readonly proposedNodeIds: readonly string[];\n    readonly addedNodeIds: readonly string[];\n    readonly removedNodeIds: readonly string[];\n    readonly selection: readonly ContextSelectionRecommendation[];\n    readonly archive: readonly ContextArchiveCandidate[];\n    readonly route?: ContextRouteAdvice;\n    readonly workStates?: readonly ContextWorkStateAdvice[];\n}',
+    declaration: 'export interface ContextRecommendationProposal {\n    readonly mode: ContextRecommendationMode;\n    readonly base: ContextRecommendationBase;\n    readonly sourceBase?: ContextRecommendationBase;\n    readonly currentNodeIds: readonly string[];\n    readonly proposedNodeIds: readonly string[];\n    readonly addedNodeIds: readonly string[];\n    readonly removedNodeIds: readonly string[];\n    readonly selection: readonly ContextSelectionRecommendation[];\n    readonly archive: readonly ContextArchiveCandidate[];\n    readonly personalization?: {\n        readonly enabled: boolean;\n        readonly reviewer: \'parent-model\' | \'jev\' | \'local\';\n        readonly calibrationSources?: readonly string[];\n        readonly thresholdSources?: readonly string[];\n        readonly examples: readonly {\n            readonly objective: string;\n            readonly action: ContextPolicyAction | \'exclude\';\n            readonly choice?: \'accept\' | \'reject\';\n            readonly content?: string;\n            readonly sourceSessionId?: SessionId;\n            readonly sourceEventSeq?: number;\n        }[];\n    };\n    readonly route?: ContextRouteAdvice;\n    readonly workStates?: readonly ContextWorkStateAdvice[];\n}',
   },
   {
     name: 'ContextReplacementNode',
@@ -4248,7 +4248,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContextRouteAdvice',
-    declaration: 'export interface ContextRouteAdvice {\n    readonly action: \'navigate\' | \'branch\' | \'return\';\n    readonly base: ContextRecommendationBase;\n    readonly objective: string;\n    readonly targetSessionId?: SessionId;\n    readonly reason: string;\n}',
+    declaration: 'export interface ContextRouteAdvice {\n    readonly action: \'navigate\' | \'branch\' | \'return\';\n    readonly base: ContextRecommendationBase;\n    readonly objective: string;\n    readonly targetSessionId?: SessionId;\n    readonly forkParentSessionId?: SessionId;\n    readonly contextNodeIds?: readonly string[];\n    readonly contextUnavailable?: boolean;\n    readonly reason: string;\n}',
   },
   {
     name: 'ContextSelection',

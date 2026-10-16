@@ -13,7 +13,7 @@ export interface ContextRecommendationReviewProps extends PropsLocale<'contextif
   readonly state: ContextRecommendationState
   readonly graph: ContextFamilyGraph
   readonly pending: boolean
-  readonly acceptRoute: (route: ContextRouteAdvice) => Promise<void>
+  readonly acceptRoute: (route: ContextRouteAdvice, carryContext?: boolean) => Promise<void>
   readonly rejectRoute: (route: ContextRouteAdvice) => Promise<void>
   readonly present: (proposal: ContextRecommendationProposal) => Promise<void>
   readonly apply: (declinedNodeIds: readonly string[]) => Promise<void>
@@ -80,9 +80,35 @@ function ProposalReview({
       <button type="button" aria-label={t('copy.closeRecommendationReview')} onClick={() => { run(() => dismiss(keptCurrent)) }}>×</button>
     </div>
     {stale && <div className={css.stale} role="alert">{t('copy.theConversationOrContextPlanChangedDismissAnd')}</div>}
+    {proposal.personalization !== undefined && <details className={css.section}>
+      <summary>{t('memory.title')} · {proposal.personalization.examples.length}</summary>
+      <p>{t('memory.hint')}</p>
+      {!proposal.personalization.enabled ? <p>{t('memory.disabled')}</p>
+        : proposal.personalization.examples.length === 0 ? <p>{t('memory.empty')}</p>
+          : <ul>{proposal.personalization.examples.map((example, index) => <li key={index}>
+            <strong>{example.objective}</strong>
+            <p>{t(example.action === 'exclude' ? 'policy.action.release' : `policy.action.${example.action}`)}</p>
+            {example.choice !== undefined && <small>{t(`policy.${example.choice}`)}</small>}
+            {example.content !== undefined && <p>{example.content}</p>}
+            {example.sourceSessionId !== undefined && <small>{example.sourceSessionId}:{example.sourceEventSeq}</small>}
+          </li>)}</ul>}
+      {(proposal.personalization.calibrationSources?.length ?? 0) > 0 && <details>
+        <summary>{t('memory.calibration')} · {proposal.personalization.calibrationSources?.length}</summary>
+        <ul>{proposal.personalization.calibrationSources?.map(source => <li key={source}>{source}</li>)}</ul>
+      </details>}
+      {(proposal.personalization.thresholdSources?.length ?? 0) > 0 && <details>
+        <summary>{t('memory.thresholds')} · {proposal.personalization.thresholdSources?.length}</summary>
+        <ul>{proposal.personalization.thresholdSources?.map(source => <li key={source}>{source}</li>)}</ul>
+      </details>}
+    </details>}
     {route !== undefined && !routeDismissed && <section className={css.section} aria-label={t('copy.draftRouteRecommendation')}>
       <h4>{t('copy.whereThisDraftBelongs')}</h4>
       <p>{route.reason}</p>
+      {route.contextNodeIds !== undefined && <details>
+        <summary>{t(route.action === 'branch' ? 'copy.newBranchContext' : 'copy.destinationContext')} · {t('format.nodes', { count: route.contextNodeIds.length })}</summary>
+        <ul>{route.contextNodeIds.slice(0, 12).map(id => <li key={id}>{graph.nodes.find(node => node.id === id)?.preview ?? id}</li>)}</ul>
+      </details>}
+      {route.contextUnavailable === true && <p>{t('copy.carryContextUnavailable')}</p>}
       <div className={css.actions}>
         <button type="button" disabled={stale || pending} onClick={() => {
           run(async () => { await rejectRoute(route); setRouteDismissed(true) })
@@ -90,6 +116,10 @@ function ProposalReview({
         <button type="button" disabled={stale || pending} onClick={() => { run(() => acceptRoute(route)) }}>
           {route.action === 'branch' ? t('copy.startANewBranch')
             : route.action === 'return' ? t('copy.returnWithDraft') : t('copy.moveDraftToBranch')}
+        </button>
+        <button type="button" disabled={stale || pending || keptCurrent.length > 0 || route.contextUnavailable === true}
+          title={t('copy.carryContextHint')} onClick={() => { run(() => acceptRoute(route, true)) }}>
+          {t(route.action === 'branch' ? 'copy.branchWithContext' : 'copy.moveDraftWithContext')}
         </button>
       </div>
     </section>}

@@ -123,7 +123,7 @@ describe('public Context component boundaries', () => {
     expect(data.onContextMenu).toHaveBeenCalledWith(data.record, { x: 90, y: 120 })
     const roles = ['worker', 'web', 'chat'] as const
     for (const sourceKind of roles) h.rerender(draw({ ...data, record: node({ sourceKind, role: 'tool' }), included: true, pending: true, active: true, focused: true, searchMatch: true, recommendation: 'include' }, true))
-    expect(screen.getByRole('checkbox')).toHaveProperty('disabled', true)
+    for (const checkbox of screen.getAllByRole('checkbox')) expect(checkbox).toHaveProperty('disabled', true)
     expect(screen.getByRole('article').getAttribute('data-selected')).toBe('true')
     for (const recommendation of ['exclude', 'archive'] as const) h.rerender(draw({ ...data, recommendation }))
     const replacement = { kind: 'placeholder' as const, preview: '', original: 'original', reason: 'obsolete', role: 'user' as const, originalAvailable: true as const }
@@ -260,7 +260,7 @@ describe('prompt settings public scope lifecycle', () => {
     expect(h.container.textContent).toContain('unavailable')
     fixture.update({ status: 'ready', writable: false })
     expect(screen.getByRole('button', { name: 'Save request limit' })).toHaveProperty('disabled', true)
-    expect(screen.getByRole('checkbox')).toHaveProperty('disabled', true)
+    for (const checkbox of screen.getAllByRole('checkbox')) expect(checkbox).toHaveProperty('disabled', true)
     h.unmount()
     expect(fixture.listeners.size).toBe(0)
   })
@@ -301,7 +301,44 @@ function reviewSheet(value = proposal(), overrides: Partial<ContextRecommendatio
     reportError: vi.fn(), reviewWorkState: vi.fn(async () => {}), t, ...overrides }
   return { ...render(<ContextRecommendationReview {...props} />), props }
 }
+
+it('shows the exact personal case used by the Context Agent without making it answer Context', () => {
+  reviewSheet({ ...proposal(), personalization: { enabled: true, reviewer: 'jev',
+    examples: [{ objective: 'Earlier writing task', action: 'exclude', content: 'Superseded outline',
+      sourceSessionId: root, sourceEventSeq: 12 }] } })
+  expect(screen.getByText('Earlier writing task')).toBeTruthy()
+  expect(screen.getByText('Superseded outline')).toBeTruthy()
+  expect(screen.getByText(/Decision examples are not added to the answer Context/)).toBeTruthy()
+})
+it.each([true, false])('distinguishes empty model evidence from disabled personalization (%s)', (enabled) => {
+  reviewSheet(proposal({ personalization: { enabled, reviewer: 'local', examples: [], calibrationSources: [], thresholdSources: [] } }))
+  expect(screen.getByText(enabled ? 'No historical examples were sent to the decision model.' : 'Personalization was disabled for this review.')).toBeTruthy()
+  expect(screen.queryByText(/Context calibration source records/)).toBeNull()
+})
+
+it('separates a declined model example from calibration and branch-threshold source records', () => {
+  reviewSheet(proposal({ personalization: { enabled: true, reviewer: 'jev',
+    examples: [{ objective: 'Earlier optional context', action: 'include', choice: 'reject' }],
+    calibrationSources: ['calibration-family:7'], thresholdSources: ['routing-family:9'] } }))
+  expect(screen.getByText('Earlier optional context')).toBeTruthy()
+  expect(screen.getByText('Declined')).toBeTruthy()
+  expect(screen.getByText('calibration-family:7')).toBeTruthy()
+  expect(screen.getByText('routing-family:9')).toBeTruthy()
+  expect(screen.getByText(/Context calibration source records/)).toBeTruthy()
+  expect(screen.getByText(/Branch threshold source records/)).toBeTruthy()
+})
+
 describe('Context recommendation review public decisions', () => {
+  it('explicitly approves carrying the complete proposed Context only to an existing branch', async () => {
+    const value = proposal({ route: { action: 'navigate', base: proposal().base,
+      objective: 'Continue writing', targetSessionId: sid('other'), reason: 'Resume writing' } })
+    const h = reviewSheet(value)
+    fireEvent.click(screen.getByRole('button', { name: 'Move draft with proposed Context' }))
+    await waitFor(() => { expect(h.props.acceptRoute).toHaveBeenCalledWith(value.route, true) })
+    fireEvent.click(screen.getByRole('button', { name: 'Keep current context for extra' }))
+    expect(screen.getByRole('button', { name: 'Move draft with proposed Context' }).hasAttribute('disabled')).toBe(true)
+  })
+
   it('tracks partial and reversed choices and applies only the final declined IDs', async () => {
     const h = reviewSheet()
     fireEvent.click(screen.getByRole('button', { name: 'Keep current context for extra' }))
@@ -400,4 +437,16 @@ describe('Context recommendation review public decisions', () => {
     h.rerender(<ContextRecommendationReview {...h.props} state={{ phase: 'idle' }} />)
     expect(screen.queryByRole('dialog')).toBeNull()
   })
+})
+
+it.each(['branch', 'navigate'] as const)('previews the complete %s scope and preserves draft-only routing for replacements', (action) => {
+  const route = { action, base: proposal().base, objective: 'Continue plan', reason: 'Related destination',
+    contextNodeIds: ['root:1', 'missing'], contextUnavailable: true }
+  const h = reviewSheet(proposal({ route }))
+  expect(screen.getByText('missing')).toBeTruthy()
+  expect(screen.getByText(/destination contains replaced content/)).toBeTruthy()
+  const label = action === 'branch' ? 'Create branch with proposed Context' : 'Move draft with proposed Context'
+  expect(screen.getByRole('button', { name: label }).hasAttribute('disabled')).toBe(true)
+  fireEvent.click(screen.getByRole('button', { name: action === 'branch' ? 'Start a new branch' : 'Move draft to branch' }))
+  expect(h.props.acceptRoute).toHaveBeenCalledWith(route)
 })

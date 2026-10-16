@@ -32,6 +32,9 @@ export interface PersonalContextEdit {
 
 /** One accepted, changed multi-node Context recommendation kept as one example. */
 export interface PersonalContextPlanExample {
+  readonly sourceSessionId?: string
+  readonly sourceEventSeq?: number
+  readonly at?: number
   readonly objective: string
   readonly choices: readonly {
     readonly content: string
@@ -375,7 +378,8 @@ export function contextPlanExamplesFromFamily(
       })
       if (choices.length !== selection.length) continue
       examples.push({ time: event.time, sessionId: String(inspection.meta.id), seq: event.seq,
-        example: { objective, choices } })
+        example: { objective, choices, sourceSessionId: String(inspection.meta.id),
+          sourceEventSeq: event.seq, at: event.time } })
     }
   }
   return examples.sort((left, right) => left.time - right.time

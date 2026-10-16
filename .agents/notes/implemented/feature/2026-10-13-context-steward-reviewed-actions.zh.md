@@ -10,7 +10,7 @@ Status: implemented
 
 ## 决策
 
-[Context Steward 指南](../../../../docs/user/guide/context-steward.zh.md)介绍基于原生 Session 图的统一审核流程。Local 为默认模式，不产生模型请求。显式 Fast 审核使用一次有界、无工具的请求，可分别提供目标分支与证据分数。明确的文本提示和原生图合法性约束建议。低置信度的新任务或含糊目标不能静默创建或选择分支。Fast 将准确的冻结系统提示、用户数据包、目标、provider/model 和 640-token 输出上限记录在原生 Session 日志中，不记录密钥；该记录用于审计，不训练偏好记忆，也不改变图修订。Deep 仍是隔离的 DSH 审核，`deepMaxRequests` 默认三次，可配置一至十次并计入重试；超时为 45 秒，每次输出上限为 1,200 tokens。每轮结束后的自动 Branch 分类需要主动开启。
+[Context Steward 指南](../../../../docs/user/guide/context-steward.zh.md)介绍基于原生 Session 图的统一审核流程。Local 为默认模式，不产生模型请求。显式 Fast 审核使用一次有界、无工具的请求，可分别提供目标分支与证据分数。明确的文本提示和原生图合法性约束建议。低置信度的新任务或含糊目标不能静默创建或选择分支。Fast 在原生 Session 日志中记录准确且不含凭据的请求；当前聊天模型路径采用 640-token 文本输出上限，[Jev 路径](2026-10-15-personal-context-decision-cases.zh.md)则使用结构化问题；该记录用于审计，不训练偏好记忆，也不改变图修订。Deep 仍是隔离的 DSH 审核，`deepMaxRequests` 默认三次，可配置一至十次并计入重试；超时为 45 秒，每次输出上限为 1,200 tokens。每轮结束后的自动 Branch 分类需要主动开启。
 
 Client 将 Move draft here 与 Locate 区分开。Move draft here 要求非空的未发送文本，是明确的目标分支操作；转移草稿时检查版本，并保护目标已有草稿。Host 仅在原生转移成功后记录手动路由证据。Locate 仍然只是查看，不贡献标签。分支生命周期建议与 Context 选择分开，需要单独确认。Local 只接纳明确生命周期提示；Fast 和 Deep 最多建议一次合法、非 no-op 的原生 Session 状态变化，明确提示优先。Complete 保留证据；之后的人工新轮次重新打开任务。
 

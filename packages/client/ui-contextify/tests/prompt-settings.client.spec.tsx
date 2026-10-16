@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { useSyncExternalStore } from 'react'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { CONTEXTIFY_DEFAULT_PROMPTS, CONTEXTIFY_DEFAULT_SETTINGS } from '@deepseek-ai/dsh-contextify/types'
@@ -42,6 +42,49 @@ function scopeFixture(language: 'en' | 'zh' = 'en') {
 }
 
 describe('ContextifyPromptSettingsView', () => {
+  it('lets the user choose Jev and disable personal decision evidence', async () => {
+    const fixture = scopeFixture()
+    render(<fixture.Harness />)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Fast Context reviewer' }), { target: { value: 'jev' } })
+    await act(async () => {})
+    expect(fixture.set).toHaveBeenCalledWith('fastDecisionProvider', 'jev')
+    fireEvent.click(screen.getByRole('checkbox', { name: /Learn from confirmed Context choices/ }))
+    await act(async () => {})
+    expect(fixture.set).toHaveBeenCalledWith('personalizationEnabled', false)
+  })
+
+  it.each([new Error('Setting write unavailable'), 'Setting write unavailable'])('preserves reviewer and personal settings after a failed write: %s', async (cause) => {
+    const fixture = scopeFixture()
+    fixture.set.mockRejectedValue(cause)
+    render(<fixture.Harness />)
+    const reviewer = screen.getByRole('combobox', { name: 'Fast Context reviewer' })
+    fireEvent.change(reviewer, { target: { value: 'jev' } })
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Setting write unavailable')
+    expect(reviewer).toHaveProperty('value', 'parent-model')
+    const personal = screen.getByRole('checkbox', { name: /Learn from confirmed Context choices/ })
+    fireEvent.click(personal)
+    await act(async () => {})
+    expect(fixture.set).toHaveBeenCalledWith('personalizationEnabled', false)
+    expect(personal).toHaveProperty('checked', true)
+    expect(personal).toHaveProperty('disabled', false)
+    expect(screen.getByRole('alert')).toHaveProperty('textContent', 'Setting write unavailable')
+  })
+
+  it('switches the reviewer back to the chat model and rejects an unknown DOM value', async () => {
+    const fixture = scopeFixture()
+    render(<fixture.Harness />)
+    const reviewer = screen.getByRole('combobox', { name: 'Fast Context reviewer' })
+    fireEvent.change(reviewer, { target: { value: 'jev' } })
+    await act(async () => {})
+    fireEvent.change(reviewer, { target: { value: 'parent-model' } })
+    await act(async () => {})
+    expect(reviewer).toHaveProperty('value', 'parent-model')
+    expect(fixture.set).toHaveBeenLastCalledWith('fastDecisionProvider', 'parent-model')
+    const before = fixture.set.mock.calls.length
+    fireEvent.change(reviewer, { target: { value: 'unknown-reviewer' } })
+    expect(fixture.set).toHaveBeenCalledTimes(before)
+  })
+
   it('renders complete Chinese prompt labels rather than assembling English fragments', () => {
     const fixture = scopeFixture('zh')
     render(<fixture.Harness />)

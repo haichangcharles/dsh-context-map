@@ -1,4 +1,3 @@
-import { SessionSeq } from '@deepseek-ai/dsh-session'
 /** Durable context selection across one native Session fork family. */
 import { createHash } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
@@ -6,7 +5,7 @@ import invariant from 'tiny-invariant'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { BlockAssembler, createUserMessage, HarnessError, type Message } from '@deepseek-ai/dsh-llm'
-import { SessionId, type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
+import { SessionId, SessionSeq, type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-context-compiler'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import type {} from '@deepseek-ai/dsh-settings'
@@ -22,7 +21,11 @@ import { contextPolicyWatermarks, currentPolicyInspections } from './policy-memo
 import { buildContextActionPacket, parseFastContextDecisionText,
   type ContextActionPacket, type SemanticContextRoute } from './semantic-route.ts'
 import { contextLifecycleAdvice } from './lifecycle-advice.ts'
+import { buildJevContextRequest, parseJevContextResponse, requestJevContextReview, resolveJevContextCredential } from './jev-reviewer.ts'
 import { draftRouteAdvice } from './draft-route.ts'
+import { carryRouteScope, ContextRouteScopeReplacementError, planRouteScope } from './route-scope.ts'
+import { compileContextRoutePlan } from './route-plan.ts'
+import { decisionMemorySnapshot } from './decision-memory.ts'
 import { contextActivityFromObjective } from './context-activity.ts'
 import {
   contextPolicyObservationsFromFamily,
@@ -30,7 +33,7 @@ import {
 } from './context-steward-profile.ts'
 import { calibrateContextRecommendation, contextEditEvidenceFromFamily,
   declinedContextActionsForObjective,
-  contextPlanExamplesFromFamily, type PersonalContextEdit } from './personal-context-policy.ts'
+  contextPlanExamplesFromFamily, type PersonalContextEdit, type PersonalContextPlanExample } from './personal-context-policy.ts'
 import { reviewableRecommendationExclusions } from './reviewable-exclusions.ts'
 import {
   buildDeepRecommendationSnapshot,
@@ -355,6 +358,7 @@ export class ContextifyService extends TypertRemoteService {
   private readonly routeChoices = new WeakMap<ContextRouteAdvice, {
     readonly choice: 'accept' | 'reject'
     readonly targetSessionId?: SessionId
+    readonly carryContext: boolean
   }>()
   private readonly presentedRecommendations = new WeakSet<ContextRecommendationProposal>()
   private readonly recommendationRoots = new Map<SessionId, SessionId>()
@@ -365,6 +369,7 @@ export class ContextifyService extends TypertRemoteService {
     readonly inspections: readonly ContextFamilyInspection[]
     readonly observations: readonly ContextPolicyObservation[]
     readonly edits: readonly { readonly at: number; readonly edit: PersonalContextEdit }[]
+    readonly planExamples: readonly PersonalContextPlanExample[]
     readonly branchFeedback: readonly PersonalBranchFeedback[]
   }>()
   private promptSettings: () => ContextifyPromptSettings = () => CONTEXTIFY_DEFAULT_SETTINGS
@@ -382,7 +387,10 @@ export class ContextifyService extends TypertRemoteService {
       CONTEXTIFY_DEFAULT_SETTINGS,
       {
         setSource: (source) => { this.promptSettings = source },
-        onChange: () => {},
+        onChange: () => {
+          for (const operation of this.recommendations.values()) operation.controller.abort()
+          for (const operation of this.branchReviews.values()) operation.controller.abort()
+        },
       },
     )
     })
@@ -562,6 +570,7 @@ export class ContextifyService extends TypertRemoteService {
     const cursors = evidence.cursors
     agent.session.append('contextify/policy-reset', { cursors, uiOrigin })
     for (const operation of this.recommendations.values()) operation.controller.abort()
+    for (const operation of this.branchReviews.values()) operation.controller.abort()
     this.completedRecommendations.clear()
   }
 
@@ -689,6 +698,7 @@ export class ContextifyService extends TypertRemoteService {
     }
     const operation: RecommendationOperation = { mode: recommendationMode, controller: new AbortController() }
     this.recommendations.set(rootSessionId, operation)
+    const promptSettings = this.promptSettings()
     for (const session of family.graph.sessions) this.recommendationRoots.set(session.id, rootSessionId)
     try {
       const replacementByNode = new Map(plan.replacements.map(item => [item.nodeId, item]))
@@ -718,14 +728,15 @@ export class ContextifyService extends TypertRemoteService {
 
       const profileEvidence = recommendationMode !== 'deep'
         ? await this.loadProfilePolicyEvidence(family) : undefined
-      const contextEdits = profileEvidence?.edits ?? []
+      const personal = promptSettings.personalizationEnabled
+      const contextEdits = personal ? profileEvidence?.edits ?? [] : []
       const policyInspections = currentPolicyInspections(family.inspections, profileEvidence?.watermarks ?? new Map())
-      const localContextEdits = recommendationMode !== 'deep'
-        ? contextEditEvidenceFromFamily(family.graph, policyInspections).map(item => item.edit)
-        : []
-      const priorPlanExamples = recommendationMode !== 'deep'
-        ? contextPlanExamplesFromFamily(family.graph, policyInspections)
-        : []
+      const localEpisodes = new Set(contextEditEvidenceFromFamily(family.graph, policyInspections)
+        .map(item => item.edit.episodeId))
+      // Task-specific chat choices transfer as examples, not unconditional
+      // cross-project style rules. Recorded Web source habits remain calibratable.
+      const calibrationEdits = contextEdits.filter(edit => edit.sourceKind === 'web' || localEpisodes.has(edit.episodeId))
+      const priorPlanExamples = personal ? profileEvidence?.planExamples ?? [] : []
       const reviewableExcludedNodeIds = reviewableRecommendationExclusions(
         agent.session.snapshotEvents(), plan.excluded.map(item => item.nodeId),
         plan.replacements.map(item => item.nodeId),
@@ -761,9 +772,9 @@ export class ContextifyService extends TypertRemoteService {
             effectiveIncludedNodeIds: [...effective],
           }),
           signal: operation.controller.signal,
-          maxRequests: this.promptSettings().deepMaxRequests,
+          maxRequests: promptSettings.deepMaxRequests,
           archivePrompt: effectivePrompt(
-            CONTEXTIFY_DEFAULT_PROMPTS.archive, this.promptSettings().archive),
+            CONTEXTIFY_DEFAULT_PROMPTS.archive, promptSettings.archive),
         })
       } else if (exactWebSelection !== null) {
         decision = exactWebSelection
@@ -778,15 +789,17 @@ export class ContextifyService extends TypertRemoteService {
             explicitIncludedNodeIds: plan.included.map(item => item.nodeId),
             explicitExcludedNodeIds: plan.excluded.map(item => item.nodeId),
             reviewableExcludedNodeIds,
-            preferenceEdits: localContextEdits,
-            rankingEdits: contextEdits,
+            preferenceEdits: contextEdits,
+            rankingEdits: [],
+            // Keep candidate admission independent of the personalization toggle.
+            // Learning changes decisions over a shared slate, not the candidate ceiling.
             planExamples: priorPlanExamples,
           })
           fastInput = input
           invariant(profileEvidence !== undefined, 'non-Deep reviews always capture Profile policy evidence')
           routePacket = buildContextActionPacket({ graph: family.graph, contents, objective: goal, base,
             visibleNodeIds: input.nodes.map(node => node.id),
-            preferenceExamples: profileEvidence.observations })
+            preferenceExamples: personal ? profileEvidence.observations : [] })
         } catch (cause) {
           throw new ContextifyError(
             errorText(cause),
@@ -796,57 +809,67 @@ export class ContextifyService extends TypertRemoteService {
         if (recommendationMode === 'local') {
           decision = { exclude: [], include: [], archive: [] }
         } else {
-          const promptSettings = this.promptSettings()
           const contextPrompt = effectivePrompt(CONTEXTIFY_DEFAULT_PROMPTS.context, promptSettings.context)
           const system = [
             contextPrompt,
             'Fast review changes only the next request selection. Leave archive empty; durable lifecycle retirement belongs in a separate Deep review.',
             'Return JSON immediately without analysis or Markdown.',
-            'Use this JSON: optional route is allowed alongside include, exclude, archive. route has intent (continue/resume/reference/new-task/return/unknown), intentScore [0,1], candidates [{sessionId,destinationScore,evidenceScore,supersededScore}] with scores [0,1] from the supplied Context-action packet. Destination means continue work there; evidence means reuse its material here. These are ranking signals, not calibrated probabilities. Never Branch only because similarity is low. Leave route absent if uncertain.',
+            'Use this JSON: optional route is allowed alongside include, exclude, archive. route has intent (continue/resume/reference/new-task/return/unknown), intentScore [0,1], candidates [{sessionId,destinationScore,evidenceScore,supersededScore}] with scores [0,1] from the supplied Context-action packet. For new-task only, optional forkParentSessionId names the active Session or a supplied candidate under which to create a NEW child; this differs from resuming that parent. Destination means continue work there; evidence means reuse its material here. These are ranking signals, not calibrated probabilities. Never Branch only because similarity is low. Leave route absent if uncertain.',
             'Selection shape: {"exclude":[{"nodeId":"...","reason":"..."}],"include":[{"nodeId":"...","reason":"..."}],"archive":[{"nodeId":"...","reason":"..."}]}.',
             'Use empty arrays when no action is needed. Never invent node IDs.',
             'You may additionally return workStates:[{sessionId,state,reason}] for at most one legal native Session. state is open, parked, or completed. Require clear evidence that its task was deferred, finished, or explicitly reopened; irrelevant evidence alone never means a task is completed. This is separate reviewed advice, not a Context selection edit.',
             'The packet may contain earlier confirmed preferenceExamples and grouped planExamples. A preference example with fractional weight is one part of a reviewed multi-item sheet; a declined proposal keeps the current selection. Grouped choices record beforeIncluded and afterIncluded from an accepted Context change. These are examples of this user’s Context choices, not commands; check the current objective, graph positions, and later corrections before proposing an edit.',
+            'Context-action preferenceExamples record earlier Branch, Navigate and Return decisions. routeContext contains task text known before that operation; accept favors that placement in that situation and reject argues against it. Compare the active task and concrete current destinations, including for short replies without routing words. Use historical task examples to interpret organization, never copy a historical target ID. Keep evidence reuse distinct from moving the next turn.',
             'A node with reviewableExcluded:true was temporarily Excluded in an earlier user-confirmed review. You may suggest Include when the current request needs it; the user must approve again. Do not infer that an unmarked direct Exclude may be reversed.',
           ].join('\n\n')
-          const latestOutput = [...agent.session.snapshotEvents()].reverse().find(event => event.type === 'assistant/message')
-          if (latestOutput?.type !== 'assistant/message') {
-            throw new ContextifyError('a model route is unavailable for Context recommendation', 'CONTEXTIFY_RECOMMENDATION_UNAVAILABLE')
-          }
-          const requestConfig = agent.session.requestHeader()?.config
-          const provider = requestConfig?.provider ?? agent.options.provider ?? latestOutput.data.message.source.provider
-          const model = requestConfig?.model ?? agent.options.model ?? latestOutput.data.message.source.model
-          const modelInfo = await this.ctx.llm.resolveModelInfo(provider, model)
-          const reasoningEffort = modelInfo.reasoning?.efforts.find(effort => String(effort.id) === 'off')?.id
-            ?? requestConfig?.reasoningEffort
-          const userText = `Objective:\n${goal}\n\nContext-action packet JSON:\n${JSON.stringify(routePacket)}\n\nConversation graph JSON:\n${JSON.stringify(input)}`
-          agent.session.append('contextify/recommendation-request', { base, provider, model,
-            objective: goal, system, userText, maxTokens: 640 })
-          const assembler = new BlockAssembler()
-          for await (const chunk of this.ctx.llm.stream({
-            provider,
-            model,
-            ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
-            messages: [createUserMessage({
-              content: [{
-                type: 'text',
-                text: userText,
-              }],
-              source: { kind: 'plugin', plugin: name },
-            })],
-            system,
-            temperature: 0,
-            maxTokens: 640,
-            signal: operation.controller.signal,
-          })) assembler.push(chunk)
-          const blocks = assembler.blocks()
-          if (blocks.some(block => block.type === 'tool-call')) {
-            throw new ContextifyError('the recommendation model attempted a tool call', 'CONTEXTIFY_INVALID_RECOMMENDATION')
+          let fastText: string
+          if (promptSettings.fastDecisionProvider === 'jev') {
+            const body = buildJevContextRequest(input, routePacket, system)
+            agent.session.append('contextify/recommendation-request', { base, provider: 'typesafe', model: body.model,
+              objective: goal, system, userText: JSON.stringify(body), maxTokens: 0 })
+            const wire = await requestJevContextReview(body, { signal: operation.controller.signal,
+              resolveCredential: () => resolveJevContextCredential(this.ctx) })
+            const parsed = parseJevContextResponse(wire, input, routePacket)
+            fastText = JSON.stringify({ ...parsed.decision, route: parsed.route })
+          } else {
+            const latestOutput = [...agent.session.snapshotEvents()].reverse().find(event => event.type === 'assistant/message')
+            if (latestOutput?.type !== 'assistant/message') {
+              throw new ContextifyError('a model route is unavailable for Context recommendation', 'CONTEXTIFY_RECOMMENDATION_UNAVAILABLE')
+            }
+            const requestConfig = agent.session.requestHeader()?.config
+            const provider = requestConfig?.provider ?? agent.options.provider ?? latestOutput.data.message.source.provider
+            const model = requestConfig?.model ?? agent.options.model ?? latestOutput.data.message.source.model
+            const modelInfo = await this.ctx.llm.resolveModelInfo(provider, model)
+            const reasoningEffort = modelInfo.reasoning?.efforts.find(effort => String(effort.id) === 'off')?.id
+              ?? requestConfig?.reasoningEffort
+            const userText = `Objective:\n${goal}\n\nContext-action packet JSON:\n${JSON.stringify(routePacket)}\n\nConversation graph JSON:\n${JSON.stringify(input)}`
+            agent.session.append('contextify/recommendation-request', { base, provider, model,
+              objective: goal, system, userText, maxTokens: 640 })
+            const assembler = new BlockAssembler()
+            for await (const chunk of this.ctx.llm.stream({
+              provider,
+              model,
+              ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+              messages: [createUserMessage({
+                content: [{
+                  type: 'text',
+                  text: userText,
+                }],
+                source: { kind: 'plugin', plugin: name },
+              })],
+              system,
+              temperature: 0,
+              maxTokens: 640,
+              signal: operation.controller.signal,
+            })) assembler.push(chunk)
+            const blocks = assembler.blocks()
+            if (blocks.some(block => block.type === 'tool-call')) {
+              throw new ContextifyError('the recommendation model attempted a tool call', 'CONTEXTIFY_INVALID_RECOMMENDATION')
+            }
+            fastText = blocks.flatMap(block => block.type === 'text' || block.type === 'reasoning' ? [block.text] : []).join('\n')
           }
           try {
-            const parsed = parseFastContextDecisionText(blocks
-              .flatMap(block => block.type === 'text' || block.type === 'reasoning' ? [block.text] : [])
-              .join('\n'), routePacket)
+            const parsed = parseFastContextDecisionText(fastText, routePacket)
             decision = parsed.decision
             semanticRoute = parsed.route
             const sourceIds = new Set(input.nodes.map(node => node.id))
@@ -896,12 +919,12 @@ export class ContextifyService extends TypertRemoteService {
         })
         const generic = validateRecommendation(withoutRepeatedDeclines(decision), validation)
         const calibrated = recommendationMode !== 'deep' && exactWebSelection === null
-          && contextEdits.length > 0
+          && calibrationEdits.length > 0
           ? calibrateContextRecommendation({
             exclude: generic.selection.filter(item => item.action === 'exclude'),
             include: generic.selection.filter(item => item.action === 'include'),
             archive: generic.archive,
-          }, goal, contents, contextEdits, fastInput?.nodes, reviewableExcludedNodeIds)
+          }, goal, contents, calibrationEdits, fastInput?.nodes, reviewableExcludedNodeIds)
           : undefined
         const contextProposal = calibrated === undefined
           ? generic
@@ -918,16 +941,45 @@ export class ContextifyService extends TypertRemoteService {
             graph: family.graph, contents, objective: goal, base,
             ...(routePacket === undefined ? {} : { routePacket }),
             ...(semanticRoute === undefined ? {} : { semanticRoute }),
+            jointPlacement: promptSettings.fastDecisionProvider === 'jev',
+            selectedNodeIds: contextProposal.proposedNodeIds,
             profile: deriveContextStewardProfile(
-              profileEvidence.observations, { branchDepth,
+              personal ? profileEvidence.observations : [], { branchDepth,
                 ...(activity === undefined ? {} : { activity }) },
             ),
           })
+          const scopeDestination = route?.action === 'branch' && route.forkParentSessionId !== undefined
+            && route.forkParentSessionId !== agent.id ? route.forkParentSessionId
+            : promptSettings.fastDecisionProvider === 'jev' ? route?.targetSessionId : undefined
+          if (scopeDestination !== undefined && route !== undefined) {
+            const parent = family.inspections.get(scopeDestination)
+            invariant(parent, 'validated route destinations belong to the inspected native family')
+            try {
+              route = Object.freeze({ ...route, contextNodeIds: planRouteScope({ graph: family.graph,
+                parentSessionId: scopeDestination,
+                parentPlan: currentContextPlan({ snapshotEvents: () => [...parent.events] }),
+                sourcePlan: plan, proposal: contextProposal,
+                affirmedNodeIds: decision.include.map(item => item.nodeId).filter(id => contextProposal.proposedNodeIds.includes(id)),
+                excludedNodeIds: decision.exclude.map(item => item.nodeId).filter(id => !contextProposal.proposedNodeIds.includes(id)) }) })
+            } catch (cause) {
+              if (!(cause instanceof ContextRouteScopeReplacementError)) throw cause
+              route = Object.freeze({ ...route, contextUnavailable: true })
+            }
+          }
         }
         const explicitWorkStates = draftBound && objective?.trim() === goal
           ? contextLifecycleAdvice(family.graph, goal) : []
         const workStates = explicitWorkStates.length > 0 ? explicitWorkStates : contextProposal.workStates ?? []
         const proposal: ContextRecommendationProposal = Object.freeze({ ...contextProposal,
+          ...(profileEvidence === undefined ? {} : { personalization: decisionMemorySnapshot({
+            enabled: personal,
+            reviewer: recommendationMode === 'local' ? 'local' : promptSettings.fastDecisionProvider,
+            ...(fastInput === undefined ? {} : { input: fastInput }),
+            ...(routePacket?.preferenceExamples === undefined ? {} : { routeExamples: routePacket.preferenceExamples }),
+            edits: calibrationEdits, observations: profileEvidence.observations,
+            calibrated: calibrated !== undefined,
+            routed: draftBound === true && objective?.trim() === goal,
+          }) }),
           ...(route === undefined ? {} : { route }),
           ...(workStates.length === 0 ? {} : { workStates }),
         })
@@ -1011,6 +1063,7 @@ export class ContextifyService extends TypertRemoteService {
    * @param choice - Explicit acceptance or rejection of that card.
    * @param actualTargetSessionId - Native destination after an accepted transfer.
    * @param uiOrigin - Marks a Client review without claiming authenticated identity.
+   * @param carryContext - Approve complete Context at the final destination; manual conflicts preserve its Plan.
    */
   @Remote('reviewRoute')
   async reviewRoute(
@@ -1019,6 +1072,7 @@ export class ContextifyService extends TypertRemoteService {
     choice: 'accept' | 'reject',
     actualTargetSessionId?: SessionId,
     uiOrigin?: 'contextify-client',
+    carryContext?: boolean,
   ): Promise<void> {
     this.assertLive(agent)
     this.assertRecommendationIdle(agent)
@@ -1030,9 +1084,16 @@ export class ContextifyService extends TypertRemoteService {
       || currentContextPlan(agent.session).revision !== route.base.planRevision) {
       throw new ContextifyError('the draft route is stale', 'CONTEXTIFY_STALE_REVISION')
     }
+    if (carryContext === true && choice !== 'accept') {
+      throw new ContextifyError('Context can be carried only to an accepted existing destination or new branch', 'CONTEXTIFY_INVALID_TRANSITION')
+    }
+    if (carryContext === true && route.contextUnavailable === true) {
+      throw new ContextifyError('Carried Context contains a replaced destination source', 'CONTEXTIFY_INVALID_TRANSITION')
+    }
     const previous = this.routeChoices.get(pending.route)
     if (previous !== undefined) {
-      if (previous.choice === choice && previous.targetSessionId === actualTargetSessionId) return
+      if (previous.choice === choice && previous.targetSessionId === actualTargetSessionId
+        && previous.carryContext === (carryContext === true)) return
       throw new ContextifyError('the draft route was already decided', 'CONTEXTIFY_INVALID_TRANSITION')
     }
     const key = createHash('sha256').update(JSON.stringify(route)).update(String(agent.session.seq)).digest('hex')
@@ -1040,14 +1101,22 @@ export class ContextifyService extends TypertRemoteService {
     if (this.completedRecommendations.get(agent.id) !== pending) {
       throw new ContextifyError('the route review was cleared', 'CONTEXTIFY_RECOMMENDATION_UNAVAILABLE')
     }
+    this.prepare(agent, { revision: route.base.planRevision })
+    this.assertFamilyCurrent(family)
     if (choice === 'reject') {
       if (actualTargetSessionId !== undefined || family.revision !== route.base.graphRevision) {
         throw new ContextifyError('the draft route is stale', 'CONTEXTIFY_STALE_GRAPH')
       }
     } else if (route.action === 'branch') {
+      compileContextRoutePlan({ graph: family.graph, route, selectedNodeIds: route.contextNodeIds ?? pending.proposedNodeIds })
       const target = family.graph.sessions.find(session => session.id === actualTargetSessionId)
-      if (target?.parentSessionId !== agent.id) {
+      if (target === undefined || family.inspections.get(target.id)?.meta.parentSession !== (route.forkParentSessionId ?? agent.id)) {
         throw new ContextifyError('the new branch is unavailable', 'CONTEXTIFY_INVALID_TRANSITION')
+      }
+      const original = new Map(family.inspections)
+      original.delete(target.id)
+      if (familyRevision(original) !== route.base.graphRevision) {
+        throw new ContextifyError('the family changed before the new branch was approved', 'CONTEXTIFY_STALE_GRAPH')
       }
     } else if (actualTargetSessionId === undefined
       || actualTargetSessionId !== route.targetSessionId
@@ -1055,14 +1124,74 @@ export class ContextifyService extends TypertRemoteService {
       || family.revision !== route.base.graphRevision) {
       throw new ContextifyError('the destination route is stale', 'CONTEXTIFY_STALE_GRAPH')
     }
+    if (carryContext === true) {
+      invariant(actualTargetSessionId !== undefined, 'accepted routes have a destination')
+      await this.applyCarriedScope(agent, pending, actualTargetSessionId, family.revision, uiOrigin)
+    }
     agent.session.append('contextify/route-choice', {
       routeKey: key, action: route.action, choice, base: route.base,
       objective: route.objective,
       ...(actualTargetSessionId === undefined ? {} : { targetSessionId: actualTargetSessionId }),
+      ...(route.forkParentSessionId === undefined ? {} : { forkParentSessionId: route.forkParentSessionId }),
       ...(uiOrigin === 'contextify-client' ? { uiOrigin } : {}),
     })
-    this.routeChoices.set(pending.route, { choice,
+    this.routeChoices.set(pending.route, { choice, carryContext: carryContext === true,
       ...(actualTargetSessionId === undefined ? {} : { targetSessionId: actualTargetSessionId }) })
+  }
+
+  /** Apply the already approved source set through destination validation and Plan guards. */
+  private async applyCarriedScope(
+    source: Agent,
+    proposal: ContextRecommendationProposal,
+    targetId: SessionId,
+    expectedFamilyRevision: string,
+    uiOrigin: 'contextify-client' | undefined,
+  ): Promise<void> {
+    const target = this.ctx.agents.get(targetId)
+    if (target === undefined) throw new ContextifyError('the destination Agent is unavailable', 'CONTEXTIFY_AGENT_NOT_LIVE')
+    this.assertRecommendationIdle(target)
+    const family = await this.loadFamily(target.session)
+    this.assertLive(source)
+    this.assertRecommendationIdle(source)
+    if (family.revision !== expectedFamilyRevision
+      || this.completedRecommendations.get(source.id) !== proposal
+      || currentContextPlan(source.session).revision !== proposal.base.planRevision) {
+      throw new ContextifyError('the reviewed source scope changed', 'CONTEXTIFY_STALE_GRAPH')
+    }
+    const previous = this.completedRecommendations.get(targetId)
+    if (previous !== undefined && (previous.route === undefined
+      || this.routeChoices.get(previous.route)?.choice !== 'accept')) {
+      throw new ContextifyError('finish the destination Context review before carrying a scope', 'CONTEXTIFY_RECOMMENDATION_BUSY')
+    }
+    const plan = currentContextPlan(target.session)
+    let carried: ContextRecommendationProposal
+    try {
+      const scoped = proposal.route?.contextNodeIds === undefined ? proposal
+        : { ...proposal, proposedNodeIds: proposal.route.contextNodeIds }
+      carried = carryRouteScope({ proposal: scoped, sourcePlan: currentContextPlan(source.session),
+        graph: family.graph, plan, graphRevision: family.revision })
+    } catch (cause) {
+      throw new ContextifyError(errorText(cause), 'CONTEXTIFY_INVALID_RECOMMENDATION')
+    }
+    const nodes = new Map(family.graph.nodes.map(node => [node.id, node]))
+    const mutations = carried.selection.map((item): ContextNodeMutation => {
+      const node = nodes.get(item.nodeId)
+      invariant(node, 'carried selection nodes belong to the destination graph')
+      return { node: node.owner, mode: item.action === 'exclude' ? 'exclude' : 'include' }
+    })
+    this.recommendationObjectives.set(carried, this.reviewObjective(proposal))
+    this.completedRecommendations.set(targetId, carried)
+    try {
+      await this.applyNodeModes(target, { revision: plan.revision }, mutations, family.revision, uiOrigin, undefined, () => {
+        this.prepare(source, { revision: proposal.base.planRevision })
+        if (this.completedRecommendations.get(source.id) !== proposal
+          || this.completedRecommendations.get(targetId) !== carried) {
+          throw new ContextifyError('the reviewed source scope was cleared', 'CONTEXTIFY_RECOMMENDATION_UNAVAILABLE')
+        }
+      })
+    } finally {
+      if (this.completedRecommendations.get(targetId) === carried) this.completedRecommendations.delete(targetId)
+    }
   }
 
   /**
@@ -1227,10 +1356,10 @@ export class ContextifyService extends TypertRemoteService {
     // Project earlier UI decisions while the isolated classifier runs. A
     // historical Profile read failure must not disable same-family review.
     const branchFeedback = this.loadProfilePolicyEvidence(family)
-      .then(evidence => evidence.branchFeedback)
+      .then(evidence => this.promptSettings().personalizationEnabled ? evidence.branchFeedback : [])
       .catch((cause: unknown) => {
         this.ctx.logger.warn(`Contextify Profile Branch feedback unavailable: ${String(cause)}`)
-        return branchFeedbackFromFamily(family.graph, family.inspections)
+        return this.promptSettings().personalizationEnabled ? branchFeedbackFromFamily(family.graph, family.inspections) : []
       })
     const branchPrompt = effectivePrompt(CONTEXTIFY_DEFAULT_PROMPTS.branch, this.promptSettings().branch)
     const userText = [
@@ -1425,8 +1554,23 @@ export class ContextifyService extends TypertRemoteService {
     uiOrigin?: 'contextify-client',
     reviewedDeclinedNodeIds?: readonly string[],
   ): Promise<ContextifyView> {
-    const current = this.prepare(agent, ref)
+    return this.applyNodeModes(agent, ref, mutations, expectedGraphRevision, uiOrigin, reviewedDeclinedNodeIds)
+  }
+
+  private async applyNodeModes(
+    agent: Agent,
+    ref: ContextPlanRef,
+    mutations: readonly ContextNodeMutation[],
+    expectedGraphRevision?: string,
+    uiOrigin?: 'contextify-client',
+    reviewedDeclinedNodeIds?: readonly string[],
+    beforeCommit?: () => void,
+  ): Promise<ContextifyView> {
+    this.prepare(agent, ref)
     const family = await this.loadFamily(agent.session)
+    const current = this.prepare(agent, ref)
+    this.assertFamilyCurrent(family)
+    beforeCommit?.()
     if (expectedGraphRevision !== undefined && family.revision !== expectedGraphRevision) {
       throw new ContextifyError('the Context Map changed before recommendations were applied', 'CONTEXTIFY_STALE_GRAPH')
     }
@@ -1517,15 +1661,7 @@ export class ContextifyService extends TypertRemoteService {
     }
 
     if (proposal !== undefined && resolvedMutations.length === 0) {
-      agent.session.append('contextify/recommendation-reviewed', {
-        mode: proposal.mode,
-        base: proposal.base,
-        objective: this.reviewObjective(proposal),
-        selection: proposal.selection.map(({ nodeId, action }) => ({ nodeId, action })),
-        acceptedNodeIds: [],
-        declinedNodeIds: declinedInProposalOrder,
-        ...(uiOrigin === 'contextify-client' ? { uiOrigin } : {}),
-      })
+      this.recordReviewedSelection(agent.session, proposal, declinedInProposalOrder, uiOrigin)
       this.completedRecommendations.delete(agent.id)
       return this.get(agent)
     }
@@ -1571,16 +1707,7 @@ export class ContextifyService extends TypertRemoteService {
       } }),
     })
     if (proposal !== undefined) {
-      agent.session.append('contextify/recommendation-reviewed', {
-        mode: proposal.mode,
-        base: proposal.base,
-        objective: this.reviewObjective(proposal),
-        selection: proposal.selection.map(({ nodeId, action }) => ({ nodeId, action })),
-        acceptedNodeIds: proposal.selection.filter(item => !declinedInProposalOrder.includes(item.nodeId))
-          .map(item => item.nodeId),
-        declinedNodeIds: declinedInProposalOrder,
-        ...(uiOrigin === 'contextify-client' ? { uiOrigin } : {}),
-      })
+      this.recordReviewedSelection(agent.session, proposal, declinedInProposalOrder, uiOrigin)
     }
     this.completedRecommendations.delete(agent.id)
     return view
@@ -1953,6 +2080,25 @@ export class ContextifyService extends TypertRemoteService {
     }
   }
 
+  private recordReviewedSelection(
+    session: Session,
+    proposal: ContextRecommendationProposal,
+    declinedNodeIds: readonly string[],
+    uiOrigin: 'contextify-client' | undefined,
+  ): void {
+    session.append('contextify/recommendation-reviewed', {
+      mode: proposal.mode,
+      base: proposal.base,
+      ...(proposal.sourceBase === undefined ? {} : { sourceBase: proposal.sourceBase }),
+      objective: this.reviewObjective(proposal),
+      selection: proposal.selection.map(({ nodeId, action }) => ({ nodeId, action })),
+      acceptedNodeIds: proposal.selection.filter(item => !declinedNodeIds.includes(item.nodeId))
+        .map(item => item.nodeId),
+      declinedNodeIds,
+      ...(uiOrigin === 'contextify-client' ? { uiOrigin } : {}),
+    })
+  }
+
   private prepare(agent: Agent, ref: ContextPlanRef): ContextPlanSnapshot {
     this.assertLive(agent)
     if (agent.status !== 'idle') {
@@ -2056,6 +2202,7 @@ export class ContextifyService extends TypertRemoteService {
   private async loadProfilePolicyEvidence(currentFamily: LoadedFamily): Promise<{
     readonly observations: readonly ContextPolicyObservation[]
     readonly edits: readonly PersonalContextEdit[]
+    readonly planExamples: readonly PersonalContextPlanExample[]
     readonly branchFeedback: readonly PersonalBranchFeedback[]
     readonly watermarks: ReadonlyMap<SessionId, number>
     readonly cursors: readonly { readonly sessionId: SessionId; readonly seq: number }[]
@@ -2099,6 +2246,7 @@ export class ContextifyService extends TypertRemoteService {
     const allInspections: ContextFamilyInspection[] = []
     const all: ContextPolicyObservation[] = []
     const allEdits: { readonly at: number; readonly edit: PersonalContextEdit }[] = []
+    const allPlans: PersonalContextPlanExample[] = []
     const allBranchFeedback: PersonalBranchFeedback[] = []
     for (const [root, ids] of groups) {
       ids.sort()
@@ -2114,6 +2262,7 @@ export class ContextifyService extends TypertRemoteService {
         allInspections.push(...cached.inspections)
         all.push(...cached.observations)
         allEdits.push(...cached.edits)
+        allPlans.push(...cached.planExamples)
         allBranchFeedback.push(...cached.branchFeedback)
         continue
       }
@@ -2138,17 +2287,19 @@ export class ContextifyService extends TypertRemoteService {
         }
         const observations = contextPolicyObservationsFromFamily(graph, inspections)
         const edits = contextEditEvidenceFromFamily(graph, inspections)
+        const planExamples = contextPlanExamplesFromFamily(graph, inspections)
         const branchFeedback = branchFeedbackFromFamily(graph, inspections)
         const unchanged = ids.every((id) => {
           const live = this.ctx.sessions.get(id)
           return live === undefined || revisionOf(id) === `live:${String(live.seq)}`
         })
         if (unchanged) this.profilePolicyCache.set(root, {
-          revision, inspections: [...inspections.values()], observations, edits, branchFeedback,
+          revision, inspections: [...inspections.values()], observations, edits, planExamples, branchFeedback,
         })
         allInspections.push(...inspections.values())
         all.push(...observations)
         allEdits.push(...edits)
+        allPlans.push(...planExamples)
         allBranchFeedback.push(...branchFeedback)
       } catch (cause) {
         // One inaccessible historical family must not block a live Context review.
@@ -2160,6 +2311,11 @@ export class ContextifyService extends TypertRemoteService {
     const current = (id: SessionId, seq: number): boolean => seq > (watermarks.get(id) ?? -1)
     return Object.freeze({
       watermarks,
+      planExamples: Object.freeze(allPlans.filter((item): item is PersonalContextPlanExample & { readonly at: number } => {
+        invariant(item.sourceSessionId !== undefined && item.sourceEventSeq !== undefined && item.at !== undefined,
+          'projected multi-node examples must have owned event provenance')
+        return current(SessionId(item.sourceSessionId), item.sourceEventSeq)
+      }).sort((left, right) => left.at - right.at).slice(-16)),
       cursors: allInspections.map(inspection => ({ sessionId: inspection.meta.id,
         seq: inspection.events.at(-1)?.seq ?? -1 })),
       observations: Object.freeze(all.filter((item) => {
@@ -2205,6 +2361,27 @@ export class ContextifyService extends TypertRemoteService {
         inheritedEventCount: handle.inheritedEventCount }
     } finally {
       await handle.close()
+    }
+  }
+
+  /** Check in-process structural changes after the final storage suspension. */
+  private assertFamilyCurrent(family: LoadedFamily): void {
+    const current = new Map(family.inspections)
+    const live = this.ctx.sessions.list().filter(session => session.header.origin !== 'subagent')
+    const byId = new Map(live.map(session => [session.id, session]))
+    for (const session of live) {
+      let cursor: SessionId | undefined = session.id
+      const seen = new Set<SessionId>()
+      while (cursor !== undefined && !current.has(cursor) && !seen.has(cursor)) {
+        seen.add(cursor)
+        cursor = byId.get(cursor)?.header.parentSession
+      }
+      if (cursor === undefined || !current.has(cursor)) continue
+      current.set(session.id, { meta: session.header, events: session.snapshotEvents(),
+        inheritedEventCount: session.inheritedEventCount })
+    }
+    if (familyRevision(current) !== family.revision) {
+      throw new ContextifyError('the Context Map changed during the storage read', 'CONTEXTIFY_STALE_GRAPH')
     }
   }
 

@@ -751,6 +751,7 @@ describe('personal Context candidate routing', () => {
           events, inheritedEventCount: events.length }],
       ])
       expect(contextPlanExamplesFromFamily(graph, inspections)).toEqual([{
+        sourceSessionId: root.id, sourceEventSeq: 2, at: events[2]!.time,
         objective: 'Draft the new camera plan',
         choices: [
           { content: 'the old camera budget is 600', action: 'exclude',

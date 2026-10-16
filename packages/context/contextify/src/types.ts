@@ -21,6 +21,10 @@ export interface ContextifyPromptSettings {
   readonly branch: ContextifyPromptSection
   /** Opt-in auxiliary classifier; explicit Branch requests do not require it. */
   readonly automaticBranchReview: boolean
+  /** Reuse confirmed, undo-aware choices in review packets and calibration. */
+  readonly personalizationEnabled: boolean
+  /** Jev is a structured decision scorer; the parent-model path uses the current LLM route. */
+  readonly fastDecisionProvider: 'parent-model' | 'jev'
   /** Maximum model requests in one explicitly selected Deep review. */
   readonly deepMaxRequests: number
 }
@@ -38,9 +42,13 @@ export interface ContextPolicyObservation {
   readonly origin: 'explicit-review' | 'manual-action'
   /** Exact draft objective when the reviewed event recorded one. */
   readonly objective?: string
+  /** Bounded task text known before the operation; historical targets grant no current authority. */
+  readonly routeContext?: { readonly source: string; readonly target?: string; readonly parent?: string }
   /** Context item or destination actually considered by this choice. */
   readonly targetNodeId?: string
   readonly targetSessionId?: SessionId
+  /** Parent considered when reviewing a new child placement. */
+  readonly forkParentSessionId?: SessionId
   /** Zero-based position within one displayed multi-item review. */
   readonly displayedIndex?: number
   /** Relation at review time, before any approved Context Plan mutation. */
@@ -111,6 +119,8 @@ export const CONTEXTIFY_DEFAULT_SETTINGS: ContextifyPromptSettings = Object.free
   archive: Object.freeze({ additional: '', override: '' }),
   branch: Object.freeze({ additional: '', override: '' }),
   automaticBranchReview: false,
+  personalizationEnabled: true,
+  fastDecisionProvider: 'parent-model',
   deepMaxRequests: 3,
 })
 
@@ -354,12 +364,31 @@ export interface ContextArchiveCandidate {
 export interface ContextRecommendationProposal {
   readonly mode: ContextRecommendationMode
   readonly base: ContextRecommendationBase
+  /** Original model decision when an approved scope is carried to another Session. */
+  readonly sourceBase?: ContextRecommendationBase
   readonly currentNodeIds: readonly string[]
   readonly proposedNodeIds: readonly string[]
   readonly addedNodeIds: readonly string[]
   readonly removedNodeIds: readonly string[]
   readonly selection: readonly ContextSelectionRecommendation[]
   readonly archive: readonly ContextArchiveCandidate[]
+  /** Bounded evidence actually supplied to this decision, separate from answer Context. */
+  readonly personalization?: {
+    readonly enabled: boolean
+    readonly reviewer: 'parent-model' | 'jev' | 'local'
+    /** Owned event identities available to deterministic selection calibration. */
+    readonly calibrationSources?: readonly string[]
+    /** Owned event identities in the recent per-action threshold input pools. */
+    readonly thresholdSources?: readonly string[]
+    readonly examples: readonly {
+      readonly objective: string
+      readonly action: ContextPolicyAction | 'exclude'
+      readonly choice?: 'accept' | 'reject'
+      readonly content?: string
+      readonly sourceSessionId?: SessionId
+      readonly sourceEventSeq?: number
+    }[]
+  }
   /** Optional draft-bound Session route, reviewed separately from Context edits. */
   readonly route?: ContextRouteAdvice
   /** Separate review-only task lifecycle advice; never changes prompt inclusion. */
@@ -379,6 +408,12 @@ export interface ContextRouteAdvice {
   readonly base: ContextRecommendationBase
   readonly objective: string
   readonly targetSessionId?: SessionId
+  /** Native parent of a proposed child; absent means the active Session. */
+  readonly forkParentSessionId?: SessionId
+  /** Complete destination-based Context proposed for a reviewed route. */
+  readonly contextNodeIds?: readonly string[]
+  /** Destination replacements prevent carrying scope; draft-only routing remains available. */
+  readonly contextUnavailable?: boolean
   readonly reason: string
 }
 
@@ -417,6 +452,8 @@ declare module '@deepseek-ai/dsh-session/types' {
       /** Bounded reviewed draft objective; recorded only after an explicit route decision. */
       readonly objective?: string
       readonly targetSessionId?: SessionId
+      /** Reviewed parent of a new child; absent on existing-destination routes. */
+      readonly forkParentSessionId?: SessionId
       /** Client-declared confirmation, not authenticated human identity. */
       readonly uiOrigin?: 'contextify-client'
     }
@@ -526,6 +563,8 @@ declare module '@deepseek-ai/dsh-session/types' {
     'contextify/recommendation-reviewed': {
       readonly mode: ContextRecommendationMode
       readonly base: ContextRecommendationBase
+      /** Original decision log for an explicitly approved cross-Session scope. */
+      readonly sourceBase?: ContextRecommendationBase
       /** Bounded objective used to produce this confirmed recommendation. */
       readonly objective?: string
       readonly selection: readonly {
