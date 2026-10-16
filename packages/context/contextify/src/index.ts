@@ -1627,16 +1627,7 @@ export class ContextifyService extends TypertRemoteService {
     }
 
     if (proposal !== undefined && resolvedMutations.length === 0) {
-      agent.session.append('contextify/recommendation-reviewed', {
-        mode: proposal.mode,
-        base: proposal.base,
-        ...(proposal.sourceBase === undefined ? {} : { sourceBase: proposal.sourceBase }),
-        objective: this.reviewObjective(proposal),
-        selection: proposal.selection.map(({ nodeId, action }) => ({ nodeId, action })),
-        acceptedNodeIds: [],
-        declinedNodeIds: declinedInProposalOrder,
-        ...(uiOrigin === 'contextify-client' ? { uiOrigin } : {}),
-      })
+      this.recordReviewedSelection(agent.session, proposal, declinedInProposalOrder, uiOrigin)
       this.completedRecommendations.delete(agent.id)
       return this.get(agent)
     }
@@ -1682,17 +1673,7 @@ export class ContextifyService extends TypertRemoteService {
       } }),
     })
     if (proposal !== undefined) {
-      agent.session.append('contextify/recommendation-reviewed', {
-        mode: proposal.mode,
-        base: proposal.base,
-        ...(proposal.sourceBase === undefined ? {} : { sourceBase: proposal.sourceBase }),
-        objective: this.reviewObjective(proposal),
-        selection: proposal.selection.map(({ nodeId, action }) => ({ nodeId, action })),
-        acceptedNodeIds: proposal.selection.filter(item => !declinedInProposalOrder.includes(item.nodeId))
-          .map(item => item.nodeId),
-        declinedNodeIds: declinedInProposalOrder,
-        ...(uiOrigin === 'contextify-client' ? { uiOrigin } : {}),
-      })
+      this.recordReviewedSelection(agent.session, proposal, declinedInProposalOrder, uiOrigin)
     }
     this.completedRecommendations.delete(agent.id)
     return view
@@ -2063,6 +2044,25 @@ export class ContextifyService extends TypertRemoteService {
       kind: 'placeholder',
       reason,
     }
+  }
+
+  private recordReviewedSelection(
+    session: Session,
+    proposal: ContextRecommendationProposal,
+    declinedNodeIds: readonly string[],
+    uiOrigin: 'contextify-client' | undefined,
+  ): void {
+    session.append('contextify/recommendation-reviewed', {
+      mode: proposal.mode,
+      base: proposal.base,
+      ...(proposal.sourceBase === undefined ? {} : { sourceBase: proposal.sourceBase }),
+      objective: this.reviewObjective(proposal),
+      selection: proposal.selection.map(({ nodeId, action }) => ({ nodeId, action })),
+      acceptedNodeIds: proposal.selection.filter(item => !declinedNodeIds.includes(item.nodeId))
+        .map(item => item.nodeId),
+      declinedNodeIds,
+      ...(uiOrigin === 'contextify-client' ? { uiOrigin } : {}),
+    })
   }
 
   private prepare(agent: Agent, ref: ContextPlanRef): ContextPlanSnapshot {
