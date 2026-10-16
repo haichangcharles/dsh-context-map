@@ -446,7 +446,7 @@ it.each(['branch', 'navigate'] as const)('previews the complete %s scope and pre
   expect(screen.getByText('missing')).toBeTruthy()
   expect(screen.getByText(/destination contains replaced content/)).toBeTruthy()
   const label = action === 'branch' ? 'Create branch with proposed Context' : 'Move draft with proposed Context'
-  expect(screen.getByRole('button', { name: label }).disabled).toBe(true)
+  expect(screen.getByRole('button', { name: label }).hasAttribute('disabled')).toBe(true)
   fireEvent.click(screen.getByRole('button', { name: action === 'branch' ? 'Start a new branch' : 'Move draft to branch' }))
   expect(h.props.acceptRoute).toHaveBeenCalledWith(route)
 })
