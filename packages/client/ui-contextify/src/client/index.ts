@@ -241,7 +241,7 @@ export function apply(ctx: ClientContext): void {
             }
             valueOf(await remote.reviewRoute(sessionId, route, 'reject', undefined, 'contextify-client'))
           },
-          acceptRoute: async (route: ContextRouteAdvice) => {
+          acceptRoute: async (route: ContextRouteAdvice, carryContext?: boolean) => {
             if (route.base.activeSessionId !== sessionId) throw new Error(t('error.staleRoute'))
             const page = valueOf(await remote.familyPage(sessionId, undefined, 1))
             const view = valueOf(await remote.get(sessionId))
@@ -277,7 +277,8 @@ export function apply(ctx: ClientContext): void {
               throw new Error(t('error.draftTransfer'))
             }
             try {
-              valueOf(await remote.reviewRoute(sessionId, route, 'accept', targetId, 'contextify-client'))
+              valueOf(await remote.reviewRoute(sessionId, route, 'accept', targetId, 'contextify-client',
+                ...(carryContext === true ? [true] as const : [])))
             } finally {
               ctx.sessions.open(targetId)
             }

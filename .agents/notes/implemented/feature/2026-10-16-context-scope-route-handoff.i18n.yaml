@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-16-context-scope-route-handoff.md
+2026-10-16-context-scope-route-handoff.md: 63f0a25cc1342717d11a1d413a4e9368002a7a1a
+2026-10-16-context-scope-route-handoff.zh.md: db498309626763aabda508f7ebe70427efaa0848

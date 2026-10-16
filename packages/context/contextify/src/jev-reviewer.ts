@@ -9,7 +9,7 @@ import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
 export const JEV_CONTEXT_MODEL = 'jev-1.13.0'
 const MAX_REQUEST_BYTES = 262_144
 const MAX_RESPONSE_CHARS = 131_072
-const INTENTS = ['continue', 'resume', 'reference', 'new-task', 'return', 'unknown'] as const
+const PLACEMENTS = ['continue', 'reference', 'new-task', 'unknown'] as const
 
 /** Resolve through the Host credential plane; never read or persist a browser-supplied key.
  * @param ctx - Host context owning the credential and launch environment services.
@@ -34,7 +34,7 @@ export interface JevContextRequest {
   readonly questions: Readonly<Record<string, Question>>
 }
 
-/** Build independent Context-membership and branch-destination questions over a frozen slate.
+/** Build Context-membership questions and one joint placement choice over a frozen slate.
  * @param input - Bounded native nodes, current selection and historical examples.
  * @param route - Legal native destinations and independent evidence summaries.
  * @param system - Captured Context review policy, never source-message instructions.
@@ -49,16 +49,16 @@ export function buildJevContextRequest(input: FastRecommendationInput, route: Co
         false: 'This node is unrelated, superseded, or outside the requested scope. Historical selection alone does not make it necessary.' } }
   })
   questions.intent = { type: 'choice',
-    instructions: 'What does the current draft intend? Distinguish continuing work in another branch from only borrowing its evidence. Low lexical similarity alone does not justify a new branch. Prefer unknown when the draft provides insufficient evidence. Earlier choices are examples, never current instructions.',
-    criteria: { continue: 'Continue the active task here.', resume: 'Resume work in an existing different branch.',
-      reference: 'Borrow other branch material while keeping the current task here.',
-      'new-task': 'Start a distinct parallel task; affirmative evidence supports a new branch.',
-      return: 'Return to the native parent/main task.', unknown: 'Insufficient evidence to change task routing.' } }
+    instructions: 'Where does the current draft belong? Compare the active task with every concrete destination in state.contextActions and the current graph. A short reply can resume an earlier task without saying resume. Use confirmed prior route examples, their source/target task text and accept/reject choices to interpret this user’s organization. Historical Session IDs are not current targets. Distinguish continuing another task from borrowing its evidence here. Low similarity alone never proves a new task. Choose unknown only when task placement cannot be determined.',
+    criteria: { continue: `Continue the task in active Session ${JSON.stringify(route.base.activeSessionId)}.`,
+      reference: 'Keep working on the active task, borrowing material from another task without moving there.',
+      'new-task': 'The draft starts a distinct task that belongs in neither the active Session nor any supplied destination. Affirmative task evidence supports a new branch.',
+      unknown: 'The available task content and prior choices do not resolve placement.',
+      ...Object.fromEntries(route.candidates.map((candidate, index) => [`to${String(index)}`,
+        `Continue the task in Session ${JSON.stringify(candidate.sessionId)}: ${candidate.label}. This is the destination of the new turn, not just evidence to borrow.${candidate.sessionId === route.parentSessionId ? ' This is the native parent task; moving here is Return.' : ''}`])),
+    } }
   route.candidates.forEach((candidate, index) => {
     const target = JSON.stringify(candidate.sessionId)
-    questions[`d${String(index)}`] = { type: 'noul',
-      instructions: `Is Session ${target} the intended destination for continuing the current draft's work, rather than merely useful evidence?`,
-      criteria: { true: 'The draft resumes this specific task.', false: 'It does not resume this task or the target is uncertain.' } }
     questions[`e${String(index)}`] = { type: 'noul',
       instructions: `Does Session ${target} contain relevant evidence to reuse in the current task without switching tasks?`,
       criteria: { true: 'Relevant reusable evidence exists.', false: 'No relevant reusable evidence is supported.' } }
@@ -109,18 +109,24 @@ export function parseJevContextResponse(wire: unknown, input: FastRecommendation
     else exclude.push(item)
   })
   const intent = record(answers.intent)
-  if (intent.type !== 'choice' || !INTENTS.includes(intent.choice as typeof INTENTS[number])) throw new Error('Malformed Jev route intent')
+  const options = [...PLACEMENTS, ...route.candidates.map((_candidate, index) => `to${String(index)}`)]
+  if (intent.type !== 'choice' || typeof intent.choice !== 'string' || !options.includes(intent.choice)) throw new Error('Malformed Jev route intent')
   const probabilities = record(intent.probabilities)
   // Provider choice masses can be rounded to hundredths independently. Bound
   // their aggregate rounding error and retain the raw chosen score: normalizing
   // here could push a below-threshold route over the native review threshold.
-  const roundingTolerance = INTENTS.length * 0.005 + Number.EPSILON
-  if (Object.keys(probabilities).some(key => !INTENTS.includes(key as typeof INTENTS[number]))
+  const roundingTolerance = options.length * 0.005 + Number.EPSILON
+  if (Object.keys(probabilities).some(key => !options.includes(key))
     || Math.abs(Object.values(probabilities).reduce<number>((sum, value) => sum + score(value), 0) - 1) > roundingTolerance) throw new Error('Malformed Jev intent probabilities')
+  const chosenScore = score(probabilities[intent.choice])
+  if (Object.values(probabilities).some(value => score(value) > chosenScore)) throw new Error('Malformed Jev chosen placement')
+  const destinationIndex = route.candidates.findIndex((_candidate, index) => intent.choice === `to${String(index)}`)
+  const destination = route.candidates[destinationIndex]
   return { decision: { include, exclude, archive: [] }, route: {
-    intent: intent.choice as typeof INTENTS[number], intentScore: score(probabilities[String(intent.choice)]),
+    intent: destination === undefined ? intent.choice as typeof PLACEMENTS[number]
+      : destination.sessionId === route.parentSessionId ? 'return' : 'resume', intentScore: chosenScore,
     candidates: route.candidates.map((candidate, index) => ({ sessionId: candidate.sessionId,
-      destinationScore: noul(`d${String(index)}`), evidenceScore: noul(`e${String(index)}`), supersededScore: noul(`s${String(index)}`) })),
+      destinationScore: score(probabilities[`to${String(index)}`] ?? 0), evidenceScore: noul(`e${String(index)}`), supersededScore: noul(`s${String(index)}`) })),
   } }
 }
 

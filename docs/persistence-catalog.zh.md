@@ -439,7 +439,7 @@ Source: [`packages/context/context-compiler/src/index.ts:115`](../packages/conte
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:427`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:431`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifybranch-relocation--log-only"></a>
 
@@ -454,7 +454,7 @@ Source: [`packages/context/contextify/src/types.ts:427`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:576`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:582`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifybranch-review--log-only"></a>
 
@@ -468,7 +468,7 @@ Source: [`packages/context/contextify/src/types.ts:576`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:422`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:426`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifydelegation-slice--log-only"></a>
 
@@ -500,7 +500,7 @@ Source: [`packages/context/contextify/src/revision-lineage.ts:31`](../packages/c
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:564`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:570`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifymanual-branch--log-only"></a>
 
@@ -517,7 +517,7 @@ Source: [`packages/context/contextify/src/types.ts:564`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:447`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:451`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifymanual-route--log-only"></a>
 
@@ -535,7 +535,7 @@ Source: [`packages/context/contextify/src/types.ts:447`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:455`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:459`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifynode-choice--log-only"></a>
 
@@ -566,7 +566,7 @@ Source: [`packages/context/contextify/src/types.ts:455`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:486`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:490`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyplan--log-only"></a>
 
@@ -577,7 +577,7 @@ Source: [`packages/context/contextify/src/types.ts:486`](../packages/context/con
 'contextify/plan': ContextPlanSnapshot
 ```
 
-Source: [`packages/context/contextify/src/types.ts:420`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:424`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifypolicy-reset--log-only"></a>
 
@@ -591,7 +591,7 @@ Source: [`packages/context/contextify/src/types.ts:420`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:464`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:468`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyrecommendation-dismissed--log-only"></a>
 
@@ -616,7 +616,7 @@ Source: [`packages/context/contextify/src/types.ts:464`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:533`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:537`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyrecommendation-presented--log-only"></a>
 
@@ -640,7 +640,7 @@ Source: [`packages/context/contextify/src/types.ts:533`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:518`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:522`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyrecommendation-request--log-only"></a>
 
@@ -659,7 +659,7 @@ Source: [`packages/context/contextify/src/types.ts:518`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:508`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:512`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyrecommendation-reviewed--log-only"></a>
 
@@ -670,6 +670,8 @@ Source: [`packages/context/contextify/src/types.ts:508`](../packages/context/con
 'contextify/recommendation-reviewed': {
   readonly mode: ContextRecommendationMode
   readonly base: ContextRecommendationBase
+  /** Original decision log for an explicitly approved cross-Session scope. */
+  readonly sourceBase?: ContextRecommendationBase
   /** Bounded objective used to produce this confirmed recommendation. */
   readonly objective?: string
   readonly selection: readonly {
@@ -683,7 +685,7 @@ Source: [`packages/context/contextify/src/types.ts:508`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:549`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:553`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyrequest-read-set--log-only"></a>
 
@@ -715,7 +717,7 @@ Source: [`packages/context/contextify/src/revision-lineage.ts:33`](../packages/c
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:435`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:439`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifywork-state--log-only"></a>
 
@@ -732,7 +734,7 @@ Source: [`packages/context/contextify/src/types.ts:435`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:478`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:482`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifywork-state-choice--log-only"></a>
 
@@ -750,7 +752,7 @@ Source: [`packages/context/contextify/src/types.ts:478`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:469`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:473`](../packages/context/contextify/src/types.ts)
 
 ### `deliverables/*`
 

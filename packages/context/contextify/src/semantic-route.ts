@@ -93,9 +93,13 @@ export function buildContextActionPacket(input: {
         nodes: Object.freeze(nodes) })
     })
   const preferenceExamples = (input.preferenceExamples ?? []).filter(observation => !observation.undone
-    && observation.action !== 'include' && observation.action !== 'release')
+    && (observation.action === 'branch' || observation.action === 'navigate' || observation.action === 'return'))
     .slice(-8).map(observation => Object.freeze({ ...observation,
       ...(observation.objective === undefined ? {} : { objective: bounded(observation.objective, 800) }),
+      ...(observation.routeContext === undefined ? {} : { routeContext: Object.freeze({
+        source: bounded(observation.routeContext.source, 800),
+        ...(observation.routeContext.target === undefined ? {} : { target: bounded(observation.routeContext.target, 800) }),
+      }) }),
     }))
   return Object.freeze({
     ...(preferenceExamples.length === 0 ? {} : { preferenceExamples: Object.freeze(preferenceExamples) }),
@@ -180,18 +184,31 @@ export function planSemanticContextRoute(input: {
   readonly route: SemanticContextRoute
   readonly profile: ContextStewardProfile
   readonly evidenceNodeIds?: readonly string[]
+  /** Host-only signal that intent and destinations came from one concrete placement Choice. */
+  readonly jointPlacement?: boolean
+  /** Native-validated proposed Context, used to corroborate a concrete destination. */
+  readonly selectedNodeIds?: readonly string[]
 }): ContextRouteProposal {
   const { packet, route, profile } = input
-  const intent = packet.explicitIntent !== 'unknown' ? packet.explicitIntent
-    : route.intentScore >= CONTEXT_ACTION_INTENT_THRESHOLD ? route.intent : 'unknown'
   const scores = new Map(route.candidates.map(candidate => [candidate.sessionId, candidate]))
+  const selected = new Set(input.selectedNodeIds ?? [])
+  const supportedPlacement = input.jointPlacement === true
+    && (route.intent === 'resume' || route.intent === 'return')
+    && packet.candidates.some(candidate => scores.get(candidate.sessionId)?.destinationScore === route.intentScore
+      && candidate.ownedNodeIds.some(id => selected.has(id)))
+  const intentThreshold = supportedPlacement ? profile.thresholds.destination : CONTEXT_ACTION_INTENT_THRESHOLD
+  const intent = packet.explicitIntent !== 'unknown' ? packet.explicitIntent
+    : route.intentScore >= intentThreshold ? route.intent : 'unknown'
   const candidates = packet.candidates.map((candidate) => {
     const value = scores.get(candidate.sessionId)
     return { ...candidate, destinationScore: value?.destinationScore ?? 0,
       evidenceScore: value?.evidenceScore ?? 0, supersededScore: value?.supersededScore ?? 0,
       evidenceNodeIds: (input.evidenceNodeIds ?? []).filter(id => candidate.offPathNodeIds.includes(id)) }
   })
-  return planContextRoute({ intent, activeSessionId: packet.base.activeSessionId,
+  const safeIntent = intent === 'return' && packet.explicitIntent === 'unknown'
+    && !candidates.some(candidate => candidate.sessionId === packet.parentSessionId
+      && candidate.ownedNodeIds.length > 0 && candidate.supersededScore < 0.5) ? 'unknown' : intent
+  return planContextRoute({ intent: safeIntent, activeSessionId: packet.base.activeSessionId,
     ...(packet.parentSessionId === undefined ? {} : { parentSessionId: packet.parentSessionId }),
     candidates, thresholds: profile.thresholds })
 }

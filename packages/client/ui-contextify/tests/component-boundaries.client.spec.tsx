@@ -329,6 +329,16 @@ it('separates a declined model example from calibration and branch-threshold sou
 })
 
 describe('Context recommendation review public decisions', () => {
+  it('explicitly approves carrying the complete proposed Context only to an existing branch', async () => {
+    const value = proposal({ route: { action: 'navigate', base: proposal().base,
+      objective: 'Continue writing', targetSessionId: sid('other'), reason: 'Resume writing' } })
+    const h = reviewSheet(value)
+    fireEvent.click(screen.getByRole('button', { name: 'Move draft with proposed Context' }))
+    await waitFor(() => { expect(h.props.acceptRoute).toHaveBeenCalledWith(value.route, true) })
+    fireEvent.click(screen.getByRole('button', { name: 'Keep current context for extra' }))
+    expect(screen.getByRole('button', { name: 'Move draft with proposed Context' }).hasAttribute('disabled')).toBe(true)
+  })
+
   it('tracks partial and reversed choices and applies only the final declined IDs', async () => {
     const h = reviewSheet()
     fireEvent.click(screen.getByRole('button', { name: 'Keep current context for extra' }))

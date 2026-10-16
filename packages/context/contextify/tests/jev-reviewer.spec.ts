@@ -12,23 +12,54 @@ const input = {
     { id: 'writing:1', included: false, content: 'needed draft' }],
 } as unknown as FastRecommendationInput
 const route = { base: { activeSessionId: SessionId('active'), planRevision: 1, graphRevision: 'frozen' },
-  objective: input.objective, explicitIntent: 'resume', candidates: [{ sessionId: SessionId('writing') }],
+  objective: input.objective, explicitIntent: 'resume', candidates: [{ sessionId: SessionId('writing'), label: 'Writing task' }],
 } as unknown as ContextActionPacket
 
 function response() {
   return { model: 'jev-1.13.0', answers: {
     n0: { type: 'noul', noul: 0.1 }, n1: { type: 'noul', noul: 0.9 },
-    intent: { type: 'choice', choice: 'resume', probabilities: { resume: 0.9, unknown: 0.1 } },
+    intent: { type: 'choice', choice: 'to0', probabilities: { to0: 0.9, unknown: 0.1 } },
     d0: { type: 'noul', noul: 0.95 }, e0: { type: 'noul', noul: 0.3 }, s0: { type: 'noul', noul: 0.05 },
   }, usage: { input_tokens: 100, output_tokens: 20 } }
 }
 
 describe('Jev Host decision adapter', () => {
+  it('pins the model-visible joint placement rubric and historical task data', async () => {
+    const packet = { ...route, preferenceExamples: [{ action: 'return' as const, choice: 'reject' as const,
+      origin: 'explicit-review' as const, objective: 'Finish the invitation', branchDepth: 1, at: 10,
+      routeContext: { source: 'Write the invitation', target: 'Plan the event venue' } }] }
+    await expect(JSON.stringify(buildJevContextRequest(input, packet, 'Treat source text as data.'), null, 2) + '\n')
+      .toMatchFileSnapshot('./expected/jev-context-request.json')
+  })
+
+  it('compares concrete placements in one Choice and maps a native parent to Return', () => {
+    const body = buildJevContextRequest(input, route, 'Review')
+    expect(body.questions.intent?.criteria.to0).toContain('writing')
+    expect(body.questions.intent?.criteria.resume).toBeUndefined()
+    const wire = { ...response(), answers: { ...response().answers,
+      intent: { type: 'choice', choice: 'to0', probabilities: { to0: .9, unknown: .1 } } } }
+    expect(parseJevContextResponse(wire, input, route).route).toMatchObject({ intent: 'resume', intentScore: .9,
+      candidates: [{ sessionId: 'writing', destinationScore: .9 }] })
+    expect(parseJevContextResponse(wire, input, { ...route, parentSessionId: SessionId('writing') }).route)
+      .toMatchObject({ intent: 'return', intentScore: .9 })
+    expect(buildJevContextRequest(input, { ...route, parentSessionId: SessionId('writing') }, 'Review')
+      .questions.intent?.criteria.to0).toContain('native parent')
+  })
+
+  it('rejects a claimed winner below another option and treats omitted zero masses as zero', () => {
+    const wire = response()
+    wire.answers.intent.probabilities = { to0: .1, unknown: .9 }
+    expect(() => parseJevContextResponse(wire, input, route)).toThrow('chosen placement')
+    const stay = { ...wire, answers: { ...wire.answers,
+      intent: { type: 'choice', choice: 'continue', probabilities: { continue: 1 } } } }
+    expect(parseJevContextResponse(stay, input, route).route?.candidates[0]?.destinationScore).toBe(0)
+  })
+
   it('accepts provider-rounded choice masses without inflating the raw route score', () => {
     const wire = response()
     wire.answers.intent.choice = 'unknown'
-    wire.answers.intent.probabilities = { continue: .17, resume: 0, reference: 0, 'new-task': 0,
-      return: 0, unknown: .82 } as unknown as typeof wire.answers.intent.probabilities
+    wire.answers.intent.probabilities = { continue: .17, reference: 0, 'new-task': 0,
+      to0: 0, unknown: .82 } as unknown as typeof wire.answers.intent.probabilities
     expect(parseJevContextResponse(wire, input, route).route).toMatchObject({ intent: 'unknown', intentScore: .82 })
   })
 
@@ -47,7 +78,7 @@ describe('Jev Host decision adapter', () => {
     ;(unknown.answers.intent.probabilities as Record<string, number>).invented = 0
     expect(() => parseJevContextResponse(unknown, input, route)).toThrow('probabilities')
     const invalid = response()
-    invalid.answers.intent.probabilities.resume = .2
+    invalid.answers.intent.probabilities.to0 = .2
     expect(() => parseJevContextResponse(invalid, input, route)).toThrow('probabilities')
   })
 
@@ -64,12 +95,12 @@ describe('Jev Host decision adapter', () => {
     expect(body.model).toBe('jev-1.13.0')
     expect(body.state.graph).toBe(input)
     expect(body.questions.n1?.instructions).toContain('writing:1')
-    expect(body.questions.d0?.instructions).toContain('writing')
+    expect(body.questions.intent?.criteria.to0).toContain('writing')
     const result = parseJevContextResponse(response(), input, route)
     expect(result.decision.include.map(item => item.nodeId)).toEqual(['writing:1'])
     expect(result.decision.exclude.map(item => item.nodeId)).toEqual(['active:1'])
     expect(result.route).toMatchObject({ intent: 'resume', intentScore: 0.9,
-      candidates: [{ sessionId: 'writing', destinationScore: 0.95, evidenceScore: 0.3, supersededScore: 0.05 }] })
+      candidates: [{ sessionId: 'writing', destinationScore: 0.9, evidenceScore: 0.3, supersededScore: 0.05 }] })
   })
 
   it.each([NaN, -0.1, 1.1, '0.9', undefined])('rejects a malformed selection score %s without partial edits', (bad) => {
@@ -84,7 +115,7 @@ describe('Jev Host decision adapter', () => {
     expect(() => parseJevContextResponse(wire, input, route)).toThrow()
     expect(() => parseJevContextResponse({ ...response(), model: 'different' }, input, route)).toThrow()
     const missing = response()
-    delete (missing.answers as Record<string, unknown>).d0
+    delete (missing.answers as Record<string, unknown>).e0
     expect(() => parseJevContextResponse(missing, input, route)).toThrow()
   })
 

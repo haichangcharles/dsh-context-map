@@ -52,6 +52,8 @@ The Workspace sidebar uses the upstream Session list. The map provides the detai
 
 The Context prompt settings let users select the current chat model or Jev for Fast review, and enable or disable historical choice reuse. A review sheet separates the examples sent to the model from deterministic calibration and branch-threshold source records; accepted and rejected choices remain distinct. These records describe management advice and are not added to answer Context.
 
+For existing destinations, “Move draft with proposed Context” explicitly approves the complete reviewed source set and avoids another model call. Partial Keep-current choices disable that action. Destination manual conflicts preserve the old Plan; the unsent draft remains available at the destination. The route-only action remains separate.
+
 <a id="model-experience"></a>
 ## Model Experience
 

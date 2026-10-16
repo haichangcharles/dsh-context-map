@@ -122,6 +122,30 @@ describe('bounded semantic Context actions', () => {
     expect(planSemanticContextRoute({ packet, route: unsafe, profile }).action).toBe('continue')
   })
 
+  it('requires visible, valid parent material for an inferred Return while honoring explicit Return', () => {
+    const route = parseSemanticContextRoute({ intent: 'return', intentScore: 1,
+      candidates: [{ sessionId: main, destinationScore: .95, evidenceScore: 0, supersededScore: .8 }] }, packet)
+    expect(planSemanticContextRoute({ packet, route, profile }).action).toBe('continue')
+    const hidden = buildContextActionPacket({ graph, contents: {}, objective: packet.objective, base,
+      visibleNodeIds: ['writing:1'] })
+    expect(planSemanticContextRoute({ packet: hidden, route: { ...route,
+      candidates: [{ ...route.candidates[0]!, supersededScore: 0 }] }, profile }).action).toBe('continue')
+    const explicit = { ...packet, explicitIntent: 'return' as const }
+    expect(planSemanticContextRoute({ packet: explicit, route, profile })).toMatchObject({ action: 'return', targetSessionId: main })
+  })
+
+  it('uses the existing destination review threshold only when joint placement and selected graph evidence agree', () => {
+    const route = parseSemanticContextRoute(scored('resume', .74, .74), packet)
+    const input = { packet, route, profile, jointPlacement: true, selectedNodeIds: ['research:1'] }
+    expect(planSemanticContextRoute(input)).toMatchObject({ action: 'navigate', targetSessionId: research })
+    expect(planSemanticContextRoute({ ...input, jointPlacement: false }).action).toBe('continue')
+    expect(planSemanticContextRoute({ ...input, selectedNodeIds: ['writing:1'] }).action).toBe('continue')
+    expect(planSemanticContextRoute({ packet, route, profile, jointPlacement: true }).action).toBe('continue')
+    expect(planSemanticContextRoute({ ...input, route: parseSemanticContextRoute(scored('resume', .74, .75), packet) }).action).toBe('continue')
+    expect(planSemanticContextRoute({ ...input, route: parseSemanticContextRoute(scored('resume', .69, .69), packet) }).action).toBe('continue')
+    expect(planSemanticContextRoute({ ...input, route: parseSemanticContextRoute(scored('new-task', .74, .1), packet) }).action).toBe('continue')
+  })
+
   it('bounds packet Sessions, sources, Unicode text and draft while retaining native metadata', () => {
     const large = { ...graph,
       sessions: [graph.sessions[1], ...Array.from({ length: 12 }, (_, index) => ({
@@ -198,6 +222,16 @@ describe('bounded semantic Context actions', () => {
     expect(() => parseSemanticContextRoute({ ...scored('resume'), candidates: [
       { ...scored('resume').candidates[0], sessionId: historical },
     ] }, value)).toThrow(/unavailable/)
+  })
+
+  it('bounds historical task text and keeps source-only Branch examples', () => {
+    const common = { action: 'branch' as const, choice: 'accept' as const, origin: 'manual-action' as const,
+      branchDepth: 0, at: 1 }
+    const value = buildContextActionPacket({ graph, contents: {}, objective: packet.objective, base,
+      preferenceExamples: [{ ...common, routeContext: { source: '界'.repeat(900) } },
+        { ...common, routeContext: { source: 'old task', target: '界'.repeat(900) } }] })
+    expect(value.preferenceExamples?.[0]?.routeContext).toEqual({ source: '界'.repeat(800) })
+    expect(value.preferenceExamples?.[1]?.routeContext?.target).toBe('界'.repeat(800))
   })
 
 })

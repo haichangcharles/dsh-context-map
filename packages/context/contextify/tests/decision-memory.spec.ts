@@ -3,6 +3,16 @@ import { decisionMemorySnapshot } from '../src/decision-memory.ts'
 import { SessionId } from '@deepseek-ai/dsh-session'
 
 describe('decision memory provenance', () => {
+  it('exposes the same signed task-to-route case that the reviewer received', () => {
+    const routeContext = { source: 'Write the invitation', target: 'Plan the event venue' }
+    const value = decisionMemorySnapshot({ enabled: true, reviewer: 'jev', edits: [], observations: [],
+      calibrated: false, routed: true, routeExamples: [{ action: 'return', choice: 'reject',
+        origin: 'explicit-review', branchDepth: 1, at: 1, objective: 'Finish the invitation first',
+        routeContext, sourceSessionId: SessionId('old-side'), sourceEventSeq: 4 }] })
+    expect(value.examples).toEqual([{ action: 'return', choice: 'reject', objective: 'Finish the invitation first',
+      content: JSON.stringify(routeContext), sourceSessionId: 'old-side', sourceEventSeq: 4 }])
+  })
+
   it('retains rejection signs and grouped cases while bounding threshold provenance', () => {
     const missing = { action: 'return' as const, choice: 'reject' as const, origin: 'explicit-review' as const, branchDepth: 1, at: 0 }
     const observations = Array.from({ length: 42 }, (_, i) => ({ ...missing, sourceSessionId: SessionId('route'), sourceEventSeq: i, at: i }))

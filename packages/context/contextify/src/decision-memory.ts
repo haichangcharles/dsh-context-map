@@ -37,6 +37,7 @@ export function decisionMemorySnapshot(request: {
     })
     for (const item of request.routeExamples ?? []) examples.push({ objective: item.objective ?? '',
       action: item.action, choice: item.choice,
+      ...(item.routeContext === undefined ? {} : { content: JSON.stringify(item.routeContext) }),
       ...(item.sourceSessionId === undefined ? {} : { sourceSessionId: item.sourceSessionId }),
       ...(item.sourceEventSeq === undefined ? {} : { sourceEventSeq: item.sourceEventSeq }),
     })

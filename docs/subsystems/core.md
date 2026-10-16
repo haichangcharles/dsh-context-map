@@ -1043,8 +1043,9 @@ Durable Context Plan mutations and native Session-family graph reads.
  * @param choice - Explicit acceptance or rejection of that card.
  * @param actualTargetSessionId - Native destination after an accepted transfer.
  * @param uiOrigin - Marks a Client review without claiming authenticated identity.
+ * @param carryContext - Approve complete Context at an existing destination; manual conflicts preserve its Plan.
  */
-@Remote('reviewRoute') async reviewRoute( agent: Agent, route: ContextRouteAdvice, choice: 'accept' | 'reject', actualTargetSessionId?: SessionId, uiOrigin?: 'contextify-client', ): Promise<void>
+@Remote('reviewRoute') async reviewRoute( agent: Agent, route: ContextRouteAdvice, choice: 'accept' | 'reject', actualTargetSessionId?: SessionId, uiOrigin?: 'contextify-client', carryContext?: boolean, ): Promise<void>
 
 /**
  * Record one completed manual Context Map fork as a positive Branch choice.

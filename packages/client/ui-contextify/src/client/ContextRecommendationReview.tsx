@@ -13,7 +13,7 @@ export interface ContextRecommendationReviewProps extends PropsLocale<'contextif
   readonly state: ContextRecommendationState
   readonly graph: ContextFamilyGraph
   readonly pending: boolean
-  readonly acceptRoute: (route: ContextRouteAdvice) => Promise<void>
+  readonly acceptRoute: (route: ContextRouteAdvice, carryContext?: boolean) => Promise<void>
   readonly rejectRoute: (route: ContextRouteAdvice) => Promise<void>
   readonly present: (proposal: ContextRecommendationProposal) => Promise<void>
   readonly apply: (declinedNodeIds: readonly string[]) => Promise<void>
@@ -112,6 +112,10 @@ function ProposalReview({
           {route.action === 'branch' ? t('copy.startANewBranch')
             : route.action === 'return' ? t('copy.returnWithDraft') : t('copy.moveDraftToBranch')}
         </button>
+        {route.action !== 'branch' && <button type="button" disabled={stale || pending || keptCurrent.length > 0}
+          title={t('copy.carryContextHint')} onClick={() => { run(() => acceptRoute(route, true)) }}>
+          {t('copy.moveDraftWithContext')}
+        </button>}
       </div>
     </section>}
     {(proposal.workStates?.length ?? 0) > 0 && <section className={css.section} aria-label={t('lifecycle.title')}>

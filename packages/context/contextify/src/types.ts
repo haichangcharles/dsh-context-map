@@ -42,6 +42,8 @@ export interface ContextPolicyObservation {
   readonly origin: 'explicit-review' | 'manual-action'
   /** Exact draft objective when the reviewed event recorded one. */
   readonly objective?: string
+  /** Bounded task text known before the operation; historical targets grant no current authority. */
+  readonly routeContext?: { readonly source: string; readonly target?: string }
   /** Context item or destination actually considered by this choice. */
   readonly targetNodeId?: string
   readonly targetSessionId?: SessionId
@@ -360,6 +362,8 @@ export interface ContextArchiveCandidate {
 export interface ContextRecommendationProposal {
   readonly mode: ContextRecommendationMode
   readonly base: ContextRecommendationBase
+  /** Original model decision when an approved scope is carried to another Session. */
+  readonly sourceBase?: ContextRecommendationBase
   readonly currentNodeIds: readonly string[]
   readonly proposedNodeIds: readonly string[]
   readonly addedNodeIds: readonly string[]
@@ -549,6 +553,8 @@ declare module '@deepseek-ai/dsh-session/types' {
     'contextify/recommendation-reviewed': {
       readonly mode: ContextRecommendationMode
       readonly base: ContextRecommendationBase
+      /** Original decision log for an explicitly approved cross-Session scope. */
+      readonly sourceBase?: ContextRecommendationBase
       /** Bounded objective used to produce this confirmed recommendation. */
       readonly objective?: string
       readonly selection: readonly {

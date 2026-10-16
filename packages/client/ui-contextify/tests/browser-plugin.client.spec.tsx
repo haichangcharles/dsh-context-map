@@ -520,6 +520,19 @@ describe('ui-contextify browser plugin', () => {
     }])
   })
 
+  it('passes explicit approval of the proposed Context with a native draft transfer', async () => {
+    const b = await bench()
+    b.draftState.draft = 'Continue writing'
+    const route = { action: 'navigate' as const,
+      base: { planRevision: 4, graphRevision: 'family-7', activeSessionId: source },
+      objective: 'Continue writing', targetSessionId: child, reason: 'Resume writing' }
+    await b.panel.mapActions.acceptRoute(route, true)
+    expect(b.calls.filter(call => call.method === 'reviewRoute')).toEqual([{
+      method: 'reviewRoute', args: [source, route, 'accept', child, 'contextify-client', true],
+    }])
+    expect(b.open).toHaveBeenCalledWith(child)
+  })
+
   it('rejects stale draft route advice without switching Sessions', async () => {
     const b = await bench()
     b.draftState.draft = 'An edited draft'

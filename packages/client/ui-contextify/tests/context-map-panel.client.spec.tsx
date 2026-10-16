@@ -909,6 +909,8 @@ describe('ContextMapPanel', () => {
     expect(h.mapActions.acceptRoute).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Return with draft' }))
     expect(h.mapActions.acceptRoute).toHaveBeenCalledWith(route)
+    fireEvent.click(screen.getByRole('button', { name: 'Move draft with proposed Context' }))
+    expect(h.mapActions.acceptRoute).toHaveBeenCalledWith(route, true)
     expect(h.mapActions.applyRecommendations).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Stay in this branch' }))
     expect(h.mapActions.rejectRoute).toHaveBeenCalledWith(route)

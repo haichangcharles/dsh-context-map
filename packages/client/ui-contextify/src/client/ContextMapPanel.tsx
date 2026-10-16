@@ -43,7 +43,7 @@ export interface ContextMapActions {
   cancelRecommendation: () => Promise<void>
   applyRecommendations: (declinedNodeIds?: readonly string[]) => Promise<void>
   clearRecommendation: () => void
-  acceptRoute: (route: ContextRouteAdvice) => Promise<void>
+  acceptRoute: (route: ContextRouteAdvice, carryContext?: boolean) => Promise<void>
   rejectRoute: (route: ContextRouteAdvice) => Promise<void>
   presentRecommendation: (proposal: ContextRecommendationProposal) => Promise<void>
   dismissRecommendation: (declinedNodeIds?: readonly string[]) => Promise<void>
@@ -771,7 +771,7 @@ export function ContextMapPanel({
           pending={mutationPending}
           t={t}
           reviewWorkState={(proposal, sessionId, choice) => mapActions.reviewWorkState(proposal, sessionId, choice)}
-          acceptRoute={route => mapActions.acceptRoute(route)}
+          acceptRoute={(route, carryContext) => carryContext === true ? mapActions.acceptRoute(route, true) : mapActions.acceptRoute(route)}
           rejectRoute={route => mapActions.rejectRoute(route)}
           present={proposal => mapActions.presentRecommendation(proposal)}
           apply={declinedNodeIds => mapActions.applyRecommendations(declinedNodeIds)}

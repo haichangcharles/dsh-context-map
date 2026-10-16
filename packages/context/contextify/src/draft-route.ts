@@ -21,6 +21,9 @@ export function draftRouteAdvice(input: {
   readonly profile: ContextStewardProfile
   readonly routePacket?: ContextActionPacket
   readonly semanticRoute?: SemanticContextRoute
+  /** Set by the Host adapter, never by model output. */
+  readonly jointPlacement?: boolean
+  readonly selectedNodeIds?: readonly string[]
 }): ContextRouteAdvice | undefined {
   const objective = input.objective.trim()
   const intent = draftRouteIntent(objective)
@@ -43,7 +46,9 @@ export function draftRouteAdvice(input: {
     supersededScore: 0,
   }))
   const proposal = packet !== undefined && input.semanticRoute !== undefined
-    ? planSemanticContextRoute({ packet, route: input.semanticRoute, profile: input.profile })
+    ? planSemanticContextRoute({ packet, route: input.semanticRoute, profile: input.profile,
+      ...(input.jointPlacement === undefined ? {} : { jointPlacement: input.jointPlacement }),
+      ...(input.selectedNodeIds === undefined ? {} : { selectedNodeIds: input.selectedNodeIds }) })
     : planContextRoute({
       intent, activeSessionId: input.graph.activeSessionId,
       ...(active.parentSessionId === undefined ? {} : { parentSessionId: active.parentSessionId }),
