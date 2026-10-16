@@ -30,6 +30,39 @@ const scored = (intent: string, intentScore = 0.9, destinationScore = 0.9, evide
 })
 
 describe('bounded semantic Context actions', () => {
+  it('keeps native ancestors in a full slate even when sibling lexical scores are higher', () => {
+    const many = { ...graph, sessions: [...graph.sessions, ...Array.from({ length: 12 }, (_, i) => ({
+      id: SessionId('a-sibling-' + String(i)), parentSessionId: main, depth: 1, seedLength: 0, tipNodeId: null,
+    }))], nodes: [] }
+    const value = buildContextActionPacket({ graph: many, contents: {}, objective: 'A separate task', base })
+    expect(value.candidates).toHaveLength(8)
+    expect(value.candidates[0]?.sessionId).toBe(main)
+  })
+
+  it('creates a sibling beneath a scored native parent instead of resuming that parent', () => {
+    const route = parseSemanticContextRoute({ intent: 'new-task', intentScore: .95,
+      forkParentSessionId: main, candidates: [] }, packet)
+    expect(planSemanticContextRoute({ packet, route, profile })).toMatchObject({
+      action: 'branch', forkParentSessionId: main,
+    })
+    expect(draftRouteAdvice({ graph, contents: {}, objective: packet.objective,
+      base, profile, routePacket: packet, semanticRoute: route })).toMatchObject({
+      action: 'branch', forkParentSessionId: main,
+    })
+    expect(planSemanticContextRoute({ packet, route: { ...route, intentScore: .79 }, profile }).action).toBe('continue')
+    const local = parseSemanticContextRoute({ intent: 'new-task', intentScore: 1,
+      forkParentSessionId: writing, candidates: [] }, packet)
+    expect(planSemanticContextRoute({ packet, route: local, profile })).toMatchObject({ action: 'branch', forkParentSessionId: writing })
+  })
+
+  it('rejects a fork parent outside the observed family slate or attached to a resume intent', () => {
+    for (const invalid of [
+      { intent: 'new-task', forkParentSessionId: 'foreign' },
+      { intent: 'resume', forkParentSessionId: main },
+      { intent: 'new-task', forkParentSessionId: 3 },
+    ]) expect(() => parseSemanticContextRoute({ ...invalid, intentScore: 1, candidates: [] }, packet)).toThrow()
+  })
+
   it('accepts legacy selection output and separates optional route scores', () => {
     const legacy = { include: [], exclude: [], archive: [] }
     expect(parseFastContextDecisionText(JSON.stringify(legacy), packet)).toEqual({ decision: legacy })
@@ -229,9 +262,10 @@ describe('bounded semantic Context actions', () => {
       branchDepth: 0, at: 1 }
     const value = buildContextActionPacket({ graph, contents: {}, objective: packet.objective, base,
       preferenceExamples: [{ ...common, routeContext: { source: '界'.repeat(900) } },
-        { ...common, routeContext: { source: 'old task', target: '界'.repeat(900) } }] })
+        { ...common, routeContext: { source: 'old task', target: '界'.repeat(900), parent: '界'.repeat(900) } }] })
     expect(value.preferenceExamples?.[0]?.routeContext).toEqual({ source: '界'.repeat(800) })
     expect(value.preferenceExamples?.[1]?.routeContext?.target).toBe('界'.repeat(800))
+    expect(value.preferenceExamples?.[1]?.routeContext?.parent).toBe('界'.repeat(800))
   })
 
 })

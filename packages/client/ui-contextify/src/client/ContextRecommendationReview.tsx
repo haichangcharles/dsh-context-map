@@ -104,6 +104,11 @@ function ProposalReview({
     {route !== undefined && !routeDismissed && <section className={css.section} aria-label={t('copy.draftRouteRecommendation')}>
       <h4>{t('copy.whereThisDraftBelongs')}</h4>
       <p>{route.reason}</p>
+      {route.contextNodeIds !== undefined && <details>
+        <summary>{t(route.action === 'branch' ? 'copy.newBranchContext' : 'copy.destinationContext')} · {t('format.nodes', { count: route.contextNodeIds.length })}</summary>
+        <ul>{route.contextNodeIds.slice(0, 12).map(id => <li key={id}>{graph.nodes.find(node => node.id === id)?.preview ?? id}</li>)}</ul>
+      </details>}
+      {route.contextUnavailable === true && <p>{t('copy.carryContextUnavailable')}</p>}
       <div className={css.actions}>
         <button type="button" disabled={stale || pending} onClick={() => {
           run(async () => { await rejectRoute(route); setRouteDismissed(true) })
@@ -112,10 +117,10 @@ function ProposalReview({
           {route.action === 'branch' ? t('copy.startANewBranch')
             : route.action === 'return' ? t('copy.returnWithDraft') : t('copy.moveDraftToBranch')}
         </button>
-        {route.action !== 'branch' && <button type="button" disabled={stale || pending || keptCurrent.length > 0}
+        <button type="button" disabled={stale || pending || keptCurrent.length > 0 || route.contextUnavailable === true}
           title={t('copy.carryContextHint')} onClick={() => { run(() => acceptRoute(route, true)) }}>
-          {t('copy.moveDraftWithContext')}
-        </button>}
+          {t(route.action === 'branch' ? 'copy.branchWithContext' : 'copy.moveDraftWithContext')}
+        </button>
       </div>
     </section>}
     {(proposal.workStates?.length ?? 0) > 0 && <section className={css.section} aria-label={t('lifecycle.title')}>

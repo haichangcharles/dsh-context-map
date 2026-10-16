@@ -4,6 +4,9 @@ import { SessionId, SessionLogOffset, type Session } from '@deepseek-ai/dsh-sess
 import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import { lineageHarness } from './lineage-coverage-harness.ts'
+import { compileContextify } from '../src/plan.ts'
+import * as routeScope from '../src/route-scope.ts'
+import { CONTEXTIFY_DEFAULT_SETTINGS } from '../src/types.ts'
 
 function append(session: Session, text: string): string {
   const turn = session.seq + 1
@@ -17,6 +20,147 @@ function append(session: Session, text: string): string {
 }
 
 type Harness = Awaited<ReturnType<typeof lineageHarness>>
+async function siblingAdvice(b: Harness, makeEmptyParent = false, retainOldTask = false, parentExcerpt = false) {
+  const keep = append(b.parent.session, 'Plan the community event')
+  const noise = append(b.parent.session, 'A discarded venue')
+  const seed = b.parent.session.snapshotEvents()
+  const active = (await b.ctx.agents.create({ sessionId: SessionId('sibling-source'), seed,
+    inheritedEventCount: SessionLogOffset(seed.length), meta: { parentSession: b.parent.id, isSeeded: true },
+    agentOptions: { provider: 'mock', model: 'mock' } })).agent
+  const selectedParent = makeEmptyParent ? (await b.ctx.agents.create({ sessionId: SessionId('empty-parent'), seed,
+    inheritedEventCount: SessionLogOffset(seed.length), meta: { parentSession: b.parent.id, isSeeded: true },
+    agentOptions: { provider: 'mock', model: 'mock' } })).agent : b.parent
+  const side = append(active.session, 'Work on the first alternative')
+  if (parentExcerpt) await b.ctx.contextify.focusNodeExcerpt(b.parent,
+    { revision: b.ctx.contextify.get(b.parent).plan.revision },
+    { sessionId: b.parent.id, seq: Number(keep.split(':').at(-1)) }, 0, 4, 'Keep the opening')
+  b.adapter.stream = async function * () {
+    yield * textResponse(JSON.stringify({ include: [], archive: [],
+      exclude: (retainOldTask ? [noise] : [noise, side]).map(nodeId => ({ nodeId, reason: 'Outside the next task' })),
+      route: { intent: 'new-task', intentScore: 1, forkParentSessionId: selectedParent.id, candidates: [] } }))
+  }
+  const page = await b.ctx.contextify.familyPage(active)
+  const proposal = await b.ctx.contextify.recommend(active, { activeSessionId: active.id,
+    planRevision: b.ctx.contextify.get(active).plan.revision, graphRevision: page.revision }, 'Explore another alternative', 'fast', true)
+  if (proposal.route === undefined) throw new Error('missing multi-step advice')
+  const fork = async (parent = selectedParent) => {
+    const events = parent.session.snapshotEvents()
+    const prefix = makeEmptyParent ? events.slice(0, parent.session.inheritedEventCount) : events
+    return (await b.ctx.agents.create({ sessionId: SessionId('sibling-result'), seed: prefix,
+      inheritedEventCount: SessionLogOffset(prefix.length), meta: { parentSession: parent.id, isSeeded: true },
+      agentOptions: { provider: 'mock', model: 'mock' } })).agent
+  }
+  return { active, keep, noise, side, proposal, route: proposal.route, fork, selectedParent }
+}
+
+it('uses the selected parent scope instead of silently importing the old task into a sibling', async () => {
+  const b = await lineageHarness()
+  try {
+    const s = await siblingAdvice(b, false, true), target = await s.fork()
+    expect(s.proposal.proposedNodeIds).toContain(s.side)
+    expect(s.route.contextNodeIds).toEqual([s.keep])
+    await b.ctx.contextify.reviewRoute(s.active, s.route, 'accept', target.id, undefined, true)
+    expect(b.ctx.contextify.get(target).plan.included).toEqual([])
+    expect(b.ctx.contextify.get(target).plan.excluded.map(item => item.nodeId)).toEqual([s.noise])
+  } finally { await b.close() }
+})
+
+it('preserves draft-only routing when carrying a parent replacement is unavailable', async () => {
+  const b = await lineageHarness()
+  try {
+    const s = await siblingAdvice(b, false, false, true)
+    expect(s.route.contextUnavailable).toBe(true)
+    const target = await s.fork()
+    await expect(b.ctx.contextify.reviewRoute(s.active, s.route, 'accept', target.id, undefined, true)).rejects.toThrow('replaced')
+    await b.ctx.contextify.reviewRoute(s.active, s.route, 'accept', target.id)
+  } finally { await b.close() }
+})
+
+it('accepts the native fork parent when the rendered graph canonicalizes an inherited pivot', async () => {
+  const b = await lineageHarness()
+  try {
+    const s = await siblingAdvice(b, true), target = await s.fork()
+    await b.ctx.contextify.reviewRoute(s.active, s.route, 'accept', target.id, undefined, true)
+    expect(target.session.header.parentSession).toBe(s.selectedParent.id)
+  } finally { await b.close() }
+})
+
+it('carries the approved scope to a new sibling under the selected parent', async () => {
+  const b = await lineageHarness()
+  try {
+    const s = await siblingAdvice(b), target = await s.fork()
+    await b.ctx.contextify.reviewRoute(s.active, s.route, 'accept', target.id, undefined, true)
+    const view = b.ctx.contextify.get(target)
+    expect(view.plan.excluded.map(item => item.nodeId)).toEqual([s.noise])
+    expect(s.active.session.snapshotEvents().findLast(event => event.type === 'contextify/route-choice')?.data)
+      .toMatchObject({ action: 'branch', targetSessionId: target.id, forkParentSessionId: b.parent.id })
+    expect(b.adapter.requests).toHaveLength(0)
+  } finally { await b.close() }
+})
+
+it.each(['wrong-parent', 'changed-parent'] as const)('does not approve a multi-step fork with %s', async (mode) => {
+  const b = await lineageHarness()
+  try {
+    const s = await siblingAdvice(b)
+    if (mode === 'changed-parent') append(b.parent.session, 'A new constraint after the review')
+    const target = await s.fork(mode === 'wrong-parent' ? s.active : b.parent)
+    await expect(b.ctx.contextify.reviewRoute(s.active, s.route, 'accept', target.id)).rejects.toThrow(/branch|changed|stale/)
+    expect(s.active.session.snapshotEvents().some(event => event.type === 'contextify/route-choice')).toBe(false)
+  } finally { await b.close() }
+})
+
+it('rejects a parent change during the final fork-family read without carrying Context', async () => {
+  const b = await lineageHarness()
+  try {
+    const s = await siblingAdvice(b), target = await s.fork()
+    const service = b.ctx.contextify as unknown as FamilyReader
+    const read = service.loadFamily.bind(service)
+    vi.spyOn(service, 'loadFamily').mockImplementation(async (session) => {
+      const family = await read(session)
+      append(b.parent.session, 'Concurrent parent update')
+      return family
+    })
+    await expect(b.ctx.contextify.reviewRoute(s.active, s.route, 'accept', target.id)).rejects.toThrow(/changed|stale/)
+    expect(s.active.session.snapshotEvents().some(event => event.type === 'contextify/route-choice')).toBe(false)
+  } finally { vi.restoreAllMocks(); await b.close() }
+})
+
+it('returns without the child Context and reactivates that exact Context on a later navigation', async () => {
+  const b = await lineageHarness()
+  try {
+    const s = await siblingAdvice(b), target = await s.fork()
+    await b.ctx.contextify.reviewRoute(s.active, s.route, 'accept', target.id, undefined, true)
+    const newSource = append(target.session, 'Investigate the second alternative')
+    const texts = (session: Session) => compileContextify({ session, turn: session.seq + 1, step: 1 })
+      .messages.flatMap(message => message.content.flatMap(block => block.type === 'text' ? [block.text] : []))
+    let reviews = 0
+    b.adapter.stream = async function * () {
+      reviews++
+      yield * textResponse(JSON.stringify({ include: [], archive: [],
+        exclude: [newSource].map(nodeId => ({ nodeId, reason: 'Child task is inactive on the parent' })) }))
+    }
+    let page = await b.ctx.contextify.familyPage(target)
+    const back = await b.ctx.contextify.recommend(target, { activeSessionId: target.id,
+      planRevision: b.ctx.contextify.get(target).plan.revision, graphRevision: page.revision }, 'Return to the mainline', 'fast', true)
+    if (back.route === undefined) throw new Error('missing Return advice')
+    await b.ctx.contextify.reviewRoute(target, back.route, 'accept', b.parent.id, undefined, true)
+    expect(texts(b.parent.session)).toEqual(['Plan the community event'])
+    b.adapter.stream = async function * () {
+      reviews++
+      yield * textResponse(JSON.stringify({ include: [{ nodeId: newSource, reason: 'Resume the second alternative' }],
+        exclude: [], archive: [], route: { intent: 'resume', intentScore: 1,
+          candidates: [{ sessionId: target.id, destinationScore: 1, evidenceScore: 0, supersededScore: 0 }] } }))
+    }
+    page = await b.ctx.contextify.familyPage(b.parent)
+    const resume = await b.ctx.contextify.recommend(b.parent, { activeSessionId: b.parent.id,
+      planRevision: b.ctx.contextify.get(b.parent).plan.revision, graphRevision: page.revision }, 'Resume the second alternative', 'fast', true)
+    if (resume.route === undefined) throw new Error('missing reactivation advice')
+    await b.ctx.contextify.reviewRoute(b.parent, resume.route, 'accept', target.id, undefined, true)
+    expect(texts(target.session)).toEqual(['Plan the community event', 'Investigate the second alternative'])
+    expect(reviews).toBe(2)
+  } finally { await b.close() }
+})
+
 async function setup(b: Harness, mode: 'clean' | 'with-side' | 'unchanged' = 'clean', pin = false, excerpt = false) {
   const valid = append(b.parent.session, 'Plan the community event')
   const noise = append(b.parent.session, 'Unrelated discarded topic')
@@ -205,4 +349,40 @@ it('detects a new live branch below an unloaded family parent after the final re
     await expect(s.accept()).rejects.toThrow('changed')
     expect(b.parent.session.snapshotEvents().some(event => event.type === 'contextify/recommendation-reviewed')).toBe(false)
   } finally { vi.restoreAllMocks(); await b.close() }
+})
+
+it('uses affirmative Jev membership with the existing destination Plan', async () => {
+  const b = await lineageHarness()
+  const fetcher = vi.spyOn(globalThis, 'fetch')
+  try {
+    const s = await siblingAdvice(b)
+    b.ctx.provide('credentials', { resolve: async () => ({ value: 'fixture-only-key' }) } as never)
+    ;(b.ctx.contextify as unknown as { promptSettings: () => unknown }).promptSettings = () => ({
+      ...CONTEXTIFY_DEFAULT_SETTINGS, automaticBranchReview: false, personalizationEnabled: false, fastDecisionProvider: 'jev',
+    })
+    fetcher.mockImplementation(async (_url, init) => {
+      const body = JSON.parse(init?.body as string) as {
+        questions: Record<string, unknown>
+        state: { graph: { nodes: { id: string }[] }; contextActions: { candidates: { sessionId: string }[] } }
+      }
+      const index = body.state.contextActions.candidates.findIndex(candidate => candidate.sessionId === b.parent.id)
+      const selected = `to${String(index)}`
+      const answers: Record<string, unknown> = Object.fromEntries(Object.keys(body.questions).filter(key => key !== 'intent').map(key =>
+        [key, { type: 'noul', noul: key.startsWith('n') && body.state.graph.nodes[Number(key.slice(1))]?.id === s.keep ? 1 : 0 }]))
+      answers.intent = { type: 'choice', choice: selected, probabilities: { [selected]: 1 } }
+      return Response.json({ model: 'jev-1.13.0', answers })
+    })
+    const page = await b.ctx.contextify.familyPage(s.active)
+    const proposal = await b.ctx.contextify.recommend(s.active, { activeSessionId: s.active.id,
+      planRevision: b.ctx.contextify.get(s.active).plan.revision, graphRevision: page.revision }, 'Continue the community event plan', 'fast', true)
+    expect(proposal.route?.targetSessionId).toBe(b.parent.id)
+    expect(proposal.route?.contextNodeIds).toEqual([s.keep])
+  } finally { fetcher.mockRestore(); await b.close() }
+})
+
+it('does not hide unexpected scope planner failures as replacement limitations', async () => {
+  const b = await lineageHarness()
+  const planner = vi.spyOn(routeScope, 'planRouteScope').mockImplementationOnce(() => { throw new Error('Unexpected planner failure') })
+  try { await expect(siblingAdvice(b)).rejects.toThrow('Unexpected planner failure') }
+  finally { planner.mockRestore(); await b.close() }
 })

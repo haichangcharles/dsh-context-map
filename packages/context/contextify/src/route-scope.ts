@@ -2,6 +2,37 @@
 import type { ContextFamilyGraph, ContextPlanSnapshot, ContextRecommendationProposal } from './types.ts'
 import { validateRecommendation } from './recommendation.ts'
 
+/** A destination replacement cannot be carried as its unmodified original source. */
+export class ContextRouteScopeReplacementError extends Error {}
+
+/** Build the destination scope from its saved Plan and explicitly reviewed evidence.
+ * @param input - Native family, destination Plan, source Plan and validated source review.
+ * @returns Canonical source IDs without implicitly importing the old branch's Natural history.
+ */
+export function planRouteScope(input: {
+  readonly graph: ContextFamilyGraph
+  readonly parentSessionId: ContextFamilyGraph['activeSessionId']
+  readonly parentPlan: ContextPlanSnapshot
+  readonly sourcePlan: ContextPlanSnapshot
+  readonly proposal: ContextRecommendationProposal
+  readonly affirmedNodeIds?: readonly string[]
+  readonly excludedNodeIds?: readonly string[]
+}): readonly string[] {
+  const selected = new Set(input.graph.nodes.filter(node => node.sessionIds.includes(input.parentSessionId)).map(node => node.id))
+  for (const item of [...input.parentPlan.excluded, ...input.sourcePlan.excluded]) selected.delete(item.nodeId)
+  for (const item of [...input.parentPlan.included, ...input.sourcePlan.included]) selected.add(item.nodeId)
+  for (const id of input.affirmedNodeIds ?? []) selected.add(id)
+  for (const id of input.excludedNodeIds ?? []) selected.delete(id)
+  for (const item of input.proposal.selection) {
+    if (item.action === 'include') selected.add(item.nodeId)
+    else selected.delete(item.nodeId)
+  }
+  if (input.parentPlan.replacements.some(item => selected.has(item.nodeId))) {
+    throw new ContextRouteScopeReplacementError('Proposed fork Context contains a replaced parent source')
+  }
+  return Object.freeze(input.graph.nodes.filter(node => selected.has(node.id)).map(node => node.id))
+}
+
 /** Revalidate a complete source selection against the destination's manual choices.
  * @param input - Original proposal, source Plan, unchanged graph and destination Plan.
  * @returns A destination-bound proposal with the original decision's provenance.

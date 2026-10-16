@@ -41,6 +41,8 @@ export interface ContextActionPacket {
 export interface SemanticContextRoute {
   readonly intent: ContextRouteIntent
   readonly intentScore: number
+  /** Validated native parent for a new child, distinct from resuming that task. */
+  readonly forkParentSessionId?: SessionId
   readonly candidates: readonly {
     readonly sessionId: SessionId
     readonly destinationScore: number
@@ -74,7 +76,15 @@ export function buildContextActionPacket(input: {
 }): ContextActionPacket {
   const visible = input.visibleNodeIds === undefined ? undefined : new Set(input.visibleNodeIds)
   const active = input.graph.sessions.find(session => session.id === input.graph.activeSessionId)
-  const candidates = buildContextRouteCandidates(input).slice(0, CONTEXT_ACTION_MAX_SESSIONS)
+  const ancestorRanks = new Map<SessionId, number>()
+  let parentId = active?.parentSessionId
+  while (parentId !== undefined && !ancestorRanks.has(parentId)) {
+    ancestorRanks.set(parentId, ancestorRanks.size)
+    parentId = input.graph.sessions.find(session => session.id === parentId)?.parentSessionId
+  }
+  const candidates = [...buildContextRouteCandidates(input)]
+    .sort((a, b) => (ancestorRanks.get(a.sessionId) ?? Infinity) - (ancestorRanks.get(b.sessionId) ?? Infinity))
+    .slice(0, CONTEXT_ACTION_MAX_SESSIONS)
     .map((candidate): ContextActionCandidate => {
       const nodes = input.graph.nodes.filter(node => node.owner.sessionId === candidate.sessionId
         && (visible === undefined || visible.has(node.id)))
@@ -99,6 +109,7 @@ export function buildContextActionPacket(input: {
       ...(observation.routeContext === undefined ? {} : { routeContext: Object.freeze({
         source: bounded(observation.routeContext.source, 800),
         ...(observation.routeContext.target === undefined ? {} : { target: bounded(observation.routeContext.target, 800) }),
+        ...(observation.routeContext.parent === undefined ? {} : { parent: bounded(observation.routeContext.parent, 800) }),
       }) }),
     }))
   return Object.freeze({
@@ -135,7 +146,7 @@ function score(value: unknown, label: string): number {
  * @returns Frozen independent intent, destination, evidence and supersession scores.
  */
 export function parseSemanticContextRoute(value: unknown, packet: ContextActionPacket): SemanticContextRoute {
-  const root = record(value, 'route', ['intent', 'intentScore', 'candidates'])
+  const root = record(value, 'route', ['intent', 'intentScore', 'candidates', 'forkParentSessionId'])
   const intents: readonly ContextRouteIntent[] = ['continue', 'resume', 'reference', 'new-task', 'return', 'unknown']
   if (typeof root.intent !== 'string' || !intents.includes(root.intent as ContextRouteIntent)) {
     throw new Error('route intent is unsupported')
@@ -144,6 +155,12 @@ export function parseSemanticContextRoute(value: unknown, packet: ContextActionP
   if (!Array.isArray(root.candidates)) throw new Error('route candidates must be an array')
   if (root.candidates.length > CONTEXT_ACTION_MAX_SESSIONS) throw new Error('route candidates exceed 8 Sessions')
   const ids = new Map(packet.candidates.map(candidate => [String(candidate.sessionId), candidate.sessionId]))
+  const parentIds = new Map([...ids, [String(packet.base.activeSessionId), packet.base.activeSessionId]])
+  const forkParent = root.forkParentSessionId === undefined ? undefined
+    : typeof root.forkParentSessionId === 'string' ? parentIds.get(root.forkParentSessionId) : undefined
+  if (root.forkParentSessionId !== undefined && (root.intent !== 'new-task' || forkParent === undefined)) {
+    throw new Error('route fork parent is unavailable or intent is not new-task')
+  }
   const seen = new Set<string>()
   const candidates = root.candidates.map((raw, index) => {
     const item = record(raw, `route candidates[${String(index)}]`,
@@ -158,6 +175,7 @@ export function parseSemanticContextRoute(value: unknown, packet: ContextActionP
       supersededScore: score(item.supersededScore, 'supersededScore') })
   })
   return Object.freeze({ intent: root.intent as ContextRouteIntent, intentScore,
+    ...(forkParent === undefined ? {} : { forkParentSessionId: forkParent }),
     candidates: Object.freeze(candidates) })
 }
 
@@ -199,6 +217,11 @@ export function planSemanticContextRoute(input: {
   const intentThreshold = supportedPlacement ? profile.thresholds.destination : CONTEXT_ACTION_INTENT_THRESHOLD
   const intent = packet.explicitIntent !== 'unknown' ? packet.explicitIntent
     : route.intentScore >= intentThreshold ? route.intent : 'unknown'
+  if (intent === 'new-task' && route.intent === 'new-task' && route.forkParentSessionId !== undefined
+    && route.intentScore >= intentThreshold) {
+    return Object.freeze({ action: 'branch', forkParentSessionId: route.forkParentSessionId,
+      reason: `Create a separate task below ${packet.candidates.find(candidate => candidate.sessionId === route.forkParentSessionId)?.label ?? 'the current branch'}.`, needsReview: true })
+  }
   const candidates = packet.candidates.map((candidate) => {
     const value = scores.get(candidate.sessionId)
     return { ...candidate, destinationScore: value?.destinationScore ?? 0,

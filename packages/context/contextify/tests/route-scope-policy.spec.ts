@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import { carryRouteScope } from '../src/route-scope.ts'
+import { carryRouteScope, planRouteScope } from '../src/route-scope.ts'
 import { createInitialContextPlan } from '../src/plan.ts'
 import type { ContextFamilyGraph, ContextPlanSnapshot, ContextRecommendationProposal } from '../src/types.ts'
 
@@ -19,6 +19,23 @@ const carry = (ids: readonly string[], targetPlan: ContextPlanSnapshot = plan, t
   proposal: proposal(ids), sourcePlan: plan, plan: targetPlan, graph: targetGraph, graphRevision: 'destination' })
 
 describe('portable reviewed scope', () => {
+  it('bases a sibling on its parent Plan while retaining explicit pins and reviewed edits', () => {
+    const input = { graph, parentSessionId: root, parentPlan: plan, sourcePlan: plan, proposal: proposal(['root:1', 'side:1']) }
+    expect(planRouteScope(input)).toEqual(['root:1'])
+    expect(planRouteScope({ ...input, affirmedNodeIds: ['side:1'], excludedNodeIds: ['root:1'] })).toEqual(['side:1'])
+    expect(planRouteScope({ ...input, parentPlan: { ...plan, excluded: [{ nodeId: 'root:1', eventSeq: 1 }] },
+      sourcePlan: { ...plan, included: [{ nodeId: 'side:1', snapshotSeq: 1, position: 1 }] },
+      proposal: { ...input.proposal, selection: [{ action: 'include', nodeId: 'root:1', reason: 'Needed', confidence: 'high' }] } }))
+      .toEqual(['root:1', 'side:1'])
+  })
+
+  it('does not expand a replaced parent source during a sibling fork', () => {
+    expect(() => planRouteScope({ graph, parentSessionId: root, parentPlan: { ...plan,
+      replacements: [{ nodeId: 'root:1', snapshotSeq: 1, originalEventSeq: 1,
+        role: 'user', kind: 'placeholder', reason: 'Archived' }] }, sourcePlan: plan, proposal: proposal([]) }))
+      .toThrow('replaced')
+  })
+
   it('keeps all validated source IDs, imports sibling evidence and retains decision provenance', () => {
     const original = { ...proposal(['root:1', 'side:1']), personalization: { enabled: false, reviewer: 'jev' as const, examples: [] } }
     const result = carryRouteScope({ proposal: original, sourcePlan: plan, graph, plan, graphRevision: 'destination' })

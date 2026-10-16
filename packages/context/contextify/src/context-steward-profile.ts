@@ -189,6 +189,7 @@ export function contextPolicyObservationsFromFamily(
             branchDepth, at: event.time, weight: 1,
             ...(activity === undefined ? {} : { activity }),
             ...(event.data.objective?.trim() ? { objective: event.data.objective } : {}),
+            ...(event.data.forkParentSessionId === undefined ? {} : { forkParentSessionId: event.data.forkParentSessionId }),
             ...(event.data.targetSessionId === undefined ? {} : {
               targetSessionId: event.data.targetSessionId,
             }) }) })
@@ -245,8 +246,11 @@ export function contextPolicyObservationsFromFamily(
         .map(text => Array.from(text).slice(0, 400).join('')).join('\n')
       const routeContext = observation.action === 'branch' || observation.action === 'navigate'
         || observation.action === 'return'
-        ? { source: taskText(source), ...(observation.targetSessionId === undefined ? {}
-          : { target: taskText(inspections.get(observation.targetSessionId)) }) } : undefined
+        ? { source: taskText(source),
+          ...(observation.forkParentSessionId === undefined ? {}
+            : { parent: taskText(inspections.get(observation.forkParentSessionId)) }),
+          ...(observation.targetSessionId === undefined ? {}
+            : { target: taskText(inspections.get(observation.targetSessionId)) }) } : undefined
       return Object.freeze({ ...observation,
         ...(routeContext === undefined ? {} : { routeContext: Object.freeze(routeContext) }),
         sourceSessionId: item.sessionId, sourceEventSeq: item.seq })

@@ -4,6 +4,7 @@ import type { ContextRecommendationBase, ContextRouteAdvice,
 import { buildContextRouteCandidates, planContextRoute, draftRouteIntent,
   type ScoredContextRouteCandidate } from './context-route-policy.ts'
 import { planSemanticContextRoute, type ContextActionPacket, type SemanticContextRoute } from './semantic-route.ts'
+import { compileContextRoutePlan } from './route-plan.ts'
 
 export { draftRouteIntent } from './context-route-policy.ts'
 
@@ -60,11 +61,14 @@ export function draftRouteAdvice(input: {
   // Repeated explicit Keeps suppress casual Branch advice, never a user's manual fork.
   if (proposal.action === 'branch' && input.profile.branch.support >= 3
     && input.profile.branch.acceptRate < 0.35) return undefined
-  return Object.freeze({
+  const advice: ContextRouteAdvice = Object.freeze({
     action: proposal.action,
     base: input.base,
     objective,
     ...(proposal.targetSessionId === undefined ? {} : { targetSessionId: proposal.targetSessionId }),
+    ...(proposal.forkParentSessionId === undefined ? {} : { forkParentSessionId: proposal.forkParentSessionId }),
     reason: proposal.reason,
   })
+  compileContextRoutePlan({ graph: input.graph, route: advice, selectedNodeIds: input.selectedNodeIds ?? [] })
+  return advice
 }

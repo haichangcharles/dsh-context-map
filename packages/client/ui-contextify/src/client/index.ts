@@ -256,16 +256,18 @@ export function apply(ctx: ClientContext): void {
             }
             let targetId: SessionId
             if (route.action === 'branch') {
+              const parentId = route.forkParentSessionId ?? sessionId
+              if (!page.sessions.some(session => session.id === parentId)) throw new Error(t('error.destinationSession'))
               const graph = controller.getSnapshot().graph
               if (controller.getSnapshot().graphRevision !== page.revision || graph === undefined) {
                 throw new Error(t('error.staleRoute'))
               }
-              const pivot = graph.nodes.filter(node => node.sessionIds.includes(sessionId)
+              const pivot = graph.nodes.filter(node => node.sessionIds.includes(parentId)
                 && node.branchAtSeq !== null).at(-1)
               if (pivot?.branchAtSeq === null || pivot === undefined) {
                 throw new Error(t('error.noBranchTurn'))
               }
-              targetId = await ctx.sessions.fork({ sessionId, atSeq: pivot.branchAtSeq, increaseTitle: true })
+              targetId = await ctx.sessions.fork({ sessionId: parentId, atSeq: pivot.branchAtSeq, increaseTitle: true })
             } else {
               const target = route.targetSessionId
               if (target === undefined || !page.sessions.some(session => session.id === target)) {
@@ -276,12 +278,19 @@ export function apply(ctx: ClientContext): void {
             if (!ctx.conversation.moveDraft(sessionId, targetId, { draft, draftRev })) {
               throw new Error(t('error.draftTransfer'))
             }
+            const targetScope = ctx.sessions.scope(targetId)
+            const transferred = targetScope === undefined ? undefined
+              : ctx.conversation.input.for(targetScope).state.getSnapshot()
             try {
               valueOf(await remote.reviewRoute(sessionId, route, 'accept', targetId, 'contextify-client',
                 ...(carryContext === true ? [true] as const : [])))
-            } finally {
-              ctx.sessions.open(targetId)
+            } catch (cause) {
+              const restored = transferred !== undefined && ctx.conversation.moveDraft(targetId, sessionId,
+                { draft: transferred.draft, draftRev: transferred.draftRev })
+              ctx.sessions.open(restored ? sessionId : targetId)
+              throw cause
             }
+            ctx.sessions.open(targetId)
           },
           presentRecommendation: proposal => controller.presentRecommendation(proposal),
           dismissRecommendation: declinedNodeIds => controller.dismissRecommendation(declinedNodeIds),

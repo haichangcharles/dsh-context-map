@@ -43,10 +43,12 @@ export interface ContextPolicyObservation {
   /** Exact draft objective when the reviewed event recorded one. */
   readonly objective?: string
   /** Bounded task text known before the operation; historical targets grant no current authority. */
-  readonly routeContext?: { readonly source: string; readonly target?: string }
+  readonly routeContext?: { readonly source: string; readonly target?: string; readonly parent?: string }
   /** Context item or destination actually considered by this choice. */
   readonly targetNodeId?: string
   readonly targetSessionId?: SessionId
+  /** Parent considered when reviewing a new child placement. */
+  readonly forkParentSessionId?: SessionId
   /** Zero-based position within one displayed multi-item review. */
   readonly displayedIndex?: number
   /** Relation at review time, before any approved Context Plan mutation. */
@@ -406,6 +408,12 @@ export interface ContextRouteAdvice {
   readonly base: ContextRecommendationBase
   readonly objective: string
   readonly targetSessionId?: SessionId
+  /** Native parent of a proposed child; absent means the active Session. */
+  readonly forkParentSessionId?: SessionId
+  /** Complete destination-based Context proposed for a reviewed route. */
+  readonly contextNodeIds?: readonly string[]
+  /** Destination replacements prevent carrying scope; draft-only routing remains available. */
+  readonly contextUnavailable?: boolean
   readonly reason: string
 }
 
@@ -444,6 +452,8 @@ declare module '@deepseek-ai/dsh-session/types' {
       /** Bounded reviewed draft objective; recorded only after an explicit route decision. */
       readonly objective?: string
       readonly targetSessionId?: SessionId
+      /** Reviewed parent of a new child; absent on existing-destination routes. */
+      readonly forkParentSessionId?: SessionId
       /** Client-declared confirmation, not authenticated human identity. */
       readonly uiOrigin?: 'contextify-client'
     }

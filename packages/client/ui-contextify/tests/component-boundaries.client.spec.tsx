@@ -438,3 +438,15 @@ describe('Context recommendation review public decisions', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 })
+
+it.each(['branch', 'navigate'] as const)('previews the complete %s scope and preserves draft-only routing for replacements', (action) => {
+  const route = { action, base: proposal().base, objective: 'Continue plan', reason: 'Related destination',
+    contextNodeIds: ['root:1', 'missing'], contextUnavailable: true }
+  const h = reviewSheet(proposal({ route }))
+  expect(screen.getByText('missing')).toBeTruthy()
+  expect(screen.getByText(/destination contains replaced content/)).toBeTruthy()
+  const label = action === 'branch' ? 'Create branch with proposed Context' : 'Move draft with proposed Context'
+  expect(screen.getByRole('button', { name: label }).disabled).toBe(true)
+  fireEvent.click(screen.getByRole('button', { name: action === 'branch' ? 'Start a new branch' : 'Move draft to branch' }))
+  expect(h.props.acceptRoute).toHaveBeenCalledWith(route)
+})

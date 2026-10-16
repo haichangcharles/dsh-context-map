@@ -361,6 +361,58 @@ describe('ui-contextify browser plugin', () => {
       expect(() => nativeBranchSource({ ...b.record, branchAtSeq: null })).toThrow('completed Turn')
     } finally { await b.fiber.dispose() }
   })
+  it('forks from the reviewed parent and carries approved Context to the final child', async () => {
+    const b = await bench()
+    const route: ContextRouteAdvice = { action: 'branch', forkParentSessionId: child,
+      objective: 'A new child task', reason: 'Related alternative',
+      base: { activeSessionId: source, planRevision: 4, graphRevision: 'family-7' } }
+    try {
+      b.draftState.draft = route.objective
+      b.page.records = [{ ...b.record, sessionIds: [source, child] }]
+      await (b.panel.hooks.contextify as ContextifyController).refresh()
+      await b.panel.mapActions.acceptRoute(route, true)
+      expect(b.fork).toHaveBeenCalledWith({ sessionId: child, atSeq: 9, increaseTitle: true })
+      expect(b.calls.filter(call => call.method === 'reviewRoute')).toEqual([{
+        method: 'reviewRoute', args: [source, route, 'accept', child, 'contextify-client', true],
+      }])
+    } finally { await b.fiber.dispose() }
+  })
+  it('rejects a foreign fork parent before creating a native child', async () => {
+    const b = await bench()
+    try {
+      b.draftState.draft = 'A new task'
+      await expect(b.panel.mapActions.acceptRoute({ action: 'branch', forkParentSessionId: sid('foreign'),
+        objective: b.draftState.draft, reason: 'Separate',
+        base: { activeSessionId: source, planRevision: 4, graphRevision: 'family-7' } })).rejects.toThrow(/destination/)
+      expect(b.fork).not.toHaveBeenCalled()
+    } finally { await b.fiber.dispose() }
+  })
+  it.each([true, false])('keeps the destination open when draft rollback is unavailable (%s)', async (missingScope) => {
+    const b = await bench()
+    try {
+      b.draftState.draft = 'A new task'
+      await (b.panel.hooks.contextify as ContextifyController).refresh()
+      if (missingScope) b.sessionScope.mockReturnValueOnce(b.ctx).mockReturnValueOnce(undefined)
+      else b.moveDraft.mockReturnValueOnce(true).mockReturnValueOnce(false)
+      vi.spyOn(b.remoteFace, 'reviewRoute').mockRejectedValue(new Error('stale parent'))
+      await expect(b.panel.mapActions.acceptRoute({ action: 'branch', objective: b.draftState.draft, reason: 'Separate',
+        base: { activeSessionId: source, planRevision: 4, graphRevision: 'family-7' } })).rejects.toThrow('stale parent')
+      expect(b.open).toHaveBeenLastCalledWith(child)
+    } finally { await b.fiber.dispose() }
+  })
+  it('restores the draft to the source when Host approval of the fork fails', async () => {
+    const b = await bench()
+    const route: ContextRouteAdvice = { action: 'branch', objective: 'A new task', reason: 'Separate',
+      base: { activeSessionId: source, planRevision: 4, graphRevision: 'family-7' } }
+    try {
+      b.draftState.draft = route.objective
+      await (b.panel.hooks.contextify as ContextifyController).refresh()
+      vi.spyOn(b.remoteFace, 'reviewRoute').mockRejectedValue(new Error('stale parent'))
+      await expect(b.panel.mapActions.acceptRoute(route, true)).rejects.toThrow('stale parent')
+      expect(b.moveDraft).toHaveBeenLastCalledWith(child, source, { draft: route.objective, draftRev: 0 })
+      expect(b.open).toHaveBeenLastCalledWith(source)
+    } finally { await b.fiber.dispose() }
+  })
   it.each([
     { label: 'ordinary native fork', origin: false, addressed: false, blank: false, expected: 1 },
     { label: 'addressed execution detail', origin: false, addressed: true, blank: false, expected: 0 },

@@ -56,6 +56,8 @@ export function buildJevContextRequest(input: FastRecommendationInput, route: Co
       unknown: 'The available task content and prior choices do not resolve placement.',
       ...Object.fromEntries(route.candidates.map((candidate, index) => [`to${String(index)}`,
         `Continue the task in Session ${JSON.stringify(candidate.sessionId)}: ${candidate.label}. This is the destination of the new turn, not just evidence to borrow.${candidate.sessionId === route.parentSessionId ? ' This is the native parent task; moving here is Return.' : ''}`])),
+      ...Object.fromEntries(route.candidates.map((candidate, index) => [`newAt${String(index)}`,
+        `Create a NEW child task under Session ${JSON.stringify(candidate.sessionId)}: ${candidate.label}. First navigate to this parent, then fork; do not resume the parent task or create under the current active Session. Choose this for a separate subtask or alternative that belongs under this parent.`])),
     } }
   route.candidates.forEach((candidate, index) => {
     const target = JSON.stringify(candidate.sessionId)
@@ -103,13 +105,12 @@ export function parseJevContextResponse(wire: unknown, input: FastRecommendation
   const exclude: { nodeId: string; reason: string }[] = []
   input.nodes.forEach((node, index) => {
     const selected = noul(`n${String(index)}`) >= 0.5
-    if (selected === node.included) return
     const item = { nodeId: node.id, reason: selected ? 'Jev: needed for the current objective.' : 'Jev: outside the current objective.' }
     if (selected) include.push(item)
     else exclude.push(item)
   })
   const intent = record(answers.intent)
-  const options = [...PLACEMENTS, ...route.candidates.map((_candidate, index) => `to${String(index)}`)]
+  const options = [...PLACEMENTS, ...route.candidates.flatMap((_candidate, index) => [`to${String(index)}`, `newAt${String(index)}`])]
   if (intent.type !== 'choice' || typeof intent.choice !== 'string' || !options.includes(intent.choice)) throw new Error('Malformed Jev route intent')
   const probabilities = record(intent.probabilities)
   // Provider choice masses can be rounded to hundredths independently. Bound
@@ -122,8 +123,10 @@ export function parseJevContextResponse(wire: unknown, input: FastRecommendation
   if (Object.values(probabilities).some(value => score(value) > chosenScore)) throw new Error('Malformed Jev chosen placement')
   const destinationIndex = route.candidates.findIndex((_candidate, index) => intent.choice === `to${String(index)}`)
   const destination = route.candidates[destinationIndex]
+  const forkParent = route.candidates.find((_candidate, index) => intent.choice === `newAt${String(index)}`)
   return { decision: { include, exclude, archive: [] }, route: {
-    intent: destination === undefined ? intent.choice as typeof PLACEMENTS[number]
+    ...(forkParent === undefined ? {} : { forkParentSessionId: forkParent.sessionId }),
+    intent: forkParent !== undefined ? 'new-task' : destination === undefined ? intent.choice as typeof PLACEMENTS[number]
       : destination.sessionId === route.parentSessionId ? 'return' : 'resume', intentScore: chosenScore,
     candidates: route.candidates.map((candidate, index) => ({ sessionId: candidate.sessionId,
       destinationScore: score(probabilities[`to${String(index)}`] ?? 0), evidenceScore: noul(`e${String(index)}`), supersededScore: noul(`s${String(index)}`) })),

@@ -75,7 +75,8 @@
         "reference": "Keep working on the active task, borrowing material from another task without moving there.",
         "new-task": "The draft starts a distinct task that belongs in neither the active Session nor any supplied destination. Affirmative task evidence supports a new branch.",
         "unknown": "The available task content and prior choices do not resolve placement.",
-        "to0": "Continue the task in Session \"writing\": Writing task. This is the destination of the new turn, not just evidence to borrow."
+        "to0": "Continue the task in Session \"writing\": Writing task. This is the destination of the new turn, not just evidence to borrow.",
+        "newAt0": "Create a NEW child task under Session \"writing\": Writing task. First navigate to this parent, then fork; do not resume the parent task or create under the current active Session. Choose this for a separate subtask or alternative that belongs under this parent."
       }
     },
     "e0": {

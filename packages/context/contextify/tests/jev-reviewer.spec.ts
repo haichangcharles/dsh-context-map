@@ -24,6 +24,24 @@ function response() {
 }
 
 describe('Jev Host decision adapter', () => {
+  it('retains an affirmative membership score for already-included evidence when moving tasks', () => {
+    const wire = response()
+    wire.answers.n0.noul = .9
+    expect(parseJevContextResponse(wire, input, route).decision.include.map(item => item.nodeId))
+      .toContain('active:1')
+  })
+
+  it('separates creating below a supplied parent from resuming its task', () => {
+    const body = buildJevContextRequest(input, route, 'Review')
+    expect(body.questions.intent?.criteria.newAt0).toContain('writing')
+    const wire = { ...response(), answers: { ...response().answers,
+      intent: { type: 'choice', choice: 'newAt0', probabilities: { newAt0: .95, unknown: .05 } } } }
+    expect(parseJevContextResponse(wire, input, route).route).toMatchObject({
+      intent: 'new-task', intentScore: .95, forkParentSessionId: 'writing',
+      candidates: [{ sessionId: 'writing', destinationScore: 0 }],
+    })
+  })
+
   it('pins the model-visible joint placement rubric and historical task data', async () => {
     const packet = { ...route, preferenceExamples: [{ action: 'return' as const, choice: 'reject' as const,
       origin: 'explicit-review' as const, objective: 'Finish the invitation', branchDepth: 1, at: 10,

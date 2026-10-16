@@ -19,6 +19,28 @@ const inspection = (session: Session): ContextFamilyInspection => ({ meta: sessi
   events: session.snapshotEvents(), inheritedEventCount: session.inheritedEventCount })
 
 describe('route learning episodes', () => {
+  it('retains the chosen fork parent and only its task text preceding the choice', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(100)
+    try {
+      const source = ctx.sessions.create(side), parent = ctx.sessions.create(main)
+      message(source, 'First alternative')
+      message(parent, 'Plan the community event')
+      clock.mockReturnValue(200)
+      source.append('contextify/route-choice', { routeKey: 'sibling', action: 'branch', choice: 'accept',
+        base: { activeSessionId: side, graphRevision: 'g', planRevision: 1 },
+        objective: 'Explore another alternative', forkParentSessionId: main, uiOrigin: 'contextify-client' })
+      clock.mockReturnValue(300)
+      message(parent, 'Future parent task')
+      const samples = contextPolicyObservationsFromFamily(graph,
+        new Map([[side, inspection(source)], [main, inspection(parent)]]))
+      expect(samples[0]).toMatchObject({ action: 'branch', forkParentSessionId: main,
+        routeContext: { source: 'First alternative', parent: 'Plan the community event' } })
+      expect(JSON.stringify(samples)).not.toContain('Future parent')
+    } finally { clock.mockRestore(); await ctx.fiber.dispose() }
+  })
+
   it('retains branch-review input and the task preceding that input', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)

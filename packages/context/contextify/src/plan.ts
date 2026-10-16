@@ -291,7 +291,7 @@ export function redoPlan(session: Session, current: ContextPlanSnapshot): Contex
  * @param session - Session whose Context Plan is requested.
  * @returns The latest plan or a detached Natural default before initialization.
  */
-export function currentContextPlan(session: Session): ContextPlanSnapshot {
+export function currentContextPlan(session: Pick<Session, 'snapshotEvents'>): ContextPlanSnapshot {
   const latest = session.snapshotEvents().findLast(event => event.type === 'contextify/plan')?.data
   return normalizeContextPlanSnapshot(latest) ?? createInitialContextPlan()
 }
