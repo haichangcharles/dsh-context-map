@@ -6,9 +6,10 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Worker } from 'node:worker_threads'
 
-const [mode, rawCount] = process.argv.slice(2)
+const [mode, rawCount, phase = 'ready'] = process.argv.slice(2)
 const iterations = Number(rawCount)
-assert(process.argv.length === 4 && ['esm', 'cjs', 'tsx-esm', 'tsx-both'].includes(mode) && Number.isInteger(iterations)
+assert((process.argv.length === 4 || process.argv.length === 5) && ['ready', 'online'].includes(phase)
+  && ['esm', 'cjs', 'tsx-esm', 'tsx-both'].includes(mode) && Number.isInteger(iterations)
   && iterations > 0 && iterations <= 256, 'Expected esm|cjs|tsx-esm|tsx-both and an iteration count from 1 to 256')
 const root = mkdtempSync(join(tmpdir(), 'dsh-node-worker-import-'))
 let terminated = 0
@@ -37,23 +38,24 @@ parentPort.postMessage('ready');`
   for (let index = 0; index < iterations; index += 1) {
     const worker = new Worker(entry, { execArgv: [], env })
     let timer
-    let ready = false
+    let observed = false
     try {
       await new Promise((resolve, reject) => {
-        timer = setTimeout(() => { reject(new Error('Worker import did not become ready within 10 seconds')) }, 10_000)
+        timer = setTimeout(() => { reject(new Error(`Worker did not reach ${phase} within 10 seconds`)) }, 10_000)
         worker.once('error', reject)
-        worker.once('exit', code => { reject(new Error(`Worker exited before readiness: ${code}`)) })
-        worker.once('message', message => { message === 'ready' ? resolve() : reject(new Error('Unexpected worker readiness message')) })
+        worker.once('exit', code => { reject(new Error(`Worker exited before ${phase}: ${code}`)) })
+        if (phase === 'online') worker.once('online', () => { resolve() })
+        else worker.once('message', message => { message === 'ready' ? resolve() : reject(new Error('Unexpected worker readiness message')) })
       })
-      ready = true
+      observed = true
     } finally {
       clearTimeout(timer)
       const code = await worker.terminate()
-      if (ready) assert.equal(code, 1, 'Parked worker must terminate before the next iteration')
+      if (observed) assert.equal(code, 1, 'Observed worker must terminate before the next iteration')
     }
     terminated += 1
   }
-  console.log(JSON.stringify({ engineeringFixture: true, node: process.version, platform: process.platform, mode, iterations, terminated }))
+  console.log(JSON.stringify({ engineeringFixture: true, node: process.version, platform: process.platform, mode, phase, iterations, terminated }))
 } finally {
   rmSync(root, { recursive: true, force: true })
 }

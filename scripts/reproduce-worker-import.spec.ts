@@ -15,6 +15,14 @@ it.each(['esm', 'cjs', 'tsx-esm', 'tsx-both'])('imports and terminates every %s 
   expect(JSON.parse(result.stdout.trim())).toMatchObject({ engineeringFixture: true, mode, iterations: 2, terminated: 2 })
 })
 
+it.each(['esm', 'cjs', 'tsx-esm', 'tsx-both'])('terminates each %s worker at online without claiming its import completed', (mode) => {
+  const result = spawnSync(process.execPath, [script, mode, '2', 'online'], { encoding: 'utf8', env, timeout: 20_000 })
+  expect(result.error).toBeUndefined()
+  expect(result.signal).toBeNull()
+  expect(result.status, result.stderr).toBe(0)
+  expect(JSON.parse(result.stdout.trim())).toMatchObject({ engineeringFixture: true, phase: 'online', mode, terminated: 2 })
+})
+
 it.each([['unknown', '2'], ['cjs', '257'], ['esm', '0']])('refuses an unbounded or unknown diagnostic %s %s', (mode, count) => {
   const result = spawnSync(process.execPath, [script, mode, count], { encoding: 'utf8', env, timeout: 20_000 })
   expect(result.error).toBeUndefined()

@@ -170,9 +170,9 @@ jobs:
         if: inputs.worker_import_probe == 'tsx'
         shell: pwsh
         run: |
-          node scripts/reproduce-worker-import.mjs tsx-esm 128
+          node scripts/reproduce-worker-import.mjs tsx-esm 128 online
           if ($LASTEXITCODE -ne 0) { throw 'tsx ESM bootstrap control failed' }
-          node scripts/reproduce-worker-import.mjs tsx-both 128
+          node scripts/reproduce-worker-import.mjs tsx-both 128 online
           if ($LASTEXITCODE -ne 0) { throw 'tsx ESM+CJS bootstrap failed' }
       - name: Read Windows crash evidence
         if: always() && runner.os == 'Windows'

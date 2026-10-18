@@ -18,6 +18,8 @@ Windows uses [WER per-application settings](https://learn.microsoft.com/en-us/wi
 
 Manual `worker_import_probe=pure` replaces the project probes with [a standalone fixture](../../../../scripts/reproduce-worker-import.mjs), skipping dependency installation and native builds. `diagnostic_node` selects Node 22 or 24 for this diagnostic only; the defaults remain `project` and 24. Each pure arm imports a private ESM or CommonJS fixture in at most 256 sequential Workers, observes readiness and awaits termination before proceeding. The CommonJS arm exercises Node's [native CJS translator](https://github.com/nodejs/node/blob/v24.21.0/lib/internal/modules/esm/translators.js), without Vitest, tsx or DSH. `worker_import_probe=tsx` instead installs locked dependencies and compares 128 ESM-only versus dual-hook bootstraps using a TypeScript enum fixture in an explicit ESM package. It loads tsx but no DSH services. Both are engineering fixtures; a passing bounded probe cannot rule out the original crash.
 
+The optional CLI phase `online` terminates on Node's startup event rather than waiting for fixture execution; the output names that phase and makes no completed-import claim. The manual tsx probe uses this phase to isolate startup cancellation after the completed-import controls. No fixed delay places the cancellation.
+
 The [explicit CI budget decision](2026-10-13-explicit-ci-api-budget.md) remains authoritative: this manual diagnostic requires `runtime_diagnostics=true`, clears model credentials, and leaves `real_api=false`. It grants no model authorization. This is additive diagnostic evidence and supersedes no existing test or budget decision.
 
 ## Alternatives considered
