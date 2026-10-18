@@ -97,6 +97,36 @@ jobs:
           cache: pnpm
       - name: Install immutable dependencies
         run: pnpm install --frozen-lockfile
+      - name: Preserve native worker exit evidence
+        # Diagnostic-only adaptation of vitest-dev/vitest#10587. Keep the
+        # installed package version and fail loudly if its handler changes.
+        shell: pwsh
+        run: |
+          @'
+          import { readFileSync, readdirSync, writeFileSync, renameSync } from 'node:fs';
+          import { dirname, join } from 'node:path';
+          import { fileURLToPath } from 'node:url';
+          const chunks = join(dirname(fileURLToPath(import.meta.resolve('vitest/node'))), 'chunks');
+          const matches = readdirSync(chunks).filter(name => /^cli-api\..+\.js$/.test(name));
+          if (matches.length !== 1) throw new Error('Verify the upstream worker exit handler: bundle changed');
+          const target = join(chunks, matches[0]);
+          const before = readFileSync(target, 'utf8');
+          const old = 'emitUnexpectedExit = () => {\n\t\tconst error = /* @__PURE__ */ new Error("Worker exited unexpectedly");';
+          if (before.split(old).length !== 2) throw new Error('Verify the upstream worker exit handler before adapting diagnostics');
+          const replacement = 'emitUnexpectedExit = (code, signal) => {\n\t\tconst error = new Error(`Worker exited unexpectedly (code=${code}, signal=${signal})`);';
+          // Replace the directory entry, leaving pnpm store hardlinks intact.
+          const temporary = target + '.dsh-diagnostic';
+          writeFileSync(temporary, before.replace(old, replacement), { flag: 'wx' });
+          renameSync(temporary, target);
+          '@ | node --input-type=module
+      - name: Diagnose workflow worker lifecycle
+        run: >-
+          pnpm exec vitest run --no-file-parallelism --maxWorkers=2
+          --testTimeout 90000 --reporter=verbose
+          packages/workflow/workflow-worker-thread/tests/workflow-worker-thread.spec.ts
+          packages/workflow/tool-ralph/tests/integration.spec.ts
+          packages/subprocess/subprocess-local/tests/process-exit.spec.ts
+          packages/shell/tool-pwsh/tests/loader.spec.ts
       - name: Prepare Linux native sandbox
         if: runner.os == 'Linux'
         run: bash scripts/prepare-ci-bubblewrap.sh

@@ -24,6 +24,8 @@ Forked workers run several spec files at once, the coverage gate splits into con
 
 Keyless replay proves the recorded execution and product plumbing; it does not establish live model quality. Ordinary pull requests and pushes run recorded Sessions, browser replay, and installed-wheel keyless tests. Live DeepSeek CI requires an explicit `workflow_dispatch` with `real_api=true`; no automatic event receives its API credential ([budget decision](../.agents/notes/implemented/testing/2026-10-13-explicit-ci-api-budget.md)). Authorized live runs cover file writing, multi-turn conversation, tool use, and cancellation through shipped profiles. Their preflight rejects missing credentials rather than reporting an all-skipped success. Profile tests live under `apps/cli/tests/profiles/`; package compositions stay with their package tests.
 
+Manual `runtime_diagnostics=true` collects keyless worker-exit evidence ([decision](../.agents/notes/implemented/testing/2026-10-18-native-worker-exit-evidence.md)).
+
 ## Prefer the real implementation over a mock
 
 Mock only the expensive or non-deterministic boundary (LLM adapter, network, clock); keep everything downstream real. A hand-rolled stand-in proves the bridge moves bytes, not that the shipping tool behaves as asserted. Bridge tool-call tests keep the real tool registry and pipeline behind the scripted mock model: `makeBridgeHarness()` mounts the loop, session store, tool registry, and JSONL persistence with a `MockAdapter` as the only mock (packages/acp/acp/tests/harness.ts).

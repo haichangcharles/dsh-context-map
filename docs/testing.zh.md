@@ -24,6 +24,8 @@ fork 出的 worker 会同时运行多个 spec 文件，coverage gate 会拆成�
 
 无密钥回放证明已录制的执行与产品通路，不证明真实模型质量。普通 PR 和 push 运行录制会话、浏览器回放与已安装 wheel 的无密钥测试。真实 DeepSeek CI 必须通过 `workflow_dispatch` 显式设置 `real_api=true`；自动事件不会获得其 API 凭证（[预算决策](../.agents/notes/implemented/testing/2026-10-13-explicit-ci-api-budget.zh.md)）。已授权的真实运行通过已交付 profile 覆盖文件写入、多轮对话、工具使用和取消。预检在缺少凭证时失败，避免把全部跳过报告为成功。Profile 测试位于 `apps/cli/tests/profiles/`；包专属组合留在对应包的测试目录中。
 
+手动设置 `runtime_diagnostics=true` 可收集无密钥的工作进程退出证据（[决策](../.agents/notes/implemented/testing/2026-10-18-native-worker-exit-evidence.zh.md)）。
+
 ## 优先使用真实实现而非 mock
 
 只 mock 开销高或不确定的边界（LLM（大语言模型）适配器、网络、时钟）；下游一切保持真实。手写替身只能证明桥接层在搬运字节，不能证明交付的工具行为符合断言。桥接工具调用测试把真实的工具注册表与执行管线保留在脚本化 mock 模型下游：`makeBridgeHarness()`（packages/acp/acp/tests/harness.ts）挂载 agent loop、会话存储、工具注册表与 JSONL 持久化，唯一 mock 是脚本化 `MockAdapter`。
