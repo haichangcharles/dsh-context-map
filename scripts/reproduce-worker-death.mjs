@@ -5,7 +5,7 @@ import { startVitest } from 'vitest/node'
 
 const ctx = await startVitest('test', ['packages/workflow/workflow-worker-thread/tests/workflow-worker-thread.spec.ts'], {
   run: true,
-  config: fileURLToPath(new URL('./native-worker-repro.config.ts', import.meta.url)),
+  config: fileURLToPath(new URL('./native-worker-repro.config.mjs', import.meta.url)),
   testNamePattern: 'a worker death AFTER a cancel reports cancelled, not error',
   maxWorkers: 2,
   fileParallelism: false,
