@@ -15,6 +15,15 @@ on:
         type: boolean
         required: false
         default: false
+      diagnostic_node:
+        description: Node version for manual keyless diagnostics only
+        type: choice
+        options: ['24', '22']
+        default: '24'
+      pure_node_repro:
+        description: Replace project probes with the bounded pure Node import/termination fixture
+        type: boolean
+        default: false
   push:
     branches: [main, master]
   pull_request:
@@ -93,11 +102,13 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: ${{ inputs.diagnostic_node || '24' }}
           cache: pnpm
       - name: Install immutable dependencies
+        if: ${{ !inputs.pure_node_repro }}
         run: pnpm install --frozen-lockfile
       - name: Preserve native worker exit evidence
+        if: ${{ !inputs.pure_node_repro }}
         # Diagnostic-only adaptation of vitest-dev/vitest#10587. Keep the
         # installed package version and fail loudly if its handler changes.
         shell: pwsh
@@ -138,6 +149,7 @@ jobs:
             throw
           }
       - name: Diagnose workflow worker lifecycle
+        if: ${{ !inputs.pure_node_repro }}
         run: >-
           pnpm exec vitest run --no-file-parallelism --maxWorkers=2
           --testTimeout 90000 --reporter=verbose
@@ -145,6 +157,14 @@ jobs:
           packages/workflow/tool-ralph/tests/integration.spec.ts
           packages/subprocess/subprocess-local/tests/process-exit.spec.ts
           packages/shell/tool-pwsh/tests/loader.spec.ts
+      - name: Reproduce pure Node worker imports
+        if: inputs.pure_node_repro
+        shell: pwsh
+        run: |
+          node scripts/reproduce-worker-import.mjs esm 256
+          if ($LASTEXITCODE -ne 0) { throw 'Pure Node ESM control failed' }
+          node scripts/reproduce-worker-import.mjs cjs 256
+          if ($LASTEXITCODE -ne 0) { throw 'Pure Node CJS import/termination failed' }
       - name: Read Windows crash evidence
         if: always() && runner.os == 'Windows'
         shell: pwsh
@@ -194,11 +214,13 @@ jobs:
             if ($env:DSH_CRASH_CAPTURE_STARTED) { Remove-Item -LiteralPath $key -Recurse -Force }
           }
       - name: Prepare Linux native sandbox
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && !inputs.pure_node_repro
         run: bash scripts/prepare-ci-bubblewrap.sh
       - name: Build host native addon
+        if: ${{ !inputs.pure_node_repro }}
         run: pnpm run build:native-system
       - name: Diagnose native lifecycle and owned-prompt readiness
+        if: ${{ !inputs.pure_node_repro }}
         # This is a selected, instrumented diagnostic, not the repository
         # coverage verdict. The ordinary exhaustive lane stays unchanged.
         env:

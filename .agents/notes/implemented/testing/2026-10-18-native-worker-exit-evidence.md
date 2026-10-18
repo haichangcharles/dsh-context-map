@@ -16,6 +16,8 @@ That job runs the four native lifecycle test files with verbose output and at mo
 
 Windows uses [WER per-application settings](https://learn.microsoft.com/en-us/windows/win32/wer/collecting-user-mode-dumps) to retain at most two Node minidumps on the disposable runner. The post-probe step runs after failure, reports Application crash events and, when SDK CDB is installed, reads exception stacks with matching public Node symbols. Dumps are not uploaded. The step removes its registry setting; an existing Node dump configuration is never overwritten. Missing dumps or CDB leave the cause unclassified.
 
+Manual `pure_node_repro=true` replaces the project probes with [a standalone fixture](../../../../scripts/reproduce-worker-import.mjs), skipping dependency installation and native builds. `diagnostic_node` selects Node 22 or 24 for this diagnostic only; the default remains 24. Each arm imports a private ESM or CommonJS fixture in at most 256 sequential Workers, observes readiness and awaits termination before proceeding. The CommonJS arm exercises Node's [native CJS translator](https://github.com/nodejs/node/blob/v24.21.0/lib/internal/modules/esm/translators.js), without Vitest, tsx or DSH. Its engineering-fixture output cannot establish product quality; a passing bounded probe cannot rule out the original crash.
+
 The [explicit CI budget decision](2026-10-13-explicit-ci-api-budget.md) remains authoritative: this manual diagnostic requires `runtime_diagnostics=true`, clears model credentials, and leaves `real_api=false`. It grants no model authorization. This is additive diagnostic evidence and supersedes no existing test or budget decision.
 
 ## Alternatives considered
