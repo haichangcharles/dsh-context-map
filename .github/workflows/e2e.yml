@@ -23,7 +23,7 @@ on:
       worker_import_probe:
         description: Select the project, plain Node or tsx bootstrap diagnostic
         type: choice
-        options: [project, pure, tsx]
+        options: [project, pure, tsx, cancel-case]
         default: project
   push:
     branches: [main, master]
@@ -109,7 +109,7 @@ jobs:
         if: inputs.worker_import_probe != 'pure'
         run: pnpm install --frozen-lockfile
       - name: Preserve native worker exit evidence
-        if: inputs.worker_import_probe != 'pure' && inputs.worker_import_probe != 'tsx'
+        if: inputs.worker_import_probe == 'project' || inputs.worker_import_probe == 'cancel-case'
         # Diagnostic-only adaptation of vitest-dev/vitest#10587. Keep the
         # installed package version and fail loudly if its handler changes.
         shell: pwsh
@@ -150,7 +150,7 @@ jobs:
             throw
           }
       - name: Diagnose workflow worker lifecycle
-        if: inputs.worker_import_probe != 'pure' && inputs.worker_import_probe != 'tsx'
+        if: inputs.worker_import_probe == 'project'
         run: >-
           pnpm exec vitest run --no-file-parallelism --maxWorkers=2
           --testTimeout 90000 --reporter=verbose
@@ -174,6 +174,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'tsx ESM bootstrap control failed' }
           node scripts/reproduce-worker-import.mjs tsx-both 128 online
           if ($LASTEXITCODE -ne 0) { throw 'tsx ESM+CJS bootstrap failed' }
+      - name: Repeat native cancellation case
+        if: inputs.worker_import_probe == 'cancel-case'
+        run: node scripts/reproduce-worker-death.mjs
       - name: Read Windows crash evidence
         if: always() && runner.os == 'Windows'
         shell: pwsh
@@ -223,13 +226,13 @@ jobs:
             if ($env:DSH_CRASH_CAPTURE_STARTED) { Remove-Item -LiteralPath $key -Recurse -Force }
           }
       - name: Prepare Linux native sandbox
-        if: runner.os == 'Linux' && inputs.worker_import_probe != 'pure' && inputs.worker_import_probe != 'tsx'
+        if: runner.os == 'Linux' && inputs.worker_import_probe == 'project'
         run: bash scripts/prepare-ci-bubblewrap.sh
       - name: Build host native addon
-        if: inputs.worker_import_probe != 'pure' && inputs.worker_import_probe != 'tsx'
+        if: inputs.worker_import_probe == 'project'
         run: pnpm run build:native-system
       - name: Diagnose native lifecycle and owned-prompt readiness
-        if: inputs.worker_import_probe != 'pure' && inputs.worker_import_probe != 'tsx'
+        if: inputs.worker_import_probe == 'project'
         # This is a selected, instrumented diagnostic, not the repository
         # coverage verdict. The ordinary exhaustive lane stays unchanged.
         env:

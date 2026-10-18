@@ -20,6 +20,8 @@ Windows 通过 [WER 按应用配置](https://learn.microsoft.com/en-us/windows/w
 
 可选 CLI 阶段 `online` 在 Node 启动事件发生时终止，不等待替身执行；输出标注该阶段，不声称导入已完成。手动 tsx 探测在完成导入的对照之后使用此阶段，隔离启动时取消。不通过固定延迟安排取消。
 
+`worker_import_probe=cancel-case` 使用 Vitest 的 `repeats` 机制，将既有“取消后 worker 死亡”原生用例执行 32 次，不重试或修改断言。[项目配置包装](../../../../scripts/native-worker-repro.config.ts)保留仓库的初始化文件，仅选择[诊断 runner](../../../../scripts/worker-death-repeats.ts)。[API 入口](../../../../scripts/reproduce-worker-death.mjs)要求恰好一个通过的选中用例、`repeatCount=31` 且没有未处理错误；目标改名或缺失时失败。它缩小到已观察 Windows 故障中最后未完成的状态转换，但不证明该转换导致崩溃。
+
 [显式 CI 预算决策](2026-10-13-explicit-ci-api-budget.zh.md)继续有效：手动诊断要求 `runtime_diagnostics=true`，清空模型凭据，并保持 `real_api=false`。它不授予模型调用授权。此机制补充诊断证据，不替代既有测试或预算决定。
 ## Alternatives considered
 

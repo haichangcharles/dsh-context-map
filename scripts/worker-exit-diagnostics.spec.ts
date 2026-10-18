@@ -17,9 +17,12 @@ it('keeps the pure Node reproduction opt-in and separate from project probes and
   const steps = workflow.jobs['runtime-diagnostics']!.steps
   expect(steps.find(step => step.name === 'Reproduce pure Node worker imports')?.if).toBe("inputs.worker_import_probe == 'pure'")
   expect(steps.find(step => step.name === 'Reproduce tsx worker bootstrap')?.if).toBe("inputs.worker_import_probe == 'tsx'")
+  expect(steps.find(step => step.name === 'Repeat native cancellation case')?.if).toBe("inputs.worker_import_probe == 'cancel-case'")
   expect(steps.find(step => step.name === 'Install immutable dependencies')?.if).toBe("inputs.worker_import_probe != 'pure'")
   for (const name of ['Preserve native worker exit evidence', 'Diagnose workflow worker lifecycle', 'Build host native addon', 'Diagnose native lifecycle and owned-prompt readiness']) {
-    expect(steps.find(step => step.name === name)?.if, name).toBe("inputs.worker_import_probe != 'pure' && inputs.worker_import_probe != 'tsx'")
+    expect(steps.find(step => step.name === name)?.if, name).toBe(name === 'Preserve native worker exit evidence'
+      ? "inputs.worker_import_probe == 'project' || inputs.worker_import_probe == 'cancel-case'"
+      : "inputs.worker_import_probe == 'project'")
   }
   expect(steps.find(step => step.uses === 'actions/setup-node@v6')?.with?.['node-version']).toBe("${{ inputs.diagnostic_node || '24' }}")
 })
