@@ -23,8 +23,8 @@ export interface ContextifyPromptSettings {
   readonly automaticBranchReview: boolean
   /** Reuse confirmed, undo-aware choices in review packets and calibration. */
   readonly personalizationEnabled: boolean
-  /** Jev is a structured decision scorer; the parent-model path uses the current LLM route. */
-  readonly fastDecisionProvider: 'parent-model' | 'jev'
+  /** Optional goal discovery uses the chat model before a separate Jev Context review. */
+  readonly fastDecisionProvider: 'parent-model' | 'jev' | 'goal-model-jev'
   /** Maximum model requests in one explicitly selected Deep review. */
   readonly deepMaxRequests: number
 }
@@ -375,7 +375,7 @@ export interface ContextRecommendationProposal {
   /** Bounded evidence actually supplied to this decision, separate from answer Context. */
   readonly personalization?: {
     readonly enabled: boolean
-    readonly reviewer: 'parent-model' | 'jev' | 'local'
+    readonly reviewer: 'parent-model' | 'jev' | 'goal-model-jev' | 'local'
     /** Owned event identities available to deterministic selection calibration. */
     readonly calibrationSources?: readonly string[]
     /** Owned event identities in the recent per-action threshold input pools. */

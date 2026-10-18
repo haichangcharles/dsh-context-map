@@ -63,7 +63,7 @@ export function ContextifyPromptSettingsView({ scope, snapshot, t }: ContextifyP
     setPending(kind)
     try { await scope.set(kind, section) } finally { setPending(null) }
   }
-  const saveDecisionSetting = (field: 'fastDecisionProvider' | 'personalizationEnabled', value: 'parent-model' | 'jev' | boolean): void => {
+  const saveDecisionSetting = (field: 'fastDecisionProvider' | 'personalizationEnabled', value: ContextifyPromptSettings['fastDecisionProvider'] | boolean): void => {
     setPending('context')
     setSettingsError(null)
     void scope.set(field, value).catch((cause: unknown) => {
@@ -85,12 +85,13 @@ export function ContextifyPromptSettingsView({ scope, snapshot, t }: ContextifyP
       <span>{t('settings.fastReviewer')}</span>
       <select aria-label={t('settings.fastReviewer')} value={settings.fastDecisionProvider}
         disabled={!snapshot.writable || pending !== null} onChange={(event) => {
-          if (event.target.value === 'parent-model' || event.target.value === 'jev') saveDecisionSetting('fastDecisionProvider', event.target.value)
+          if (event.target.value === 'parent-model' || event.target.value === 'jev' || event.target.value === 'goal-model-jev') saveDecisionSetting('fastDecisionProvider', event.target.value)
         }}>
         <option value="parent-model">{t('settings.parentReviewer')}</option>
         <option value="jev">{t('settings.jevReviewer')}</option>
+        <option value="goal-model-jev">{t('settings.goalJevReviewer')}</option>
       </select>
-      <small>{t('settings.jevHint')}</small>
+      <small>{settings.fastDecisionProvider === 'goal-model-jev' ? t('settings.goalJevHint') : t('settings.jevHint')}</small>
     </label>
     <label className={css.card}>
       <span>{t('settings.personalization')}</span>

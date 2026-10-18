@@ -42,6 +42,15 @@ function scopeFixture(language: 'en' | 'zh' = 'en') {
 }
 
 describe('ContextifyPromptSettingsView', () => {
+  it('selects goal-model and Jev review with an explicit extra-call explanation', async () => {
+    const fixture = scopeFixture()
+    render(<fixture.Harness />)
+    expect(screen.getByRole('option', { name: 'Goal model + Jev Context' })).toBeTruthy()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Fast Context reviewer' }), { target: { value: 'goal-model-jev' } })
+    await act(async () => {})
+    expect(fixture.set).toHaveBeenCalledWith('fastDecisionProvider', 'goal-model-jev')
+    expect(screen.getByText(/one chat-model request and at most one Jev request/)).toBeTruthy()
+  })
   it('lets the user choose Jev and disable personal decision evidence', async () => {
     const fixture = scopeFixture()
     render(<fixture.Harness />)

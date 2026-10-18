@@ -13,12 +13,19 @@ const PLACEMENTS = ['continue', 'reference', 'new-task', 'unknown'] as const
 
 /** Resolve through the Host credential plane; never read or persist a browser-supplied key.
  * @param ctx - Host context owning the credential and launch environment services.
- * @returns The resolved secret for this dispatch, or undefined when unavailable.
+ * @param required - Reject an unavailable or invalid credential before a preceding model call.
+ * @returns The dispatch credential, or undefined when optional and unavailable.
  */
-export async function resolveJevContextCredential(ctx: Context): Promise<string | undefined> {
+export async function resolveJevContextCredential(ctx: Context, required = false): Promise<string | undefined> {
   const ref = credentialRef('TYPESAFE_API_KEY')
   const credentials = ctx.get('credentials')
-  return credentials === undefined ? launchEnvironmentOf(ctx).get(ref)?.value : (await credentials.resolve(ref))?.value
+  const value = credentials === undefined ? launchEnvironmentOf(ctx).get(ref)?.value : (await credentials.resolve(ref))?.value
+  return required ? checkedCredential(value) : value
+}
+
+function checkedCredential(key: string | undefined): string {
+  if (key === undefined || key.trim().length === 0 || /[\r\n]/.test(key)) throw new Error('Jev Context review requires TYPESAFE_API_KEY in the Host credential store or launch environment')
+  return key
 }
 
 interface Question {
@@ -144,8 +151,7 @@ export async function requestJevContextReview(body: JevContextRequest, options: 
   readonly fetcher?: typeof fetch
 }): Promise<unknown> {
   options.signal.throwIfAborted()
-  const key = await options.resolveCredential()
-  if (key === undefined || key.trim().length === 0 || /[\r\n]/.test(key)) throw new Error('Jev Context review requires TYPESAFE_API_KEY in the Host credential store or launch environment')
+  const key = checkedCredential(await options.resolveCredential())
   options.signal.throwIfAborted()
   const response = await (options.fetcher ?? fetch)('https://api.typesafe.ai/v1/systemone', {
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },

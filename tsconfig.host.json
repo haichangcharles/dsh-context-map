@@ -38,6 +38,7 @@
     "apps/web/tests/contextify-draft-branch.e2e.ts",
     "apps/web/tests/contextify-long-horizon.e2e.ts",
     "apps/web/tests/research-contextify-web-evidence.e2e.ts",
+    "apps/web/tests/contextify-goal-route.e2e.ts",
     "apps/web/tests/product-walkthrough.capture.ts",
     "apps/web/tests/document-preview.e2e.ts",
     "apps/web/tests/plugin-config.e2e.ts",

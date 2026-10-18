@@ -1,5 +1,6 @@
 /** Durable context selection across one native Session fork family. */
 import { createHash } from 'node:crypto'
+import { addAbortListener } from 'node:events'
 import { isDeepStrictEqual } from 'node:util'
 import invariant from 'tiny-invariant'
 import { Context } from '@deepseek-ai/cordis'
@@ -23,6 +24,7 @@ import { buildContextActionPacket, parseFastContextDecisionText,
 import { contextLifecycleAdvice } from './lifecycle-advice.ts'
 import { requestJevContextReview, resolveJevContextCredential } from './jev-reviewer.ts'
 import { buildJevRouteRequest, parseJevRouteResponse, type JevRouteDecision } from './jev-route-reviewer.ts'
+import { buildGoalRouteInput, parseGoalRouteText, composeGoalContextReview, type GoalRouteAssignment } from './goal-route.ts'
 import { draftRouteAdvice } from './draft-route.ts'
 import { carryRouteScope, ContextRouteScopeReplacementError, planRouteScope, taskAndAncestorNodeIds } from './route-scope.ts'
 import { compileContextRoutePlan } from './route-plan.ts'
@@ -747,6 +749,7 @@ export class ContextifyService extends TypertRemoteService {
       let semanticRoute: SemanticContextRoute | undefined
       let fastInput: ReturnType<typeof buildFastRecommendationInput> | undefined
       let jevScopeSessionId: SessionId | undefined
+      let goalAbstained = false
       const exactWebSources = recommendationMode !== 'deep' && draftBound
         && objective?.trim() === goal
         ? family.graph.nodes.flatMap((node) => {
@@ -825,46 +828,18 @@ export class ContextifyService extends TypertRemoteService {
             'A node with reviewableExcluded:true was temporarily Excluded in an earlier user-confirmed review. You may suggest Include when the current request needs it; the user must approve again. Do not infer that an unmarked direct Exclude may be reversed.',
           ].join('\n\n')
           let fastText: string
-          if (promptSettings.fastDecisionProvider === 'jev') {
-            const parsed = await this.reviewJevContext(agent, input, routePacket, family.graph, system, operation.controller.signal)
+          if (promptSettings.fastDecisionProvider !== 'parent-model') {
+            const goalReview = promptSettings.fastDecisionProvider === 'goal-model-jev' && draftBound === true && objective?.trim() === goal
+            const parsed = goalReview
+              ? await this.reviewGoalContext(agent, input, routePacket, family.graph, system,
+                [contextPrompt, effectivePrompt(CONTEXTIFY_DEFAULT_PROMPTS.branch, promptSettings.branch)].join('\n\n'), operation.controller.signal)
+              : await this.reviewJevContext(agent, input, routePacket, family.graph, system, operation.controller.signal)
             jevScopeSessionId = parsed.scopeSessionId
+            goalAbstained = goalReview && parsed.route?.intent === 'unknown'
             fastText = JSON.stringify({ ...parsed.decision, route: parsed.route })
           } else {
-            const latestOutput = [...agent.session.snapshotEvents()].reverse().find(event => event.type === 'assistant/message')
-            if (latestOutput?.type !== 'assistant/message') {
-              throw new ContextifyError('a model route is unavailable for Context recommendation', 'CONTEXTIFY_RECOMMENDATION_UNAVAILABLE')
-            }
-            const requestConfig = agent.session.requestHeader()?.config
-            const provider = requestConfig?.provider ?? agent.options.provider ?? latestOutput.data.message.source.provider
-            const model = requestConfig?.model ?? agent.options.model ?? latestOutput.data.message.source.model
-            const modelInfo = await this.ctx.llm.resolveModelInfo(provider, model)
-            const reasoningEffort = modelInfo.reasoning?.efforts.find(effort => String(effort.id) === 'off')?.id
-              ?? requestConfig?.reasoningEffort
             const userText = `Objective:\n${goal}\n\nContext-action packet JSON:\n${JSON.stringify(routePacket)}\n\nConversation graph JSON:\n${JSON.stringify(input)}`
-            agent.session.append('contextify/recommendation-request', { base, provider, model,
-              objective: goal, system, userText, maxTokens: 640 })
-            const assembler = new BlockAssembler()
-            for await (const chunk of this.ctx.llm.stream({
-              provider,
-              model,
-              ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
-              messages: [createUserMessage({
-                content: [{
-                  type: 'text',
-                  text: userText,
-                }],
-                source: { kind: 'plugin', plugin: name },
-              })],
-              system,
-              temperature: 0,
-              maxTokens: 640,
-              signal: operation.controller.signal,
-            })) assembler.push(chunk)
-            const blocks = assembler.blocks()
-            if (blocks.some(block => block.type === 'tool-call')) {
-              throw new ContextifyError('the recommendation model attempted a tool call', 'CONTEXTIFY_INVALID_RECOMMENDATION')
-            }
-            fastText = blocks.flatMap(block => block.type === 'text' || block.type === 'reasoning' ? [block.text] : []).join('\n')
+            fastText = await this.reviewWithParentModel(agent, base, goal, system, userText, 640, operation.controller.signal)
           }
           try {
             const parsed = parseFastContextDecisionText(fastText, routePacket)
@@ -924,7 +899,7 @@ export class ContextifyService extends TypertRemoteService {
         })
         const generic = validateRecommendation(withoutRepeatedDeclines(decision), validation)
         const calibrated = recommendationMode !== 'deep' && exactWebSelection === null
-          && calibrationEdits.length > 0
+          && !goalAbstained && calibrationEdits.length > 0
           ? calibrateContextRecommendation({
             exclude: generic.selection.filter(item => item.action === 'exclude'),
             include: generic.selection.filter(item => item.action === 'include'),
@@ -950,7 +925,7 @@ export class ContextifyService extends TypertRemoteService {
             graph: family.graph, contents, objective: goal, base,
             ...(routePacket === undefined ? {} : { routePacket }),
             ...(semanticRoute === undefined ? {} : { semanticRoute }),
-            jointPlacement: promptSettings.fastDecisionProvider === 'jev',
+            jointPlacement: promptSettings.fastDecisionProvider !== 'parent-model',
             selectedNodeIds: contextProposal.proposedNodeIds,
             profile: deriveContextStewardProfile(
               personal ? profileEvidence.observations : [], { branchDepth,
@@ -966,7 +941,7 @@ export class ContextifyService extends TypertRemoteService {
           const scopeDestination = route?.action === 'branch'
             && (jevScopeSessionId !== undefined || route.forkParentSessionId !== undefined && route.forkParentSessionId !== agent.id)
             ? route.forkParentSessionId ?? agent.id
-            : promptSettings.fastDecisionProvider === 'jev' ? route?.targetSessionId : undefined
+            : promptSettings.fastDecisionProvider !== 'parent-model' ? route?.targetSessionId : undefined
           if (scopeDestination !== undefined && route !== undefined) {
             const parent = family.inspections.get(scopeDestination)
             invariant(parent, 'validated route destinations belong to the inspected native family')
@@ -2360,13 +2335,76 @@ export class ContextifyService extends TypertRemoteService {
     })
   }
 
+  private async reviewWithParentModel(agent: Agent, base: ContextRecommendationBase, objective: string,
+    system: string, userText: string, maxTokens: number, signal: AbortSignal, requireComplete = false): Promise<string> {
+    const latestOutput = [...agent.session.snapshotEvents()].reverse().find(event => event.type === 'assistant/message')
+    if (latestOutput?.type !== 'assistant/message') {
+      throw new ContextifyError('a model route is unavailable for Context recommendation', 'CONTEXTIFY_RECOMMENDATION_UNAVAILABLE')
+    }
+    const requestConfig = agent.session.requestHeader()?.config
+    const provider = requestConfig?.provider ?? agent.options.provider ?? latestOutput.data.message.source.provider
+    const model = requestConfig?.model ?? agent.options.model ?? latestOutput.data.message.source.model
+    const modelInfo = await this.ctx.llm.resolveModelInfo(provider, model, signal)
+    const reasoningEffort = modelInfo.reasoning?.efforts.find(effort => String(effort.id) === 'off')?.id
+      ?? requestConfig?.reasoningEffort
+    agent.session.append('contextify/recommendation-request', { base, provider, model,
+      objective, system, userText, maxTokens })
+    const assembler = new BlockAssembler()
+    for await (const chunk of this.ctx.llm.stream({
+      provider,
+      model,
+      ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+      messages: [createUserMessage({
+        content: [{
+          type: 'text',
+          text: userText,
+        }],
+        source: { kind: 'plugin', plugin: name },
+      })],
+      system,
+      temperature: 0,
+      maxTokens,
+      signal,
+    })) assembler.push(chunk)
+    if (requireComplete && assembler.finish.kind !== 'stop') {
+      throw new ContextifyError('Goal Context review did not finish successfully', 'CONTEXTIFY_RECOMMENDATION_UNAVAILABLE')
+    }
+    const blocks = assembler.blocks()
+    if (blocks.some(block => block.type === 'tool-call')) {
+      throw new ContextifyError('the recommendation model attempted a tool call', 'CONTEXTIFY_INVALID_RECOMMENDATION')
+    }
+    return blocks.flatMap(block => block.type === 'text' || !requireComplete && block.type === 'reasoning' ? [block.text] : []).join('\n')
+  }
+
+  private async reviewGoalContext(agent: Agent, input: FastRecommendationInput, packet: ContextActionPacket,
+    graph: ContextFamilyGraph, system: string, policy: string, signal: AbortSignal): Promise<JevRouteDecision> {
+    const bounded = AbortSignal.any([signal, AbortSignal.timeout(45_000)])
+    const cancelled = Promise.withResolvers<never>()
+    const listener = addAbortListener(bounded, () => { cancelled.reject(bounded.reason) })
+    let credential: string | undefined
+    try {
+      credential = await Promise.race([resolveJevContextCredential(this.ctx, true), cancelled.promise])
+    } finally { listener[Symbol.dispose]() }
+    bounded.throwIfAborted()
+    const request = buildGoalRouteInput(packet, policy)
+    const text = await this.reviewWithParentModel(agent, packet.base, packet.objective,
+      request.system, request.userText, request.maxTokens, bounded, true)
+    bounded.throwIfAborted()
+    const assignment = parseGoalRouteText(text, packet)
+    if (assignment.assignment === 'unknown') return composeGoalContextReview(assignment, undefined, input, packet, graph)
+    return await this.reviewJevContext(agent, input, packet, graph, system, bounded, assignment, credential)
+  }
+
   private async reviewJevContext(agent: Agent, input: FastRecommendationInput, packet: ContextActionPacket,
-    graph: ContextFamilyGraph, system: string, signal: AbortSignal): Promise<JevRouteDecision> {
+    graph: ContextFamilyGraph, system: string, signal: AbortSignal, assignment?: GoalRouteAssignment,
+    credential?: string): Promise<JevRouteDecision> {
     const body = buildJevRouteRequest(input, packet, system)
     agent.session.append('contextify/recommendation-request', { base: packet.base, provider: 'typesafe', model: body.model,
       objective: packet.objective, system, userText: JSON.stringify(body), maxTokens: 0 })
-    const wire = await requestJevContextReview(body, { signal, resolveCredential: () => resolveJevContextCredential(this.ctx) })
-    return parseJevRouteResponse(wire, input, packet, graph)
+    const wire = await requestJevContextReview(body, { signal,
+      resolveCredential: () => credential === undefined ? resolveJevContextCredential(this.ctx) : Promise.resolve(credential) })
+    return assignment === undefined ? parseJevRouteResponse(wire, input, packet, graph)
+      : composeGoalContextReview(assignment, wire, input, packet, graph)
   }
 
   private reviewObjective(proposal: ContextRecommendationProposal): string {

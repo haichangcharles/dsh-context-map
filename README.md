@@ -14,7 +14,8 @@ DSH Context Map is an independently maintained long-horizon Chat workspace built
 - **Explicit context control** — include or exclude individual user inputs and final assistant outputs without changing the underlying Session log.
 - **Context Steward** — start with zero-model Local advice, explicitly request bounded Fast or isolated Deep review, and confirm source, destination and lifecycle proposals before they change state.
 - **Cross-turn reuse** — bring a source from another branch into the active Session, stop using it for a later turn, and bring it back without deleting its origin.
-- **Personal Context advice** — use Client-confirmed Include/Exclude and Keep-current choices as bounded examples for later review; recommendations never change the Plan before confirmation.
+- **Personal Context advice** — use Client-confirmed Include/Exclude, Branch, Navigate, Return and Keep-current choices as bounded examples for later review; recommendations never change the Plan before confirmation.
+- **Task-aware review** — optionally combine current-model goal assignment with Jev Context review; ambiguous assignments abstain, and every change still requires confirmation.
 - **Branch review** — receive a lightweight suggestion when a completed Q&A is better moved to a parallel native Session branch.
 - **Per-node Archive** — hide obsolete message semantics behind a deterministic placeholder while retaining the graph node, edges, original event, and restore path.
 - **Prompt Dashboard** — append profile-specific rules or explicitly unlock full prompt overrides for Context, Archive, and Branch reviewers.
@@ -34,14 +35,14 @@ For example, a planning branch may hold a supplier's six-week lead time. While e
 <a id="run-from-source"></a>
 ### Run from source
 
-The Context Steward preview is on `codex/context-steward-runtime` ([PR #24](https://github.com/haichangcharles/dsh-context-map/pull/24)). The commands below check out that branch.
+The Context Steward preview is on `codex/personal-context-jev` ([PR #26](https://github.com/haichangcharles/dsh-context-map/pull/26)). The commands below check out that branch.
 
 Install Node.js 22.19 or newer in the 22.x line, or Node.js 24 or newer, and pnpm 11.7.0 (the version pinned in `package.json`), then run:
 
 On macOS and Linux, the source build also needs a C11 compiler available as `cc` and a Node installation that includes development headers.
 
 ```sh
-git clone --branch codex/context-steward-runtime --single-branch https://github.com/haichangcharles/dsh-context-map.git
+git clone --branch codex/personal-context-jev --single-branch https://github.com/haichangcharles/dsh-context-map.git
 cd dsh-context-map
 pnpm install
 pnpm run build

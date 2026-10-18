@@ -38,7 +38,7 @@ If you add a correction while an answer is running, the completed question/answe
 | Mode | Purpose | Additional model requests |
 | --- | --- | --- |
 | Local | Graph checks, explicit routing cues and confirmed-choice advice | Zero; default |
-| Fast | Bounded semantic source and destination review | One tool-free request when explicitly selected |
+| Fast | Bounded semantic source and destination review | One tool-free request; optional goal-model-plus-Jev uses at most two |
 | Deep | Deliberate review of an isolated full-tree snapshot | Explicit DSH review; default 3 requests, configurable 1–10, 45-second timeout |
 
 Review a draft before sending it, or open the Map review menu. Advice never sends the draft, creates a branch or changes the Context Plan by itself. Destination relevance and evidence relevance are separate: a useful research branch may supply evidence while the conversation stays on the writing branch. Uncertain destination advice preserves the current branch. Local uses explicit cues, lexical overlap and confirmed choices; it does not establish general semantic understanding. Deep counts retries toward its request limit and caps each request at 1,200 output tokens.
@@ -56,7 +56,9 @@ The Preferences view summarizes repeated confirmed Context choices across native
 
 Reset learning clears the derived preference projection using logged Session watermarks. It retains conversations, their original choice records and the current Context Plan. Later explicit choices can build fresh evidence. This policy memory describes Context-management habits, not general personality or personal facts.
 
-In Context Map prompt settings, Fast Context reviewer selects the current chat model or Jev. Jev requires `TYPESAFE_API_KEY` on the Host and may incur a charge; selecting it does not make a request. Learn from confirmed Context choices controls historical examples and personal calibration for future reviews. Expand a review sheet to inspect the model examples and the separate calibration records. A policy reset or settings change cancels running reviews that retain older evidence.
+In Context Map prompt settings, Fast Context reviewer selects the current chat model, Jev, or Goal model + Jev Context. Jev requires `TYPESAFE_API_KEY` on the Host and may incur a charge; selecting it does not make a request. Learn from confirmed Context choices controls historical examples and personal calibration for future reviews. Expand a review sheet to inspect the model examples and the separate calibration records. A policy reset or settings change cancels running reviews that retain older evidence.
+
+Goal model + Jev Context first assigns the exact unsent draft to current work, an existing task, or a new child. Uncertainty leaves inferred selection unchanged and skips Jev. Otherwise Jev reviews Context before the ordinary approval sheet. A draft costs one chat-model call and at most one Jev call; a non-draft Fast review uses Jev alone. The Host checks credentials before the first call and bounds the composite review to 45 seconds. This mode is optional, not a demonstrated accuracy guarantee.
 
 <a id="verify-without-an-api"></a>
 ## Verify without an API

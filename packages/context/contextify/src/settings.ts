@@ -20,6 +20,6 @@ export const ContextifyPromptSettingsSchema: z<ContextifyPromptSettings> = z.obj
   branch: promptSection,
   automaticBranchReview: z.boolean().default(false),
   personalizationEnabled: z.boolean().default(true),
-  fastDecisionProvider: z.union(['parent-model', 'jev']).default('parent-model'),
+  fastDecisionProvider: z.union(['parent-model', 'jev', 'goal-model-jev']).default('parent-model'),
   deepMaxRequests: z.number().step(1).min(1).max(10).default(3),
 })

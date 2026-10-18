@@ -26,6 +26,8 @@ Browser integration preserves Chat reading across Map width changes. A pinned sc
 
 The [linear Context Map layout decision](../bug-fix/2026-10-14-linear-context-map-layout.md) owns the exact single-chain placement added for initial-open latency; the controller cache and reviewed-action decisions above remain active.
 
+The optional goal-model-plus-Jev reviewer in the [goal composition note](2026-10-18-goal-context-composition.md) partially supersedes the additional-router rejection below; the one-call statement here describes ordinary Fast reviewers.
+
 ## Alternatives considered
 
 **Treat evidence relevance as destination relevance.** Rejected because borrowing research evidence should not move an ongoing writing task to the research branch.

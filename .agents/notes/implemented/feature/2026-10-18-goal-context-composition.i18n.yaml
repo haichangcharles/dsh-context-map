@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-18-goal-context-composition.md
+2026-10-18-goal-context-composition.md: 085286de59547c83d98b6832a0ae6ee585de6453
+2026-10-18-goal-context-composition.zh.md: 09be6397beef671c2dacdd36e69ac0254eceb2bd
