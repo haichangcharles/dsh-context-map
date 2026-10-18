@@ -5,6 +5,21 @@ import { validateRecommendation } from './recommendation.ts'
 /** A destination replacement cannot be carried as its unmodified original source. */
 export class ContextRouteScopeReplacementError extends Error {}
 
+/** Collect current owned sources along a native task's ancestry, beyond its fork snapshot.
+ * @param graph - Frozen family authority.
+ * @param sessionId - Validated native destination or fork parent.
+ * @returns Canonical graph source IDs in stable graph order.
+ */
+export function taskAndAncestorNodeIds(graph: ContextFamilyGraph, sessionId: ContextFamilyGraph['activeSessionId']): readonly string[] {
+  const owners = new Set<ContextFamilyGraph['activeSessionId']>()
+  let current: ContextFamilyGraph['activeSessionId'] | undefined = sessionId
+  while (current !== undefined && !owners.has(current)) {
+    owners.add(current)
+    current = graph.sessions.find(session => session.id === current)?.parentSessionId
+  }
+  return Object.freeze(graph.nodes.filter(node => owners.has(node.owner.sessionId)).map(node => node.id))
+}
+
 /** Build the destination scope from its saved Plan and explicitly reviewed evidence.
  * @param input - Native family, destination Plan, source Plan and validated source review.
  * @returns Canonical source IDs without implicitly importing the old branch's Natural history.
@@ -17,8 +32,11 @@ export function planRouteScope(input: {
   readonly proposal: ContextRecommendationProposal
   readonly affirmedNodeIds?: readonly string[]
   readonly excludedNodeIds?: readonly string[]
+  /** Host-confirmed explicit policy; source IDs still come only from native authority. */
+  readonly wholeTask?: boolean
 }): readonly string[] {
-  const selected = new Set(input.graph.nodes.filter(node => node.sessionIds.includes(input.parentSessionId)).map(node => node.id))
+  const selected = new Set(input.wholeTask === true ? taskAndAncestorNodeIds(input.graph, input.parentSessionId)
+    : input.graph.nodes.filter(node => node.sessionIds.includes(input.parentSessionId)).map(node => node.id))
   for (const item of [...input.parentPlan.excluded, ...input.sourcePlan.excluded]) selected.delete(item.nodeId)
   for (const item of [...input.parentPlan.included, ...input.sourcePlan.included]) selected.add(item.nodeId)
   for (const id of input.affirmedNodeIds ?? []) selected.add(id)

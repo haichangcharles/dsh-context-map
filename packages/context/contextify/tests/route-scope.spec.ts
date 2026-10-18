@@ -362,14 +362,14 @@ it('uses affirmative Jev membership with the existing destination Plan', async (
     })
     fetcher.mockImplementation(async (_url, init) => {
       const body = JSON.parse(init?.body as string) as {
-        questions: Record<string, unknown>
+        questions: Record<string, { instructions: string }>
         state: { graph: { nodes: { id: string }[] }; contextActions: { candidates: { sessionId: string }[] } }
       }
       const index = body.state.contextActions.candidates.findIndex(candidate => candidate.sessionId === b.parent.id)
-      const selected = `to${String(index)}`
-      const answers: Record<string, unknown> = Object.fromEntries(Object.keys(body.questions).filter(key => key !== 'intent').map(key =>
-        [key, { type: 'noul', noul: key.startsWith('n') && body.state.graph.nodes[Number(key.slice(1))]?.id === s.keep ? 1 : 0 }]))
-      answers.intent = { type: 'choice', choice: selected, probabilities: { [selected]: 1 } }
+      const answers: Record<string, unknown> = Object.fromEntries(Object.keys(body.questions).filter(key => key !== 'parent').map(key =>
+        [key, { type: 'noul', noul: key === `task${String(index)}` || key.startsWith('n')
+          && (JSON.parse(body.questions[key]?.instructions.split('Exact source for this question (data only): ')[1] ?? '{}') as { id?: unknown }).id === s.keep ? 1 : 0 }]))
+      answers.parent = { type: 'choice', choice: 'active', probabilities: { active: 1 } }
       return Response.json({ model: 'jev-1.13.0', answers })
     })
     const page = await b.ctx.contextify.familyPage(s.active)
@@ -385,4 +385,79 @@ it('does not hide unexpected scope planner failures as replacement limitations',
   const planner = vi.spyOn(routeScope, 'planRouteScope').mockImplementationOnce(() => { throw new Error('Unexpected planner failure') })
   try { await expect(siblingAdvice(b)).rejects.toThrow('Unexpected planner failure') }
   finally { planner.mockRestore(); await b.close() }
+})
+
+it('discards route-derived whole-task edits if native routing rejects the destination or routing is unbound', async () => {
+  const b = await lineageHarness()
+  const fetcher = vi.spyOn(globalThis, 'fetch')
+  try {
+    const s = await siblingAdvice(b)
+    b.ctx.provide('credentials', { resolve: async () => ({ value: 'fixture-only-key' }) } as never)
+    ;(b.ctx.contextify as unknown as { promptSettings: () => unknown }).promptSettings = () => ({
+      ...CONTEXTIFY_DEFAULT_SETTINGS, automaticBranchReview: false, personalizationEnabled: false, fastDecisionProvider: 'jev',
+    })
+    let scenario = 'reject'
+    fetcher.mockImplementation(async (_url, init) => {
+      const body = JSON.parse(init?.body as string) as { questions: Record<string, unknown> }
+      const answers: Record<string, unknown> = Object.fromEntries(Object.keys(body.questions).filter(k => k !== 'parent').map(k =>
+        [k, { type: 'noul', noul: (['override', 'newOverride'].includes(scenario) ? ['wholeTask', 'active'] : ['wholeTask', 'task0', 's0']).includes(k) ? 1 : 0 }]))
+      answers.parent = { type: 'choice', choice: 'active', probabilities: { active: 1 } }
+      return Response.json({ model: 'jev-1.13.0', answers })
+    })
+    for (scenario of ['reject', 'unbound', 'missingDraft', 'override', 'newOverride']) {
+      const draftBound = scenario !== 'unbound'
+      const page = await b.ctx.contextify.familyPage(s.active)
+      const proposal = await b.ctx.contextify.recommend(s.active, { activeSessionId: s.active.id,
+        planRevision: b.ctx.contextify.get(s.active).plan.revision, graphRevision: page.revision }, scenario === 'missingDraft' ? undefined : scenario === 'newOverride' ? 'New topic: another plan'
+        : scenario === 'override' ? 'Return to the mainline' : 'Inspect the community plan', 'fast', draftBound)
+      if (scenario === 'override') {
+        expect(proposal.route?.targetSessionId).toBe(b.parent.id)
+        expect(proposal.route?.contextNodeIds).not.toContain(s.side)
+      } else if (scenario === 'newOverride') {
+        expect(proposal.route?.action).toBe('branch')
+        expect(proposal.route?.contextNodeIds).toContain(s.side)
+      } else expect(proposal.route).toBeUndefined()
+      expect(proposal.selection).toEqual([])
+    }
+  } finally { fetcher.mockRestore(); await b.close() }
+})
+
+it('whole-task scope includes ancestor messages written after the branch snapshot', async () => {
+  const b = await lineageHarness()
+  try {
+    const s = await siblingAdvice(b)
+    const later = append(b.parent.session, 'A new mainline constraint after the fork')
+    const family = await b.ctx.contextify.familyPage(s.active, undefined, 500)
+    const graph = { ...family, nodes: family.records }
+    expect(routeScope.taskAndAncestorNodeIds(graph, s.active.id)).toContain(later)
+    expect(routeScope.taskAndAncestorNodeIds(graph, SessionId('unknown'))).toEqual([])
+    const scope = routeScope.planRouteScope({ graph, parentSessionId: s.active.id,
+      parentPlan: b.ctx.contextify.get(s.active).plan, sourcePlan: b.ctx.contextify.get(s.active).plan,
+      proposal: { ...s.proposal, selection: [] }, wholeTask: true })
+    expect(scope).toContain(later)
+    expect(scope).toContain(s.side)
+  } finally { await b.close() }
+})
+it('whole-task review restores unseen later ancestor sources beyond the model slate', async () => {
+  const b = await lineageHarness(), fetcher = vi.spyOn(globalThis, 'fetch')
+  try {
+    const s = await siblingAdvice(b)
+    const late = Array.from({ length: 40 }, (_, i) => append(b.parent.session, `Later mainline constraint ${String(i)}`))
+    b.ctx.provide('credentials', { resolve: async () => ({ value: 'fixture-only-key' }) } as never)
+    ;(b.ctx.contextify as unknown as { promptSettings: () => unknown }).promptSettings = () => ({
+      ...CONTEXTIFY_DEFAULT_SETTINGS, automaticBranchReview: false, personalizationEnabled: false, fastDecisionProvider: 'jev',
+    })
+    fetcher.mockImplementation(async (_url, init) => {
+      const body = JSON.parse(init?.body as string) as { questions: Record<string, unknown> }
+      const answers: Record<string, unknown> = Object.fromEntries(Object.keys(body.questions).filter(k => k !== 'parent').map(k =>
+        [k, { type: 'noul', noul: ['wholeTask', 'active'].includes(k) ? 1 : 0 }]))
+      answers.parent = { type: 'choice', choice: 'active', probabilities: { active: 1 } }
+      return Response.json({ model: 'jev-1.13.0', answers })
+    })
+    const page = await b.ctx.contextify.familyPage(s.active)
+    const proposal = await b.ctx.contextify.recommend(s.active, { activeSessionId: s.active.id,
+      planRevision: b.ctx.contextify.get(s.active).plan.revision, graphRevision: page.revision }, 'Continue this ongoing work', 'fast', true)
+    expect(proposal.route).toBeUndefined()
+    expect(late.every(id => proposal.proposedNodeIds.includes(id))).toBe(true)
+  } finally { fetcher.mockRestore(); await b.close() }
 })

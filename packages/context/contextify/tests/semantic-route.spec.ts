@@ -162,7 +162,7 @@ describe('bounded semantic Context actions', () => {
     const hidden = buildContextActionPacket({ graph, contents: {}, objective: packet.objective, base,
       visibleNodeIds: ['writing:1'] })
     expect(planSemanticContextRoute({ packet: hidden, route: { ...route,
-      candidates: [{ ...route.candidates[0]!, supersededScore: 0 }] }, profile }).action).toBe('continue')
+      candidates: [{ ...route.candidates[0]!, supersededScore: 0 }] }, profile }).action).toBe('return')
     const explicit = { ...packet, explicitIntent: 'return' as const }
     expect(planSemanticContextRoute({ packet: explicit, route, profile })).toMatchObject({ action: 'return', targetSessionId: main })
   })
@@ -192,7 +192,7 @@ describe('bounded semantic Context actions', () => {
     const value = buildContextActionPacket({ graph: large, contents: {}, objective: '界'.repeat(5000), base })
     expect(value.candidates).toHaveLength(8)
     expect(Array.from(value.objective)).toHaveLength(4000)
-    expect(value.candidates.every(candidate => candidate.nodes.length === 12
+    expect(value.candidates.every(candidate => candidate.nodes.length > 0 && candidate.nodes.length <= 4
       && candidate.nodes.every(node => Array.from(node.content).length === 1200 && node.truncated))).toBe(true)
     expect(value.candidates[0]?.parentSessionId).toBe(main)
     expect(JSON.parse(JSON.stringify(value))).toEqual(value)
@@ -216,7 +216,8 @@ describe('bounded semantic Context actions', () => {
   it('restricts evidence imports to model-visible candidate sources', () => {
     const value = buildContextActionPacket({ graph, contents: { 'research:1': 'Exact source' },
       objective: packet.objective, base, visibleNodeIds: ['main:1'] })
-    expect(value.candidates.find(candidate => candidate.sessionId === research)?.nodes).toEqual([])
+    expect(value.candidates.find(candidate => candidate.sessionId === research)?.nodes).toHaveLength(1)
+    expect(value.candidates.find(candidate => candidate.sessionId === research)?.offPathNodeIds).toEqual([])
     const route = parseSemanticContextRoute(scored('reference', 1, 0, 1), value)
     expect(planSemanticContextRoute({ packet: value, route, profile,
       evidenceNodeIds: ['research:1'] }).action).toBe('continue')

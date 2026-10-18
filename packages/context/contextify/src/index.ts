@@ -15,15 +15,16 @@ import {
   validateRecommendation,
   type ContextRecommendationDecision,
 } from './recommendation.ts'
-import { buildFastRecommendationInput } from './fast-recommendation.ts'
+import { buildFastRecommendationInput, type FastRecommendationInput } from './fast-recommendation.ts'
 import { explicitWebSourceExclusion, explicitWebSourceInclusion } from './explicit-web-source.ts'
 import { contextPolicyWatermarks, currentPolicyInspections } from './policy-memory.ts'
 import { buildContextActionPacket, parseFastContextDecisionText,
   type ContextActionPacket, type SemanticContextRoute } from './semantic-route.ts'
 import { contextLifecycleAdvice } from './lifecycle-advice.ts'
-import { buildJevContextRequest, parseJevContextResponse, requestJevContextReview, resolveJevContextCredential } from './jev-reviewer.ts'
+import { requestJevContextReview, resolveJevContextCredential } from './jev-reviewer.ts'
+import { buildJevRouteRequest, parseJevRouteResponse, type JevRouteDecision } from './jev-route-reviewer.ts'
 import { draftRouteAdvice } from './draft-route.ts'
-import { carryRouteScope, ContextRouteScopeReplacementError, planRouteScope } from './route-scope.ts'
+import { carryRouteScope, ContextRouteScopeReplacementError, planRouteScope, taskAndAncestorNodeIds } from './route-scope.ts'
 import { compileContextRoutePlan } from './route-plan.ts'
 import { decisionMemorySnapshot } from './decision-memory.ts'
 import { contextActivityFromObjective } from './context-activity.ts'
@@ -745,6 +746,7 @@ export class ContextifyService extends TypertRemoteService {
       let routePacket: ContextActionPacket | undefined
       let semanticRoute: SemanticContextRoute | undefined
       let fastInput: ReturnType<typeof buildFastRecommendationInput> | undefined
+      let jevScopeSessionId: SessionId | undefined
       const exactWebSources = recommendationMode !== 'deep' && draftBound
         && objective?.trim() === goal
         ? family.graph.nodes.flatMap((node) => {
@@ -824,12 +826,8 @@ export class ContextifyService extends TypertRemoteService {
           ].join('\n\n')
           let fastText: string
           if (promptSettings.fastDecisionProvider === 'jev') {
-            const body = buildJevContextRequest(input, routePacket, system)
-            agent.session.append('contextify/recommendation-request', { base, provider: 'typesafe', model: body.model,
-              objective: goal, system, userText: JSON.stringify(body), maxTokens: 0 })
-            const wire = await requestJevContextReview(body, { signal: operation.controller.signal,
-              resolveCredential: () => resolveJevContextCredential(this.ctx) })
-            const parsed = parseJevContextResponse(wire, input, routePacket)
+            const parsed = await this.reviewJevContext(agent, input, routePacket, family.graph, system, operation.controller.signal)
+            jevScopeSessionId = parsed.scopeSessionId
             fastText = JSON.stringify({ ...parsed.decision, route: parsed.route })
           } else {
             const latestOutput = [...agent.session.snapshotEvents()].reverse().find(event => event.type === 'assistant/message')
@@ -900,6 +898,13 @@ export class ContextifyService extends TypertRemoteService {
         throw new ContextifyError('the Context Map changed while recommendation was running', 'CONTEXTIFY_STALE_GRAPH')
       }
       try {
+        if (jevScopeSessionId !== undefined) {
+          // This expansion is native policy compilation, not model selection outside its slate.
+          const whole = new Set(taskAndAncestorNodeIds(family.graph, jevScopeSessionId))
+          const item = (nodeId: string) => ({ nodeId, reason: 'Apply the explicitly reviewed whole-task and ancestor scope.' })
+          decision = { include: [...whole].map(item),
+            exclude: family.graph.nodes.filter(node => !whole.has(node.id)).map(node => item(node.id)), archive: [] }
+        }
         const validation = {
           mode: recommendationMode,
           base,
@@ -926,7 +931,7 @@ export class ContextifyService extends TypertRemoteService {
             archive: generic.archive,
           }, goal, contents, calibrationEdits, fastInput?.nodes, reviewableExcludedNodeIds)
           : undefined
-        const contextProposal = calibrated === undefined
+        let contextProposal = calibrated === undefined
           ? generic
           : validateRecommendation(withoutRepeatedDeclines({ ...calibrated,
             ...(generic.workStates === undefined ? {} : { workStates: generic.workStates }),
@@ -935,6 +940,10 @@ export class ContextifyService extends TypertRemoteService {
         invariant(branchDepth !== undefined, 'the active Session must belong to its projected family graph')
         const activity = contextActivityFromObjective(goal)
         let route: ContextRouteAdvice | undefined
+        if (!(draftBound && objective?.trim() === goal) && jevScopeSessionId !== undefined && jevScopeSessionId !== agent.id) {
+          decision = { include: [], exclude: [], archive: [] }
+          contextProposal = validateRecommendation(decision, validation)
+        }
         if (recommendationMode !== 'deep' && draftBound && objective?.trim() === goal) {
           invariant(profileEvidence !== undefined, 'non-Deep reviews always capture Profile policy evidence')
           route = draftRouteAdvice({
@@ -948,8 +957,15 @@ export class ContextifyService extends TypertRemoteService {
                 ...(activity === undefined ? {} : { activity }) },
             ),
           })
-          const scopeDestination = route?.action === 'branch' && route.forkParentSessionId !== undefined
-            && route.forkParentSessionId !== agent.id ? route.forkParentSessionId
+          const reviewedTask = route?.action === 'branch' ? route.forkParentSessionId ?? agent.id : route?.targetSessionId ?? agent.id
+          if (jevScopeSessionId !== undefined && reviewedTask !== jevScopeSessionId) {
+            // Routing rejection/explicit overrides cannot apply another task's scope here.
+            decision = { include: [], exclude: [], archive: [] }
+            contextProposal = validateRecommendation(decision, validation)
+          }
+          const scopeDestination = route?.action === 'branch'
+            && (jevScopeSessionId !== undefined || route.forkParentSessionId !== undefined && route.forkParentSessionId !== agent.id)
+            ? route.forkParentSessionId ?? agent.id
             : promptSettings.fastDecisionProvider === 'jev' ? route?.targetSessionId : undefined
           if (scopeDestination !== undefined && route !== undefined) {
             const parent = family.inspections.get(scopeDestination)
@@ -957,6 +973,7 @@ export class ContextifyService extends TypertRemoteService {
             try {
               route = Object.freeze({ ...route, contextNodeIds: planRouteScope({ graph: family.graph,
                 parentSessionId: scopeDestination,
+                wholeTask: jevScopeSessionId === scopeDestination,
                 parentPlan: currentContextPlan({ snapshotEvents: () => [...parent.events] }),
                 sourcePlan: plan, proposal: contextProposal,
                 affirmedNodeIds: decision.include.map(item => item.nodeId).filter(id => contextProposal.proposedNodeIds.includes(id)),
@@ -2341,6 +2358,15 @@ export class ContextifyService extends TypertRemoteService {
         || String(left.sessionId).localeCompare(String(right.sessionId))
         || left.seq - right.seq).slice(-32)),
     })
+  }
+
+  private async reviewJevContext(agent: Agent, input: FastRecommendationInput, packet: ContextActionPacket,
+    graph: ContextFamilyGraph, system: string, signal: AbortSignal): Promise<JevRouteDecision> {
+    const body = buildJevRouteRequest(input, packet, system)
+    agent.session.append('contextify/recommendation-request', { base: packet.base, provider: 'typesafe', model: body.model,
+      objective: packet.objective, system, userText: JSON.stringify(body), maxTokens: 0 })
+    const wire = await requestJevContextReview(body, { signal, resolveCredential: () => resolveJevContextCredential(this.ctx) })
+    return parseJevRouteResponse(wire, input, packet, graph)
   }
 
   private reviewObjective(proposal: ContextRecommendationProposal): string {

@@ -4,11 +4,12 @@ import type { ContextFamilyGraph, ContextPolicyObservation, ContextRecommendatio
 import { buildContextRouteCandidates, planContextRoute, draftRouteIntent,
   type ContextRouteCandidate, type ContextRouteIntent, type ContextRouteProposal } from './context-route-policy.ts'
 import { parseRecommendationJson, parseRecommendationDecisionText, type ContextRecommendationDecision } from './recommendation.ts'
+import { buildTaskCard } from './task-card.ts'
 
 /** Protocol ceiling on scored native Sessions in one Context-action packet. */
 export const CONTEXT_ACTION_MAX_SESSIONS = 8
 /** Protocol ceiling on bounded source summaries per Session. */
-export const CONTEXT_ACTION_MAX_SESSION_NODES = 12
+export const CONTEXT_ACTION_MAX_SESSION_NODES = 4
 /** Confidence required before an inferred intent proposes a branch switch. */
 export const CONTEXT_ACTION_INTENT_THRESHOLD = 0.8
 
@@ -33,6 +34,8 @@ export interface ContextActionPacket {
   readonly explicitIntent: ContextRouteIntent
   readonly parentSessionId?: SessionId
   readonly candidates: readonly ContextActionCandidate[]
+  /** Owned evidence for the active task, separate from inherited Context. */
+  readonly activeTask?: ContextActionCandidate
   /** Confirmed historical route examples; target IDs here do not authorize current actions. */
   readonly preferenceExamples?: readonly ContextPolicyObservation[]
 }
@@ -63,7 +66,7 @@ function bounded(value: string, limit: number): string {
 
 /**
  * Build a bounded native-Session slate without fetching data or invoking a model.
- * @param input - Frozen graph, exact contents, draft, revisions and optional visible source IDs.
+ * @param input - Frozen graph, exact contents, draft, revisions and optional evidence-import IDs.
  * @returns A JSON-serializable candidate packet with native ancestry and work state.
  */
 export function buildContextActionPacket(input: {
@@ -85,23 +88,15 @@ export function buildContextActionPacket(input: {
   const candidates = [...buildContextRouteCandidates(input)]
     .sort((a, b) => (ancestorRanks.get(a.sessionId) ?? Infinity) - (ancestorRanks.get(b.sessionId) ?? Infinity))
     .slice(0, CONTEXT_ACTION_MAX_SESSIONS)
-    .map((candidate): ContextActionCandidate => {
-      const nodes = input.graph.nodes.filter(node => node.owner.sessionId === candidate.sessionId
-        && (visible === undefined || visible.has(node.id)))
-        .slice(-CONTEXT_ACTION_MAX_SESSION_NODES).map((node): ContextActionNode => {
-          const id = node.id
-          const exact = input.contents[id] ?? node.preview
-          const content = bounded(exact, 1200)
-          return Object.freeze({ id, role: node.role,
-            ...(node.sourceKind === undefined ? {} : { sourceKind: node.sourceKind }),
-            content, truncated: content.length < exact.length })
-        })
-      const ownedNodeIds = nodes.map(node => node.id)
-      return Object.freeze({ ...candidate,
-        ownedNodeIds: Object.freeze(ownedNodeIds),
-        offPathNodeIds: Object.freeze(candidate.offPathNodeIds.filter(id => ownedNodeIds.includes(id))),
-        nodes: Object.freeze(nodes) })
+    .map((candidate) => {
+      const card = buildTaskCard(candidate, input.graph, input.contents, input.objective)
+      return Object.freeze({ ...card, ownedNodeIds: Object.freeze(card.nodes.map(node => node.id)),
+        offPathNodeIds: Object.freeze(card.nodes.filter(node => candidate.offPathNodeIds.includes(node.id)
+          && (visible === undefined || visible.has(node.id))).map(node => node.id)) })
     })
+  const activeTask = active === undefined ? undefined : buildTaskCard({ sessionId: active.id,
+    depth: active.depth, label: 'Current task', ownedNodeIds: [], offPathNodeIds: [], lexicalScore: 0 },
+  input.graph, input.contents, input.objective)
   const preferenceExamples = (input.preferenceExamples ?? []).filter(observation => !observation.undone
     && (observation.action === 'branch' || observation.action === 'navigate' || observation.action === 'return'))
     .slice(-8).map(observation => Object.freeze({ ...observation,
@@ -119,6 +114,7 @@ export function buildContextActionPacket(input: {
     explicitIntent: draftRouteIntent(input.objective),
     ...(active?.parentSessionId === undefined ? {} : { parentSessionId: active.parentSessionId }),
     candidates: Object.freeze(candidates),
+    ...(activeTask === undefined ? {} : { activeTask }),
   })
 }
 
@@ -202,7 +198,7 @@ export function planSemanticContextRoute(input: {
   readonly route: SemanticContextRoute
   readonly profile: ContextStewardProfile
   readonly evidenceNodeIds?: readonly string[]
-  /** Host-only signal that intent and destinations came from one concrete placement Choice. */
+  /** Host-only signal that intent and destination scores encode one concrete placement. */
   readonly jointPlacement?: boolean
   /** Native-validated proposed Context, used to corroborate a concrete destination. */
   readonly selectedNodeIds?: readonly string[]

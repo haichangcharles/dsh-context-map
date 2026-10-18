@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-16-context-scope-route-handoff.md
-2026-10-16-context-scope-route-handoff.md: 07499090e85a2fada2dadd902d90762ddb329abe
-2026-10-16-context-scope-route-handoff.zh.md: bff67061de75bce648c2c15f8bd278738ae2c092
+2026-10-16-context-scope-route-handoff.md: 10f24a7a2f49cf6a323a50ee0b1d1ab3d20492d4
+2026-10-16-context-scope-route-handoff.zh.md: e0d3635f2daacd98ca65ac1900a8f22384726a80

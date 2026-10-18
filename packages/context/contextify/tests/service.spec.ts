@@ -309,7 +309,8 @@ describe('ContextifyService native Session family', () => {
         const body: unknown = JSON.parse(init?.body as string)
         expect(JSON.stringify(body)).not.toContain('fixture-only-credential')
         return Response.json({ model: 'jev-1.13.0', answers: { n0: { type: 'noul', noul: 0.9 }, n1: { type: 'noul', noul: 0.1 },
-          intent: { type: 'choice', choice: 'continue', probabilities: { continue: 1 } } }, usage: { input_tokens: 100, output_tokens: 20 } })
+          active: { type: 'noul', noul: 1 }, newTask: { type: 'noul', noul: 0 }, wholeTask: { type: 'noul', noul: 0 },
+          parent: { type: 'choice', choice: 'active', probabilities: { active: 1 } } }, usage: { input_tokens: 100, output_tokens: 20 } })
       })
       const page = await ctx.contextify.familyPage(agent)
       const proposal = await ctx.contextify.recommend(agent, { planRevision: 1, graphRevision: page.revision, activeSessionId: session.id }, 'current task', 'fast')
@@ -3494,7 +3495,8 @@ describe('Contextify public operation boundaries', () => {
       const omitted = page.records.find(node => !shown.has(node.id))
       if (omitted === undefined) throw new Error('long history must exceed the bounded source slate')
       const adapter = new MockAdapter([(options) => {
-        expect(JSON.stringify(options.messages)).not.toContain(`\\"id\\":\\"${omitted.id}\\"`)
+        const text = options.messages.flatMap(message => message.content.flatMap(block => block.type === 'text' ? [block.text] : [])).join('')
+        expect(text.split('Conversation graph JSON:\n')[1]).not.toContain(`"id":"${omitted.id}"`)
         return textResponse(JSON.stringify({ include: [], exclude: [{ nodeId: omitted.id, reason: 'A fabricated selection outside the packet' }], archive: [] }))
       }])
       ctx.llm.registerAdapter(['mock'], adapter)

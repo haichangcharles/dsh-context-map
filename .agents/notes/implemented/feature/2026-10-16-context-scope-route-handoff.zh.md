@@ -14,7 +14,7 @@ Status: implemented
 
 [Client](../../../../packages/client/ui-contextify/README.zh.md) 保留只移动草稿的操作，并提供单独的携带 Context 按钮。存在部分 Keep-current 选择时，不能携带完整集合。目标批准日志记录 `sourceBase`，指向原始决策，而不是声称进行了另一次推理。标准审核选择的所有权与 Undo 保留在目标分支。历史案例仍是管理输入，不进入回答 Context。 目标替换内容会禁用 Context 携带，但保留仅移动草稿。
 
-Jev 的具体位置选择和经过原生校验的建议 Context 可以共同支持一个既有目标。Host 确认来自联合 Choice、位置分数一致且可见的目标自有来源出现在建议 Context 中时，使用已有 Profile 目标阈值控制审核建议。其他推断意图保留通用阈值，New-task 保留更强的意图检查。这是一致性检查，不是将独立概率相乘。原生可见性、替代关系、目标竞争、修订和人工审核约束仍然生效。[个人决策案例说明](2026-10-15-personal-context-decision-cases.zh.md) 定义历史证据提取。
+Jev 的具体位置选择和经过原生校验的建议 Context 可以共同支持一个既有目标。Host 确认具体位置、意图和目标分数一致且可见的目标自有来源出现在建议 Context 中时，使用已有 Profile 目标阈值控制审核建议。适配器将现有任务的原始分数交给该策略，不额外设置固定截断。其他推断意图保留通用阈值，New-task 保留更强的意图检查。这是一致性检查，不是将独立概率相乘。原生可见性、替代关系、目标竞争、修订和人工审核约束仍然生效。[个人决策案例说明](2026-10-15-personal-context-decision-cases.zh.md) 定义历史证据提取与显式完整任务范围。
 
 ## Alternatives considered
 

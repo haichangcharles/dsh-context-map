@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-15-personal-context-decision-cases.md
-2026-10-15-personal-context-decision-cases.md: 590909b1e04bdc22b2eb108f8f5c770b6ed0ffbb
-2026-10-15-personal-context-decision-cases.zh.md: 1b610a3119fd1c8eb29518812c6233dce8e882c4
+2026-10-15-personal-context-decision-cases.md: 8a4e8c70d44a315a716f5ae8b4aa95d1c2199a7e
+2026-10-15-personal-context-decision-cases.zh.md: a375917fe940ac9f5ad512c7e062a0fcaf1f208b
