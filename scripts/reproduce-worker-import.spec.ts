@@ -7,7 +7,7 @@ import { expect, it } from 'vitest'
 const script = resolve(import.meta.dirname, 'reproduce-worker-import.mjs')
 const env = process.platform === 'win32' ? { TMP: tmpdir(), TEMP: tmpdir() } : {}
 
-it.each(['esm', 'cjs'])('imports and terminates every %s worker before reporting completion', (mode) => {
+it.each(['esm', 'cjs', 'tsx-esm', 'tsx-both'])('imports and terminates every %s worker before reporting completion', (mode) => {
   const result = spawnSync(process.execPath, [script, mode, '2'], { encoding: 'utf8', env, timeout: 20_000 })
   expect(result.error).toBeUndefined()
   expect(result.signal).toBeNull()
@@ -20,6 +20,6 @@ it.each([['unknown', '2'], ['cjs', '257'], ['esm', '0']])('refuses an unbounded 
   expect(result.error).toBeUndefined()
   expect(result.signal).toBeNull()
   expect(result.status).toBe(1)
-  expect(result.stderr).toContain('Expected esm|cjs and an iteration count from 1 to 256')
+  expect(result.stderr).toContain('Expected esm|cjs|tsx-esm|tsx-both and an iteration count from 1 to 256')
   expect(result.stdout).toBe('')
 })

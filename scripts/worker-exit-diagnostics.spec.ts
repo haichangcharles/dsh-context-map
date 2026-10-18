@@ -12,12 +12,14 @@ it('keeps the pure Node reproduction opt-in and separate from project probes and
     on: { workflow_dispatch: { inputs: Record<string, { default?: unknown }> } }
     jobs: Record<string, { steps: { name?: string; uses?: string; if?: string; run?: string; with?: Record<string, unknown> }[] }>
   }
-  expect(workflow.on.workflow_dispatch.inputs.pure_node_repro?.default).toBe(false)
+  expect(workflow.on.workflow_dispatch.inputs.worker_import_probe?.default).toBe('project')
   expect(workflow.on.workflow_dispatch.inputs.diagnostic_node?.default).toBe('24')
   const steps = workflow.jobs['runtime-diagnostics']!.steps
-  expect(steps.find(step => step.name === 'Reproduce pure Node worker imports')?.if).toBe('inputs.pure_node_repro')
-  for (const name of ['Install immutable dependencies', 'Preserve native worker exit evidence', 'Diagnose workflow worker lifecycle', 'Build host native addon', 'Diagnose native lifecycle and owned-prompt readiness']) {
-    expect(steps.find(step => step.name === name)?.if, name).toBe('${{ !inputs.pure_node_repro }}')
+  expect(steps.find(step => step.name === 'Reproduce pure Node worker imports')?.if).toBe("inputs.worker_import_probe == 'pure'")
+  expect(steps.find(step => step.name === 'Reproduce tsx worker bootstrap')?.if).toBe("inputs.worker_import_probe == 'tsx'")
+  expect(steps.find(step => step.name === 'Install immutable dependencies')?.if).toBe("inputs.worker_import_probe != 'pure'")
+  for (const name of ['Preserve native worker exit evidence', 'Diagnose workflow worker lifecycle', 'Build host native addon', 'Diagnose native lifecycle and owned-prompt readiness']) {
+    expect(steps.find(step => step.name === name)?.if, name).toBe("inputs.worker_import_probe != 'pure' && inputs.worker_import_probe != 'tsx'")
   }
   expect(steps.find(step => step.uses === 'actions/setup-node@v6')?.with?.['node-version']).toBe("${{ inputs.diagnostic_node || '24' }}")
 })

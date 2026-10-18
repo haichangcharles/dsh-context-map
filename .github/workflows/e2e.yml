@@ -20,10 +20,11 @@ on:
         type: choice
         options: ['24', '22']
         default: '24'
-      pure_node_repro:
-        description: Replace project probes with the bounded pure Node import/termination fixture
-        type: boolean
-        default: false
+      worker_import_probe:
+        description: Select the project, plain Node or tsx bootstrap diagnostic
+        type: choice
+        options: [project, pure, tsx]
+        default: project
   push:
     branches: [main, master]
   pull_request:
@@ -105,10 +106,10 @@ jobs:
           node-version: ${{ inputs.diagnostic_node || '24' }}
           cache: pnpm
       - name: Install immutable dependencies
-        if: ${{ !inputs.pure_node_repro }}
+        if: inputs.worker_import_probe != 'pure'
         run: pnpm install --frozen-lockfile
       - name: Preserve native worker exit evidence
-        if: ${{ !inputs.pure_node_repro }}
+        if: inputs.worker_import_probe != 'pure' && inputs.worker_import_probe != 'tsx'
         # Diagnostic-only adaptation of vitest-dev/vitest#10587. Keep the
         # installed package version and fail loudly if its handler changes.
         shell: pwsh
@@ -149,7 +150,7 @@ jobs:
             throw
           }
       - name: Diagnose workflow worker lifecycle
-        if: ${{ !inputs.pure_node_repro }}
+        if: inputs.worker_import_probe != 'pure' && inputs.worker_import_probe != 'tsx'
         run: >-
           pnpm exec vitest run --no-file-parallelism --maxWorkers=2
           --testTimeout 90000 --reporter=verbose
@@ -158,13 +159,21 @@ jobs:
           packages/subprocess/subprocess-local/tests/process-exit.spec.ts
           packages/shell/tool-pwsh/tests/loader.spec.ts
       - name: Reproduce pure Node worker imports
-        if: inputs.pure_node_repro
+        if: inputs.worker_import_probe == 'pure'
         shell: pwsh
         run: |
           node scripts/reproduce-worker-import.mjs esm 256
           if ($LASTEXITCODE -ne 0) { throw 'Pure Node ESM control failed' }
           node scripts/reproduce-worker-import.mjs cjs 256
           if ($LASTEXITCODE -ne 0) { throw 'Pure Node CJS import/termination failed' }
+      - name: Reproduce tsx worker bootstrap
+        if: inputs.worker_import_probe == 'tsx'
+        shell: pwsh
+        run: |
+          node scripts/reproduce-worker-import.mjs tsx-esm 128
+          if ($LASTEXITCODE -ne 0) { throw 'tsx ESM bootstrap control failed' }
+          node scripts/reproduce-worker-import.mjs tsx-both 128
+          if ($LASTEXITCODE -ne 0) { throw 'tsx ESM+CJS bootstrap failed' }
       - name: Read Windows crash evidence
         if: always() && runner.os == 'Windows'
         shell: pwsh
@@ -214,13 +223,13 @@ jobs:
             if ($env:DSH_CRASH_CAPTURE_STARTED) { Remove-Item -LiteralPath $key -Recurse -Force }
           }
       - name: Prepare Linux native sandbox
-        if: runner.os == 'Linux' && !inputs.pure_node_repro
+        if: runner.os == 'Linux' && inputs.worker_import_probe != 'pure' && inputs.worker_import_probe != 'tsx'
         run: bash scripts/prepare-ci-bubblewrap.sh
       - name: Build host native addon
-        if: ${{ !inputs.pure_node_repro }}
+        if: inputs.worker_import_probe != 'pure' && inputs.worker_import_probe != 'tsx'
         run: pnpm run build:native-system
       - name: Diagnose native lifecycle and owned-prompt readiness
-        if: ${{ !inputs.pure_node_repro }}
+        if: inputs.worker_import_probe != 'pure' && inputs.worker_import_probe != 'tsx'
         # This is a selected, instrumented diagnostic, not the repository
         # coverage verdict. The ordinary exhaustive lane stays unchanged.
         env:

@@ -16,7 +16,7 @@ Windows 原生测试通道可能丢失 Vitest 进程，却不报告断言失败�
 
 Windows 通过 [WER 按应用配置](https://learn.microsoft.com/en-us/windows/win32/wer/collecting-user-mode-dumps)在一次性运行器上保留至多两个 Node 小型转储。探测后的步骤在失败时仍执行，报告应用崩溃事件；SDK CDB 可用时，使用匹配的公开 Node 符号读取异常栈。不上传转储。该步骤移除自己的注册表配置，不覆盖已有 Node 转储配置。没有转储或 CDB 时，原因仍未分类。
 
-手动选择 `pure_node_repro=true` 会用[独立工程替身](../../../../scripts/reproduce-worker-import.mjs)替换项目探测，跳过依赖安装与原生构建。`diagnostic_node` 仅为此诊断选择 Node 22 或 24，默认仍为 24。每组在至多 256 个顺序 Worker 中导入私有 ESM 或 CommonJS 模块，观察就绪，并等待终止后才继续。CommonJS 组经过 Node 的[原生 CJS 转换器](https://github.com/nodejs/node/blob/v24.21.0/lib/internal/modules/esm/translators.js)，不加载 Vitest、tsx 或 DSH。输出标为工程替身，不能证明产品质量；有界探测通过也不能排除原崩溃。
+手动选择 `worker_import_probe=pure` 会用[独立工程替身](../../../../scripts/reproduce-worker-import.mjs)替换项目探测，跳过依赖安装与原生构建。`diagnostic_node` 仅为此诊断选择 Node 22 或 24，默认仍为 `project` 和 24。每组在至多 256 个顺序 Worker 中导入私有 ESM 或 CommonJS 模块，观察就绪，并等待终止后才继续。CommonJS 组经过 Node 的[原生 CJS 转换器](https://github.com/nodejs/node/blob/v24.21.0/lib/internal/modules/esm/translators.js)，不加载 Vitest、tsx 或 DSH。`worker_import_probe=tsx` 则安装锁定依赖，在明确为 ESM 的私有包内，用 TypeScript enum 替身分别比较 128 次 ESM-only 和双 hook 启动。它加载 tsx，但不加载 DSH 服务。两者均为工程替身；有界探测通过不能排除原崩溃。
 
 [显式 CI 预算决策](2026-10-13-explicit-ci-api-budget.zh.md)继续有效：手动诊断要求 `runtime_diagnostics=true`，清空模型凭据，并保持 `real_api=false`。它不授予模型调用授权。此机制补充诊断证据，不替代既有测试或预算决定。
 ## Alternatives considered
