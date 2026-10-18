@@ -7,6 +7,25 @@ import { dirname, join, resolve } from 'node:path'
 import * as yaml from 'js-yaml'
 import { expect, it } from 'vitest'
 
+it('collects Windows crash evidence after a failed probe and removes its per-process dump setting', () => {
+  const workflow = yaml.load(readFileSync(resolve(import.meta.dirname, '../.github/workflows/e2e.yml'), 'utf8')) as {
+    jobs: Record<string, { steps: { name: string; if?: string; run?: string; shell?: string }[] }>
+  }
+  const steps = workflow.jobs['runtime-diagnostics']!.steps
+  const prepare = steps.findIndex(step => step.name === 'Prepare Windows crash evidence')
+  const probe = steps.findIndex(step => step.name === 'Diagnose workflow worker lifecycle')
+  const collect = steps.findIndex(step => step.name === 'Read Windows crash evidence')
+  expect(prepare).toBeGreaterThan(-1)
+  expect(prepare).toBeLessThan(probe)
+  expect(collect).toBeGreaterThan(probe)
+  expect(steps[collect]?.if).toBe("always() && runner.os == 'Windows'")
+  expect(steps[prepare]?.run).toContain('DumpType -PropertyType DWord -Value 1')
+  expect(steps[prepare]?.run).toContain('} catch {\n  Remove-Item -LiteralPath $key')
+  expect(steps[collect]?.run).toContain('finally {')
+  expect(steps[collect]?.run).toContain('Remove-Item -LiteralPath $key')
+  expect(steps[collect]?.run).toContain('Get-WinEvent')
+})
+
 function diagnosticCode(): string {
   const workflow = yaml.load(readFileSync(resolve(import.meta.dirname, '../.github/workflows/e2e.yml'), 'utf8')) as {
     jobs: Record<string, { steps: { name: string; run?: string; shell?: string }[] }>

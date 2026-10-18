@@ -119,6 +119,24 @@ jobs:
           writeFileSync(temporary, before.replace(old, replacement), { flag: 'wx' });
           renameSync(temporary, target);
           '@ | node --input-type=module
+      - name: Prepare Windows crash evidence
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $key = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\node.exe'
+          if (Test-Path -LiteralPath $key) { throw 'Refuse to overwrite existing node.exe crash settings' }
+          $folder = Join-Path $env:RUNNER_TEMP 'dsh-node-minidumps'
+          New-Item -ItemType Directory -Path $folder -Force | Out-Null
+          New-Item -Path $key -Force | Out-Null
+          try {
+            New-ItemProperty -LiteralPath $key -Name DumpFolder -PropertyType ExpandString -Value $folder | Out-Null
+            New-ItemProperty -LiteralPath $key -Name DumpType -PropertyType DWord -Value 1 | Out-Null
+            New-ItemProperty -LiteralPath $key -Name DumpCount -PropertyType DWord -Value 2 | Out-Null
+            "DSH_CRASH_CAPTURE_STARTED=$([DateTime]::UtcNow.ToString('o'))" >> $env:GITHUB_ENV
+          } catch {
+            Remove-Item -LiteralPath $key -Recurse -Force
+            throw
+          }
       - name: Diagnose workflow worker lifecycle
         run: >-
           pnpm exec vitest run --no-file-parallelism --maxWorkers=2
@@ -127,6 +145,54 @@ jobs:
           packages/workflow/tool-ralph/tests/integration.spec.ts
           packages/subprocess/subprocess-local/tests/process-exit.spec.ts
           packages/shell/tool-pwsh/tests/loader.spec.ts
+      - name: Read Windows crash evidence
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Dumps stay on this disposable runner; emit exception/module/stack only.
+          $key = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\node.exe'
+          try {
+            if (-not $env:DSH_CRASH_CAPTURE_STARTED) { throw 'Windows crash capture was not prepared' }
+            try {
+              Get-WinEvent -FilterHashtable @{ LogName='Application'; Id=1000,1001; StartTime=[DateTime]::Parse($env:DSH_CRASH_CAPTURE_STARTED) } -ErrorAction Stop |
+                Where-Object { $_.Message -match 'node.exe' } | Format-List TimeCreated,Id,Message
+            } catch {
+              if ($_.FullyQualifiedErrorId -notlike 'NoMatchingEventsFound*') { throw }
+              Write-Host 'No Windows application crash event was recorded'
+            }
+            $folder = Join-Path $env:RUNNER_TEMP 'dsh-node-minidumps'
+            $dumps = @(Get-ChildItem -LiteralPath $folder -Filter '*.dmp')
+            Write-Host "Node minidumps: $($dumps.Count)"
+            $debugger = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Debuggers\x64\cdb.exe'
+            if ($dumps.Count -gt 0 -and -not (Test-Path -LiteralPath $debugger)) {
+              # Install only Microsoft's SDK debugger after a crash, leaving the probe unchanged.
+              $installer = Join-Path $env:RUNNER_TEMP 'winsdksetup.exe'
+              Invoke-WebRequest 'https://go.microsoft.com/fwlink/?linkid=2272610' -OutFile $installer
+              $signature = Get-AuthenticodeSignature -LiteralPath $installer
+              if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+                throw 'Windows SDK installer signature is not valid Microsoft code'
+              }
+              $setup = Start-Process -FilePath $installer -ArgumentList '/features','OptionId.WindowsDesktopDebuggers','/quiet','/norestart' -PassThru -Wait -NoNewWindow
+              if ($setup.ExitCode -notin 0,3010) { throw "Windows debugger install failed: $($setup.ExitCode)" }
+            }
+            if ($dumps.Count -gt 0 -and (Test-Path -LiteralPath $debugger)) {
+              $symbols = Join-Path $env:RUNNER_TEMP 'dsh-node-symbols'
+              New-Item -ItemType Directory -Path $symbols -Force | Out-Null
+              $version = node -p 'process.version'
+              $archive = Join-Path $symbols 'node_pdb.7z'
+              Invoke-WebRequest "https://nodejs.org/dist/$version/win-x64/node_pdb.7z" -OutFile $archive
+              7z x $archive "-o$symbols" -y
+              if ($LASTEXITCODE -ne 0) { throw 'Cannot extract matching Node symbols' }
+              foreach ($dump in $dumps) {
+                & $debugger -z $dump.FullName -y "$symbols;srv*$symbols*https://msdl.microsoft.com/download/symbols" -c '.ecxr;k;q'
+                if ($LASTEXITCODE -ne 0) { throw 'Cannot read Node crash stack' }
+              }
+            } elseif ($dumps.Count -gt 0) {
+              Write-Host 'Windows SDK CDB is unavailable; crash stack remains unclassified'
+            }
+          } finally {
+            if ($env:DSH_CRASH_CAPTURE_STARTED) { Remove-Item -LiteralPath $key -Recurse -Force }
+          }
       - name: Prepare Linux native sandbox
         if: runner.os == 'Linux'
         run: bash scripts/prepare-ci-bubblewrap.sh

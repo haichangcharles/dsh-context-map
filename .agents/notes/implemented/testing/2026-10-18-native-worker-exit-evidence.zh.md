@@ -14,8 +14,9 @@ Windows 原生测试通道可能丢失 Vitest 进程，却不报告断言失败�
 
 该任务使用详细输出和至多两个工作进程运行四个原生生命周期测试文件。[回归测试](../../../../scripts/worker-exit-diagnostics.spec.ts)在私有假包目录中执行内联补丁，检查 Windows 大退出码和信号被保留，并检查未知处理器被拒绝且文件未修改。回归测试不改动开发机器已安装的依赖。
 
-[显式 CI 预算决策](2026-10-13-explicit-ci-api-budget.zh.md)继续有效：手动诊断要求 `runtime_diagnostics=true`，清空模型凭据，并保持 `real_api=false`。它不授予模型调用授权。此机制补充诊断证据，不替代既有测试或预算决定。
+Windows 通过 [WER 按应用配置](https://learn.microsoft.com/en-us/windows/win32/wer/collecting-user-mode-dumps)在一次性运行器上保留至多两个 Node 小型转储。探测后的步骤在失败时仍执行，报告应用崩溃事件；SDK CDB 可用时，使用匹配的公开 Node 符号读取异常栈。不上传转储。该步骤移除自己的注册表配置，不覆盖已有 Node 转储配置。没有转储或 CDB 时，原因仍未分类。
 
+[显式 CI 预算决策](2026-10-13-explicit-ci-api-budget.zh.md)继续有效：手动诊断要求 `runtime_diagnostics=true`，清空模型凭据，并保持 `real_api=false`。它不授予模型调用授权。此机制补充诊断证据，不替代既有测试或预算决定。
 ## Alternatives considered
 
 **重试直到变绿或增加超时。** 进程崩溃不是超时，成功重试也不解释之前的崩溃，因此否决。

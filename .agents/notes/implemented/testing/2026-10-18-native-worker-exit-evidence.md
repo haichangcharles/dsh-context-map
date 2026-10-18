@@ -14,6 +14,8 @@ The opt-in `runtime-diagnostics` job in the [E2E workflow](../../../../.github/w
 
 That job runs the four native lifecycle test files with verbose output and at most two workers. The [regression](../../../../scripts/worker-exit-diagnostics.spec.ts) executes the inline patch in private fake-package directories, verifies that Windows-sized exit codes and signals survive, and verifies that an unfamiliar handler is rejected without modifying its file. No installed dependency on the developer's machine is patched by the regression.
 
+Windows uses [WER per-application settings](https://learn.microsoft.com/en-us/windows/win32/wer/collecting-user-mode-dumps) to retain at most two Node minidumps on the disposable runner. The post-probe step runs after failure, reports Application crash events and, when SDK CDB is installed, reads exception stacks with matching public Node symbols. Dumps are not uploaded. The step removes its registry setting; an existing Node dump configuration is never overwritten. Missing dumps or CDB leave the cause unclassified.
+
 The [explicit CI budget decision](2026-10-13-explicit-ci-api-budget.md) remains authoritative: this manual diagnostic requires `runtime_diagnostics=true`, clears model credentials, and leaves `real_api=false`. It grants no model authorization. This is additive diagnostic evidence and supersedes no existing test or budget decision.
 
 ## Alternatives considered
