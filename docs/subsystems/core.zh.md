@@ -421,6 +421,19 @@ type Branded<B extends string> = string & { readonly [BRAND]: B }
 
 两个核心 ID 是 `ToolCallId`（关联工具调用及其结果；dsh-llm）和 `SessionId`（活跃 agent 与持久会话共享的标识；dsh-session）。能力包也会品牌化各自的 id，例如 [jobs.md](jobs.zh.md) 中的 `JobId`。
 
+<a id="context-management-memory"></a>
+
+## Context 管理记忆
+
+[Contextify](../../packages/context/contextify/README.zh.md)从已确认、已过滤撤销记录的原生事件中派生 `ContextManagementMemory`。`ContextRecommendationProposal.personalization` 的可选同名字段与 Context 操作数据包和目标审核模型收到的是同一个对象；关闭个性化时省略该字段。源声明位于 [Contextify 类型](../../packages/context/contextify/src/types.ts)。
+
+| 类型 | 字段与含义 |
+|---|---|
+| `ContextManagementReference` | `sessionId`、`eventSeq`：拥有记录的确切原生事件；两者都不是当前操作目标。 |
+| `ContextManagementRule` | 既有的 action/tendency/support/acceptRate 与可选 activity/sourceKind，加上 `id`、精确 `branchDepth`、带正负符号的 `accepted`/`rejected` 权重及有界 `references`。 |
+| `ContextManagementWorkflow` | `id`、两步或三步 `actions`、可选起始 `activity`、精确起始 `branchDepth`、tendency/support/acceptRate、带正负符号的 `accepted`/`rejected` 权重、有界事件 `references` 与历史任务 `examples`；它不是可执行计划。 |
+| `ContextManagementMemory` | `rules`、`workflows` 与可选 `omittedRules`/`omittedWorkflows` 计数；最多八条规则、四个工作流，完整 UTF-8 JSON 不超过 16KiB。 |
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>

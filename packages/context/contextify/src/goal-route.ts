@@ -44,6 +44,7 @@ export function buildGoalRouteInput(packet: ContextActionPacket, policy: string)
           content: Array.from(node.content).slice(0, 600).join(''),
           truncated: node.truncated || Array.from(node.content).length > 600 })) })),
       confirmedExamples: packet.preferenceExamples ?? [],
+      ...(packet.managementMemory === undefined ? {} : { managementMemory: packet.managementMemory }),
     }),
     maxTokens: 512,
   }

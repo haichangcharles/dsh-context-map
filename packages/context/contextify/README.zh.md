@@ -42,6 +42,8 @@ Plan v3 还支持针对单条 user input 或最终 assistant output 的可恢复
 
 `contextify` Remote namespace 通过[生成的 Cordis API](../../../docs/cordis-api/context.zh.md)提供检查修订的图、Context Plan、审核与策略操作。`policyEvidence` 读取近期确认选择及拥有它们的 Session/事件引用。`resetPolicy` 为已知原生 Session 记录自有事件水位，过滤重置前的学习，并保留原始日志与活动 Context Plan；之后的事件即使与重置时间戳相同，也可重新积累偏好证据。
 
+决策数据包还携带有界的管理记忆投影：带适用条件的偏好规则，以及重复出现的两步或三步管理工作流；每项保留带正负符号的有效支持度与拥有它们的事件引用。匹配的分支深度、已知任务活动与来源类型限制规则复用；有因果联系的 Session 目标限制工作流组装。Undo、重置与关闭个性化会移除对应输入。历史任务与引用只为管理提供依据，不进入回答 Context，也不授权路由。[管理记忆决策](../../../.agents/notes/implemented/feature/2026-10-19-context-management-memory.zh.md)定义大小限制、来源与复用边界。
+
 `stewardProfile` 从同一 DSH Profile 下的原生 Session 日志中，将客户端确认的 Context 选择投影为紧凑的策略记忆。它报告 Include、Navigate、Branch、Return 和 Release 的平滑接受率、证据量、建议阈值以及重复选择形成的规则。系统只重读变化过的 Session 家族，未变化的家族复用缓存；无法读取的历史家族会被跳过并在 Host 记录警告。当目标已知时，确实改变状态的单节点 Natural 选择也提供明确证据：恢复活动路径材料计作 Include，撤回借用的跨分支材料计作 Release。这与 Context 排序器一致；未知目标、无变化的操作、未标记的调用、批量编辑和已撤销状态都不会增加有效偏好证据量。Include/Release 观测可保留所选节点的 `chat`、`web` 或 `worker` 来源类型，因此不同来源的行为不会被强行合并为全局偏好。已明确标记为写作、规划或头脑风暴的审阅也会形成任务类型证据；Branch 审阅使用被审阅 Turn 的用户输入，不从之后的消息猜测。成功的手动 Context Map fork 会记录转移到子分支的有界草稿，使这次明确的 Branch 选择也可按任务类型归类；空草稿仍不归类。当总体规则混杂或相反时，偏好摘要可显示任务类型及「来源 × 任务类型」的例外规则，并省略重复的细分规则。当邻近分支深度内至少有四次有效审阅时，估计也会按深度区分；证据不足时退回 Profile 总体估计。已审阅的草稿路由卡会提供明确的 Navigate、Return 和 Branch 选择；Context Map 中成功执行的手动 fork 会通过 `contextify/manual-branch` 提供正向 Branch 选择。仅看到路由卡不构成偏好。一次多项审阅的总权重为一；仅展示卡片、未标记的 Remote 调用和已撤销的计划修改都不构成偏好证据。此投影只调整建议，不授权自动修改 Context Plan 或 Session。
 
 用户先将某项标为 Keep current 再关闭审核时，这项被建议的动作提供明确拒绝证据。只有明确拒绝了条目时，关闭事件才保留有界审核目标。每个拒绝项的权重为整单总条目数的倒数；未决定的条目和单纯 Later 均没有标签。策略投影跨 Profile 读取这些部分选择；再次审核同一草稿时，只压制被拒绝的动作与节点组合。之后明确接受同一项会清除此项压制。拒绝不会成为相反动作的正向风格编辑，关闭也不会改变 Context Plan。

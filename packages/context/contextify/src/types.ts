@@ -78,6 +78,43 @@ export interface ContextPolicyRule extends ContextPolicyEstimate {
   readonly tendency: 'favor' | 'avoid'
 }
 
+/** Owned native event supporting an inspectable management rule or workflow. */
+export interface ContextManagementReference {
+  readonly sessionId: SessionId
+  readonly eventSeq: number
+}
+
+/** Conditional preference with bounded positive/negative evidence references. */
+export interface ContextManagementRule extends ContextPolicyRule {
+  readonly id: string
+  readonly branchDepth: number
+  readonly accepted: number
+  readonly rejected: number
+  readonly references: readonly ContextManagementReference[]
+}
+
+/** Repeated causally connected management actions; never an executable plan. */
+export interface ContextManagementWorkflow extends ContextPolicyEstimate {
+  readonly id: string
+  readonly actions: readonly ContextPolicyAction[]
+  readonly activity?: ContextPolicyObservation['activity']
+  readonly branchDepth: number
+  readonly tendency: 'favor' | 'avoid'
+  readonly accepted: number
+  readonly rejected: number
+  readonly references: readonly ContextManagementReference[]
+  /** Historical objectives are examples, never current source or destination authority. */
+  readonly examples: readonly (readonly string[])[]
+}
+
+/** Bounded, retraction-aware memory derived from confirmed management events. */
+export interface ContextManagementMemory {
+  readonly rules: readonly ContextManagementRule[]
+  readonly workflows: readonly ContextManagementWorkflow[]
+  readonly omittedRules?: number
+  readonly omittedWorkflows?: number
+}
+
 /** Inspectable policy memory for review thresholds and repeated choice rules. */
 export interface ContextStewardProfile {
   readonly evidence: ContextPolicyEstimate
@@ -380,6 +417,8 @@ export interface ContextRecommendationProposal {
     readonly calibrationSources?: readonly string[]
     /** Owned event identities in the recent per-action threshold input pools. */
     readonly thresholdSources?: readonly string[]
+    /** Exact conditional rules/workflows supplied to this management decision. */
+    readonly managementMemory?: ContextManagementMemory
     readonly examples: readonly {
       readonly objective: string
       readonly action: ContextPolicyAction | 'exclude'

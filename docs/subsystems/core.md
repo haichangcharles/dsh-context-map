@@ -411,6 +411,17 @@ type Branded<B extends string> = string & { readonly [BRAND]: B }
 
 The two core IDs are `ToolCallId` (correlates a tool call with its result; dsh-llm) and `SessionId` (the shared live agent and durable session identity; dsh-session). Capability packages brand their own ids too, such as `JobId` in [jobs.md](jobs.md).
 
+## Context management memory
+
+[Contextify](../../packages/context/contextify/README.md) derives `ContextManagementMemory` from confirmed, retraction-filtered native events. Its optional field on `ContextRecommendationProposal.personalization` is the same object supplied to the Context-action packet and goal reviewer; disabled personalization omits it. Source declarations live in [Contextify types](../../packages/context/contextify/src/types.ts).
+
+| Type | Fields and meaning |
+|---|---|
+| `ContextManagementReference` | `sessionId`, `eventSeq`: exact owning native event; neither is a current action target. |
+| `ContextManagementRule` | Existing action/tendency/support/acceptRate and optional activity/sourceKind, plus `id`, exact `branchDepth`, signed `accepted`/`rejected` weights and bounded `references`. |
+| `ContextManagementWorkflow` | `id`, two or three `actions`, optional starting `activity`, exact starting `branchDepth`, tendency/support/acceptRate, signed `accepted`/`rejected` weights, bounded event `references` and historical objective `examples`; it is not an executable plan. |
+| `ContextManagementMemory` | `rules`, `workflows` and optional `omittedRules`/`omittedWorkflows` counts; at most eight rules, four workflows and 16KiB complete UTF-8 JSON. |
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>

@@ -968,6 +968,7 @@ export class ContextifyService extends TypertRemoteService {
             reviewer: recommendationMode === 'local' ? 'local' : promptSettings.fastDecisionProvider,
             ...(fastInput === undefined ? {} : { input: fastInput }),
             ...(routePacket?.preferenceExamples === undefined ? {} : { routeExamples: routePacket.preferenceExamples }),
+            ...(routePacket?.managementMemory === undefined ? {} : { managementMemory: routePacket.managementMemory }),
             edits: calibrationEdits, observations: profileEvidence.observations,
             calibrated: calibrated !== undefined,
             routed: draftBound === true && objective?.trim() === goal,

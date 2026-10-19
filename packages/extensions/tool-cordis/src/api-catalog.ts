@@ -4195,6 +4195,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ContextIncludedNode {\n    readonly nodeId: string;\n    readonly snapshotSeq: number;\n    readonly position: number;\n}',
   },
   {
+    name: 'ContextManagementMemory',
+    declaration: 'export interface ContextManagementMemory {\n    readonly rules: readonly ContextManagementRule[];\n    readonly workflows: readonly ContextManagementWorkflow[];\n    readonly omittedRules?: number;\n    readonly omittedWorkflows?: number;\n}',
+  },
+  {
+    name: 'ContextManagementReference',
+    declaration: 'export interface ContextManagementReference {\n    readonly sessionId: SessionId;\n    readonly eventSeq: number;\n}',
+  },
+  {
+    name: 'ContextManagementRule',
+    declaration: 'export interface ContextManagementRule extends ContextPolicyRule {\n    readonly id: string;\n    readonly branchDepth: number;\n    readonly accepted: number;\n    readonly rejected: number;\n    readonly references: readonly ContextManagementReference[];\n}',
+  },
+  {
+    name: 'ContextManagementWorkflow',
+    declaration: 'export interface ContextManagementWorkflow extends ContextPolicyEstimate {\n    readonly id: string;\n    readonly actions: readonly ContextPolicyAction[];\n    readonly activity?: ContextPolicyObservation[\'activity\'];\n    readonly branchDepth: number;\n    readonly tendency: \'favor\' | \'avoid\';\n    readonly accepted: number;\n    readonly rejected: number;\n    readonly references: readonly ContextManagementReference[];\n    readonly examples: readonly (readonly string[])[];\n}',
+  },
+  {
     name: 'ContextMessageRef',
     declaration: 'export interface ContextMessageRef {\n    readonly sessionId: SessionId;\n    readonly seq: number;\n}',
   },
@@ -4236,7 +4252,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContextRecommendationProposal',
-    declaration: 'export interface ContextRecommendationProposal {\n    readonly mode: ContextRecommendationMode;\n    readonly base: ContextRecommendationBase;\n    readonly sourceBase?: ContextRecommendationBase;\n    readonly currentNodeIds: readonly string[];\n    readonly proposedNodeIds: readonly string[];\n    readonly addedNodeIds: readonly string[];\n    readonly removedNodeIds: readonly string[];\n    readonly selection: readonly ContextSelectionRecommendation[];\n    readonly archive: readonly ContextArchiveCandidate[];\n    readonly personalization?: {\n        readonly enabled: boolean;\n        readonly reviewer: \'parent-model\' | \'jev\' | \'goal-model-jev\' | \'local\';\n        readonly calibrationSources?: readonly string[];\n        readonly thresholdSources?: readonly string[];\n        readonly examples: readonly {\n            readonly objective: string;\n            readonly action: ContextPolicyAction | \'exclude\';\n            readonly choice?: \'accept\' | \'reject\';\n            readonly content?: string;\n            readonly sourceSessionId?: SessionId;\n            readonly sourceEventSeq?: number;\n        }[];\n    };\n    readonly route?: ContextRouteAdvice;\n    readonly workStates?: readonly ContextWorkStateAdvice[];\n}',
+    declaration: 'export interface ContextRecommendationProposal {\n    readonly mode: ContextRecommendationMode;\n    readonly base: ContextRecommendationBase;\n    readonly sourceBase?: ContextRecommendationBase;\n    readonly currentNodeIds: readonly string[];\n    readonly proposedNodeIds: readonly string[];\n    readonly addedNodeIds: readonly string[];\n    readonly removedNodeIds: readonly string[];\n    readonly selection: readonly ContextSelectionRecommendation[];\n    readonly archive: readonly ContextArchiveCandidate[];\n    readonly personalization?: {\n        readonly enabled: boolean;\n        readonly reviewer: \'parent-model\' | \'jev\' | \'goal-model-jev\' | \'local\';\n        readonly calibrationSources?: readonly string[];\n        readonly thresholdSources?: readonly string[];\n        readonly managementMemory?: ContextManagementMemory;\n        readonly examples: readonly {\n            readonly objective: string;\n            readonly action: ContextPolicyAction | \'exclude\';\n            readonly choice?: \'accept\' | \'reject\';\n            readonly content?: string;\n            readonly sourceSessionId?: SessionId;\n            readonly sourceEventSeq?: number;\n        }[];\n    };\n    readonly route?: ContextRouteAdvice;\n    readonly workStates?: readonly ContextWorkStateAdvice[];\n}',
   },
   {
     name: 'ContextReplacementNode',

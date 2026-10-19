@@ -92,6 +92,36 @@ function ProposalReview({
             {example.content !== undefined && <p>{example.content}</p>}
             {example.sourceSessionId !== undefined && <small>{example.sourceSessionId}:{example.sourceEventSeq}</small>}
           </li>)}</ul>}
+      {proposal.personalization.managementMemory !== undefined && <>
+        {proposal.personalization.reviewer === 'local' && <p>{t('memory.available')}</p>}
+        <details>
+          <summary>{t('memory.rules')}</summary>
+          <ul>{proposal.personalization.managementMemory.rules.map(rule => <li key={rule.id}>
+            <strong>{t(`policy.action.${rule.action}`)}</strong> · <span>{t(`memory.${rule.tendency}`)}</span>
+            {rule.activity !== undefined && <p>{t(`policy.activity.${rule.activity}`)}</p>}
+            {rule.sourceKind !== undefined && <p>{t(`policy.kind.${rule.sourceKind}`)}</p>}
+            <p>{t('memory.depth', { depth: rule.branchDepth })}</p>
+            <p>{t('memory.support', { accepted: rule.accepted, rejected: rule.rejected })}</p>
+            <ul>{rule.references.map(ref => <li key={`${ref.sessionId}:${ref.eventSeq}`}>{ref.sessionId}:{ref.eventSeq}</li>)}</ul>
+          </li>)}</ul>
+        </details>
+        <details>
+          <summary>{t('memory.workflows')}</summary>
+          <ul>{proposal.personalization.managementMemory.workflows.map(workflow => <li key={workflow.id}>
+            <strong>{workflow.actions.map(action => t(`policy.action.${action}`)).join(' → ')}</strong> · <span>{t(`memory.${workflow.tendency}`)}</span>
+            {workflow.activity !== undefined && <p>{t(`policy.activity.${workflow.activity}`)}</p>}
+            <p>{t('memory.depth', { depth: workflow.branchDepth })}</p>
+            <p>{t('memory.support', { accepted: workflow.accepted, rejected: workflow.rejected })}</p>
+            <ul>{workflow.references.map(ref => <li key={`${ref.sessionId}:${ref.eventSeq}`}>{ref.sessionId}:{ref.eventSeq}</li>)}</ul>
+            <ul>{workflow.examples.map((example, index) => <li key={index}>{example.join(' → ')}</li>)}</ul>
+          </li>)}</ul>
+        </details>
+        {((proposal.personalization.managementMemory.omittedRules ?? 0) > 0
+          || (proposal.personalization.managementMemory.omittedWorkflows ?? 0) > 0) && <p>{t('memory.omitted', {
+          rules: proposal.personalization.managementMemory.omittedRules ?? 0,
+          workflows: proposal.personalization.managementMemory.omittedWorkflows ?? 0,
+        })}</p>}
+      </>}
       {(proposal.personalization.calibrationSources?.length ?? 0) > 0 && <details>
         <summary>{t('memory.calibration')} · {proposal.personalization.calibrationSources?.length}</summary>
         <ul>{proposal.personalization.calibrationSources?.map(source => <li key={source}>{source}</li>)}</ul>

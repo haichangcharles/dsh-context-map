@@ -1,0 +1,142 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`projects confirmed management workflows through the real Loader and removes them on disable and reset > confirmed management memory from native events 1`] = `
+{
+  "rules": [
+    {
+      "acceptRate": 0.75,
+      "accepted": 4,
+      "action": "branch",
+      "activity": "planning",
+      "branchDepth": 0,
+      "id": "rule/branch/planning/*/0",
+      "references": [
+        {
+          "eventSeq": 11,
+          "sessionId": "memory-loader-main",
+        },
+        {
+          "eventSeq": 10,
+          "sessionId": "memory-loader-main",
+        },
+        {
+          "eventSeq": 9,
+          "sessionId": "memory-loader-main",
+        },
+        {
+          "eventSeq": 8,
+          "sessionId": "memory-loader-main",
+        },
+      ],
+      "rejected": 0,
+      "support": 4,
+      "tendency": "favor",
+    },
+  ],
+  "workflows": [
+    {
+      "acceptRate": 0.75,
+      "accepted": 4,
+      "actions": [
+        "branch",
+        "return",
+      ],
+      "activity": "planning",
+      "branchDepth": 0,
+      "examples": [
+        [
+          "Plan venue 2.",
+          "Return to plan.",
+        ],
+        [
+          "Plan venue 3.",
+          "Return to plan.",
+        ],
+      ],
+      "id": "workflow/planning/0/branch.return",
+      "references": [
+        {
+          "eventSeq": 16,
+          "sessionId": "memory-loader-child-3",
+        },
+        {
+          "eventSeq": 11,
+          "sessionId": "memory-loader-main",
+        },
+        {
+          "eventSeq": 15,
+          "sessionId": "memory-loader-child-2",
+        },
+        {
+          "eventSeq": 10,
+          "sessionId": "memory-loader-main",
+        },
+        {
+          "eventSeq": 14,
+          "sessionId": "memory-loader-child-1",
+        },
+        {
+          "eventSeq": 9,
+          "sessionId": "memory-loader-main",
+        },
+      ],
+      "rejected": 0,
+      "support": 4,
+      "tendency": "favor",
+    },
+    {
+      "acceptRate": 0.7142857142857143,
+      "accepted": 3,
+      "actions": [
+        "branch",
+        "return",
+        "branch",
+      ],
+      "activity": "planning",
+      "branchDepth": 0,
+      "examples": [
+        [
+          "Plan venue 1.",
+          "Return to plan.",
+          "Plan venue 2.",
+        ],
+        [
+          "Plan venue 2.",
+          "Return to plan.",
+          "Plan venue 3.",
+        ],
+      ],
+      "id": "workflow/planning/0/branch.return.branch",
+      "references": [
+        {
+          "eventSeq": 11,
+          "sessionId": "memory-loader-main",
+        },
+        {
+          "eventSeq": 15,
+          "sessionId": "memory-loader-child-2",
+        },
+        {
+          "eventSeq": 10,
+          "sessionId": "memory-loader-main",
+        },
+        {
+          "eventSeq": 14,
+          "sessionId": "memory-loader-child-1",
+        },
+        {
+          "eventSeq": 9,
+          "sessionId": "memory-loader-main",
+        },
+        {
+          "eventSeq": 13,
+          "sessionId": "memory-loader-child-0",
+        },
+      ],
+      "rejected": 0,
+      "support": 3,
+      "tendency": "favor",
+    },
+  ],
+}
+`;

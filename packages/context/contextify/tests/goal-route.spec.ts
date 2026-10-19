@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { buildGoalRouteInput, parseGoalRouteText, composeGoalContextReview } from '../src/goal-route.ts'
+import { buildManagementMemory } from '../src/management-memory.ts'
 import type { FastRecommendationInput } from '../src/fast-recommendation.ts'
 import type { ContextActionPacket } from '../src/semantic-route.ts'
 import type { ContextFamilyGraph } from '../src/types.ts'
@@ -37,6 +38,20 @@ it('provides native tasks and confirmed route examples without asking the model 
   expect(data.confirmedExamples).toHaveLength(1)
   expect(data.policy).toContain('services separate')
   expect(JSON.stringify(data)).toContain('Find a hotel.')
+})
+it('passes the exact bounded management projection as historical data without adding route authority', () => {
+  const managementMemory = buildManagementMemory(Array.from({ length: 4 }, (_, at) => ({
+    action: 'branch', choice: 'accept', origin: 'manual-action', branchDepth: 1, at,
+    sourceSessionId: SessionId('historical-only'), sourceEventSeq: at,
+  })), { branchDepth: 1 })
+  const data = JSON.parse(buildGoalRouteInput({ ...packet, managementMemory }, '').userText) as {
+    managementMemory?: unknown
+    tasks: { sessionId: string }[]
+  }
+  expect(data.managementMemory).toEqual(managementMemory)
+  expect(data.tasks.map((task: { sessionId: string }) => task.sessionId)).not.toContain('historical-only')
+  const without = JSON.parse(buildGoalRouteInput(packet, '').userText) as Record<string, unknown>
+  expect(without.managementMemory).toBeUndefined()
 })
 it('accepts only bounded categorical assignments over current native IDs', () => {
   expect(parseGoalRouteText(JSON.stringify(assignment), packet)).toEqual(assignment)

@@ -30,6 +30,16 @@ const scored = (intent: string, intentScore = 0.9, destinationScore = 0.9, evide
 })
 
 describe('bounded semantic Context actions', () => {
+  it('supplies repeated conditional memory from owned evidence and omits a retracted projection', () => {
+    const preferenceExamples = Array.from({ length: 4 }, (_, at) => ({ action: 'branch' as const,
+      choice: 'accept' as const, origin: 'manual-action' as const, branchDepth: 1, activity: 'planning' as const,
+      sourceSessionId: SessionId('old-family'), sourceEventSeq: at, at }))
+    const input = { graph, contents: {}, objective: 'Plan the next task', base, preferenceExamples }
+    const result = buildContextActionPacket(input)
+    expect(result.managementMemory?.rules[0]).toMatchObject({ action: 'branch', activity: 'planning', support: 4 })
+    expect(buildContextActionPacket({ ...input, preferenceExamples: preferenceExamples.map(row => ({ ...row, undone: true })) })
+      .managementMemory).toBeUndefined()
+  })
   it('keeps native ancestors in a full slate even when sibling lexical scores are higher', () => {
     const many = { ...graph, sessions: [...graph.sessions, ...Array.from({ length: 12 }, (_, i) => ({
       id: SessionId('a-sibling-' + String(i)), parentSessionId: main, depth: 1, seedLength: 0, tipNodeId: null,

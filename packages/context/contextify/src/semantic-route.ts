@@ -1,10 +1,12 @@
 /** Bounded Context-action data shared by Fast review, local scorers and offline replay. */
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { ContextFamilyGraph, ContextPolicyObservation, ContextRecommendationBase, ContextStewardProfile } from './types.ts'
+import type { ContextFamilyGraph, ContextManagementMemory, ContextPolicyObservation, ContextRecommendationBase, ContextStewardProfile } from './types.ts'
 import { buildContextRouteCandidates, planContextRoute, draftRouteIntent,
   type ContextRouteCandidate, type ContextRouteIntent, type ContextRouteProposal } from './context-route-policy.ts'
 import { parseRecommendationJson, parseRecommendationDecisionText, type ContextRecommendationDecision } from './recommendation.ts'
 import { buildTaskCard } from './task-card.ts'
+import { buildManagementMemory } from './management-memory.ts'
+import { contextActivityFromObjective } from './context-activity.ts'
 
 /** Protocol ceiling on scored native Sessions in one Context-action packet. */
 export const CONTEXT_ACTION_MAX_SESSIONS = 8
@@ -38,6 +40,8 @@ export interface ContextActionPacket {
   readonly activeTask?: ContextActionCandidate
   /** Confirmed historical route examples; target IDs here do not authorize current actions. */
   readonly preferenceExamples?: readonly ContextPolicyObservation[]
+  /** Conditional preference rules and causal workflows; historical references grant no authority. */
+  readonly managementMemory?: ContextManagementMemory
 }
 
 /** Model-supplied ranking signals; these scores are not calibrated probabilities. */
@@ -107,7 +111,13 @@ export function buildContextActionPacket(input: {
         ...(observation.routeContext.parent === undefined ? {} : { parent: bounded(observation.routeContext.parent, 800) }),
       }) }),
     }))
+  const activity = contextActivityFromObjective(input.objective)
+  const memory = active === undefined ? undefined : buildManagementMemory(input.preferenceExamples ?? [], {
+    branchDepth: active.depth, ...(activity === undefined ? {} : { activity }),
+  })
   return Object.freeze({
+    ...(memory === undefined || memory.rules.length === 0 && memory.workflows.length === 0
+      ? {} : { managementMemory: memory }),
     ...(preferenceExamples.length === 0 ? {} : { preferenceExamples: Object.freeze(preferenceExamples) }),
     base: Object.freeze({ ...input.base }),
     objective: bounded(input.objective.trim(), 4000),

@@ -36,6 +36,8 @@ kind: "package-reference"
 
 Composer 在未发送文本非空时显示 **Review context for draft**。默认 Local 审核不调用模型；旁边的草稿模式控件显式选择 Fast 或 Deep。点击审核保留未发送草稿并打开 Map。草稿改变后旧建议被丢弃。路由卡可以建议 Return、Navigate 或 Branch；接受时先通过原生服务转移原样草稿与附件，再切换分支，而 Stay 表示明确拒绝。新分支卡可以指定另一个父节点，预览新分支的 Context，并一次确认两者。Host 批准失败时，Client 尝试把未变化的已转移草稿及附件移回源分支；若并发编辑阻止恢复，草稿仍保留在目标分支。已经创建但未使用的子分支可能保留。
 
+建议审核单展示 Host 提供的确切条件规则与管理工作流，包括任务活动和深度条件、带正负符号的支持度、有界任务案例，以及原生 Session/事件引用。输入大小限制导致条目被省略时，审核单显示省略数量。这些历史记录不会选择回答 Context 或执行工作流步骤。
+
 Map 标题栏的 **Preferences** 按需读取 Profile 策略，展示审核支持度、重复操作倾向，以及带拥有它们的 Session/事件引用的近期明确选择。**Refresh** 在操作或 Undo 后重读证据。**Reset learned preferences** 通过已记录的 Session 水位清空派生学习，同时保留原始记录与当前 Context Plan。视图不存储第二份 Client persona。
 
 **Branches** 折叠列表把每个原生 Session 的任务状态与 Active／Inactive 位置分开显示。**Move draft here** 明确把非空且未改变的草稿转移到另一个原生 Session；目标已有草稿时会拒绝，被动 Locate 不记录偏好。Complete、Park 和 Reopen 是经用户操作确认的选择：它们追加原生工作状态事件并刷新 graph。完成分支不会排除其中的消息或删除证据；对于一般的新任务，路由器不会默认导航到它，但用户明确要求 Resume 时仍可返回。之后若用户在已完成的分支写入新一轮消息，graph 投影会重新标为 open。

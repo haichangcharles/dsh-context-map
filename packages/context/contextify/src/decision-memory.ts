@@ -24,6 +24,7 @@ export function decisionMemorySnapshot(request: {
   readonly reviewer: Snapshot['reviewer']
   readonly input?: FastRecommendationInput
   readonly routeExamples?: readonly ContextPolicyObservation[]
+  readonly managementMemory?: Snapshot['managementMemory']
   readonly edits: readonly PersonalContextEdit[]
   readonly observations: readonly ContextPolicyObservation[]
   readonly calibrated: boolean
@@ -61,5 +62,6 @@ export function decisionMemorySnapshot(request: {
       ? [`${item.sourceSessionId}:${String(item.sourceEventSeq)}`] : []
   }))]
   return { enabled: true, reviewer: request.reviewer,
+    ...(request.managementMemory === undefined ? {} : { managementMemory: request.managementMemory }),
     examples: [...new Map(examples.map(example => [JSON.stringify(example), example])).values()], calibrationSources, thresholdSources }
 }

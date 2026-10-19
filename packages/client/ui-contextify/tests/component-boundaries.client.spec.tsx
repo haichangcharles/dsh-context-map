@@ -310,6 +310,40 @@ it('shows the exact personal case used by the Context Agent without making it an
   expect(screen.getByText('Superseded outline')).toBeTruthy()
   expect(screen.getByText(/Decision examples are not added to the answer Context/)).toBeTruthy()
 })
+it.each(['local', 'jev'] as const)('shows conditional rules and causal workflows with their native evidence (%s)', (reviewer) => {
+  reviewSheet(proposal({ personalization: { enabled: true, reviewer, examples: [], managementMemory: {
+    rules: [{ id: 'rule-1', action: 'branch', activity: 'planning', branchDepth: 0,
+      tendency: 'favor', support: 4, acceptRate: .75, accepted: 4, rejected: 0,
+      references: [{ sessionId: root, eventSeq: 13 }] }],
+    workflows: [{ id: 'workflow-1', actions: ['branch', 'return'], activity: 'planning', branchDepth: 0,
+      tendency: 'favor', support: 4, acceptRate: .75, accepted: 4, rejected: 0,
+      references: [{ sessionId: root, eventSeq: 14 }], examples: [['Plan venue', 'Return to plan']] }],
+    omittedRules: 1, omittedWorkflows: 2,
+  } } }))
+  expect(screen.getByText('Management evidence for this review · 0')).toBeTruthy()
+  expect(screen.queryByText(/Available management summaries/)).toEqual(reviewer === 'local' ? expect.any(HTMLElement) : null)
+  expect(screen.getByText('Conditional management rules')).toBeTruthy()
+  expect(screen.getByText('Confirmed management workflows')).toBeTruthy()
+  expect(screen.getAllByText('Favor')).toHaveLength(2)
+  expect(screen.getAllByText('Accepted weight 4 · declined weight 0')).toHaveLength(2)
+  expect(screen.getByText(`${root}:13`)).toBeTruthy()
+  expect(screen.getByText('Plan venue → Return to plan')).toBeTruthy()
+  expect(screen.getByText('Omitted to bound input: 1 rules, 2 workflows')).toBeTruthy()
+})
+it.each([{ omittedRules: 1 }, { omittedWorkflows: 2 }, {}])('shows source conditions and independently bounded inventories (%j)', (omitted) => {
+  reviewSheet(proposal({ personalization: { enabled: true, reviewer: 'jev', examples: [], managementMemory: {
+    rules: [{ id: 'source-rule', action: 'release', sourceKind: 'web', branchDepth: 1,
+      tendency: 'avoid', support: 4, acceptRate: .25, accepted: 0, rejected: 4, references: [] }],
+    workflows: [{ id: 'unclassified-flow', actions: ['navigate', 'include'], branchDepth: 1,
+      tendency: 'avoid', support: 2, acceptRate: 1 / 3, accepted: 0, rejected: 2, references: [], examples: [] }],
+    ...omitted,
+  } } }))
+  expect(screen.getAllByText('Avoid')).toHaveLength(2)
+  expect(screen.getByText('web')).toBeTruthy()
+  expect(screen.getAllByText('Starting branch depth 1')).toHaveLength(2)
+  if (Object.keys(omitted).length === 0) expect(screen.queryByText(/Omitted to bound input/)).toBeNull()
+  else expect(screen.getByText(/Omitted to bound input/)).toBeTruthy()
+})
 it.each([true, false])('distinguishes empty model evidence from disabled personalization (%s)', (enabled) => {
   reviewSheet(proposal({ personalization: { enabled, reviewer: 'local', examples: [], calibrationSources: [], thresholdSources: [] } }))
   expect(screen.getByText(enabled ? 'No historical examples were sent to the decision model.' : 'Personalization was disabled for this review.')).toBeTruthy()

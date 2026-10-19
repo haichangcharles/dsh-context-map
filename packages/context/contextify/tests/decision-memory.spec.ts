@@ -1,8 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { decisionMemorySnapshot } from '../src/decision-memory.ts'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import { buildManagementMemory } from '../src/management-memory.ts'
 
 describe('decision memory provenance', () => {
+  it('exposes the supplied rule projection without recomputing it and removes it when disabled', () => {
+    const managementMemory = buildManagementMemory(Array.from({ length: 4 }, (_, at) => ({
+      action: 'include', choice: 'accept', origin: 'manual-action', branchDepth: 0, at,
+      sourceSessionId: SessionId('old-memory'), sourceEventSeq: at,
+    })), { branchDepth: 0 })
+    const input = { enabled: true, reviewer: 'local' as const, edits: [], observations: [],
+      calibrated: false, routed: false, managementMemory }
+    expect(decisionMemorySnapshot(input).managementMemory).toBe(managementMemory)
+    expect(decisionMemorySnapshot({ ...input, enabled: false }).managementMemory).toBeUndefined()
+  })
   it('exposes the same signed task-to-route case that the reviewer received', () => {
     const routeContext = { source: 'Write the invitation', target: 'Plan the event venue' }
     const value = decisionMemorySnapshot({ enabled: true, reviewer: 'jev', edits: [], observations: [],

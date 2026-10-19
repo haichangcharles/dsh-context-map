@@ -59,7 +59,7 @@ it('reviews a new sibling task in the browser, preserves its draft and applies n
       const body = JSON.parse(init.body) as { questions: Record<string, { type: string; criteria?: Record<string, string> }> }
       return Response.json({ model: 'jev-1.13.0', answers: Object.fromEntries(Object.entries(body.questions).map(([key, q]) => {
         if (q.type === 'noul') return [key, { type: 'noul', noul: key === 'wholeTask' ? 1 : .05 }]
-        const choice = q.criteria?.p0 === undefined ? 'active' : 'p0'
+        const choice: string = q.criteria?.p0 === undefined ? 'active' : 'p0'
         return [key, { type: 'choice', choice, probabilities: { [choice]: 1 } }]
       })) as Record<string, unknown> })
     })
@@ -100,5 +100,98 @@ it('reviews a new sibling task in the browser, preserves its draft and applies n
       credential.mockRestore()
       await scaffold.close()
     }
+  }
+}, 90_000)
+
+// This case calls the same Host services directly; responses are engineering fixtures only.
+it('projects confirmed management workflows through the real Loader and removes them on disable and reset', async () => {
+  const scaffold = await launchWebScaffold()
+  const fetcher = vi.spyOn(globalThis, 'fetch')
+  const credential = vi.spyOn(scaffold.ctx.credentials, 'resolve').mockResolvedValue({ value: 'fixture-only-key', source: 'test' })
+  let tick = Date.now()
+  const clock = vi.spyOn(Date, 'now').mockImplementation(() => tick++)
+  try {
+    let enabled = true
+    const settings = scaffold.ctx.contextify as unknown as { promptSettings: () => ContextifyPromptSettings }
+    settings.promptSettings = () => ({ ...CONTEXTIFY_DEFAULT_SETTINGS, personalizationEnabled: enabled,
+      fastDecisionProvider: 'goal-model-jev', automaticBranchReview: false })
+    const root = (await scaffold.ctx.agents.create({ sessionId: SessionId('memory-loader-main'),
+      meta: { cwd: `${scaffold.workspaceCwd}/workspace` },
+      agentOptions: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } })).agent
+    append(root.session, 'Plan the workshop.')
+    for (let i = 0; i < 4; i++) {
+      const seed = root.session.snapshotEvents()
+      const child = (await scaffold.ctx.agents.create({ sessionId: SessionId(`memory-loader-child-${i}`), seed,
+        inheritedEventCount: SessionLogOffset(seed.length),
+        meta: { cwd: `${scaffold.workspaceCwd}/workspace`, parentSession: root.id, isSeeded: true },
+        agentOptions: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } })).agent
+      append(child.session, `Plan independent venue ${i}.`)
+      await scaffold.ctx.contextify.recordManualBranch(root, child.id, 'contextify-client', `Plan venue ${i}.`)
+      const page = await scaffold.ctx.contextify.familyPage(child)
+      await scaffold.ctx.contextify.recordManualRoute(child, root.id, `return-${i}`, page.revision, 'contextify-client', 'Return to plan.')
+    }
+    const goalInputs: Record<string, unknown>[] = [], jevInputs: Record<string, unknown>[] = []
+    scaffold.ctx.on('llm/stream', (request): AsyncIterable<StreamChunk> => {
+      const block = request.messages[0]?.content[0]
+      if (block?.type !== 'text') throw new Error('Expected goal fixture input')
+      goalInputs.push(JSON.parse(block.text) as Record<string, unknown>)
+      const text = JSON.stringify({ goal: 'Plan workshop', assignment: 'existing', sessionId: root.id })
+      return (async function* () {
+        yield { type: 'block-start', index: 0, blockType: 'text' }
+        yield { type: 'text-delta', index: 0, text }
+        yield { type: 'block-end', index: 0, block: { type: 'text', text } }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+      })()
+    }, { global: true, prepend: true })
+    fetcher.mockImplementation(async (url, init) => {
+      if (url !== 'https://api.typesafe.ai/v1/systemone') throw new Error('External inference blocked by fixture')
+      if (typeof init?.body !== 'string') throw new Error('Expected Jev fixture input')
+      const body = JSON.parse(init.body) as {
+        state: { contextActions: Record<string, unknown> }
+        questions: Record<string, { type: string; criteria?: Record<string, string> }>
+      }
+      jevInputs.push(body.state.contextActions)
+      return Response.json({ model: 'jev-1.13.0', answers: Object.fromEntries(Object.entries(body.questions).map(([key, q]) => {
+        if (q.type === 'noul') return [key, { type: 'noul', noul: key === 'wholeTask' ? 1 : .05 }]
+        const choice: string = q.criteria?.p0 === undefined ? 'active' : 'p0'
+        return [key, { type: 'choice', choice, probabilities: { [choice]: 1 } }]
+      })) as Record<string, unknown> })
+    })
+    const review = async () => {
+      const page = await scaffold.ctx.contextify.familyPage(root)
+      return scaffold.ctx.contextify.recommend(root, { activeSessionId: root.id, graphRevision: page.revision,
+        planRevision: scaffold.ctx.contextify.get(root).plan.revision }, 'Plan the next workshop.', 'fast', true)
+    }
+    expect((await scaffold.ctx.contextify.policyEvidence(root)).filter(row => row.action === 'branch')).toHaveLength(4)
+    const revision = scaffold.ctx.contextify.get(root).plan.revision
+    const proposal = await review()
+    expect(proposal.personalization?.managementMemory?.rules).toContainEqual(expect.objectContaining({ action: 'branch', activity: 'planning', accepted: 4 }))
+    expect(proposal.personalization?.managementMemory?.workflows).toContainEqual(expect.objectContaining({ actions: ['branch', 'return'] }))
+    expect(goalInputs[0]?.managementMemory).toEqual(proposal.personalization?.managementMemory)
+    expect(jevInputs[0]?.managementMemory).toEqual(proposal.personalization?.managementMemory)
+    expect(proposal.personalization?.managementMemory).toMatchSnapshot('confirmed management memory from native events')
+    const requests = root.session.snapshotEvents().filter(event => event.type === 'contextify/recommendation-request')
+    expect(requests).toHaveLength(2)
+    const loggedGoal = JSON.parse(requests[0]!.data.userText) as Record<string, unknown>
+    const loggedJev = JSON.parse(requests[1]!.data.userText) as { state: { contextActions: Record<string, unknown> } }
+    expect(loggedGoal.managementMemory).toEqual(goalInputs[0]?.managementMemory)
+    expect(loggedJev.state.contextActions.managementMemory).toEqual(jevInputs[0]?.managementMemory)
+    const compiled = scaffold.ctx.contextCompiler.compile({ session: root.session, turn: root.session.seq + 1, step: 1 })
+    expect(JSON.stringify(compiled.messages)).not.toContain('managementMemory')
+    expect(scaffold.ctx.contextify.get(root).plan.revision).toBe(revision)
+    enabled = false
+    expect((await review()).personalization?.managementMemory).toBeUndefined()
+    expect(goalInputs[1]?.managementMemory).toBeUndefined()
+    expect(jevInputs[1]?.managementMemory).toBeUndefined()
+    enabled = true
+    await scaffold.ctx.contextify.resetPolicy(root, 'contextify-client')
+    expect((await review()).personalization?.managementMemory).toBeUndefined()
+    expect(goalInputs[2]?.managementMemory).toBeUndefined()
+    expect(jevInputs[2]?.managementMemory).toBeUndefined()
+    expect(scaffold.ctx.contextify.get(root).plan.revision).toBe(revision)
+    expect(JSON.stringify(root.session.snapshotEvents())).not.toContain('fixture-only-key')
+  } finally {
+    clock.mockRestore(); fetcher.mockRestore(); credential.mockRestore()
+    await scaffold.close()
   }
 }, 90_000)
