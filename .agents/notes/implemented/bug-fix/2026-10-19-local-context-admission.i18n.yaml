@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-10-19-local-context-admission.md
+2026-10-19-local-context-admission.md: 8a3edc2508db2982c4d84f31f69b3f473b0b95f6
+2026-10-19-local-context-admission.zh.md: d928cbfaf718d0b4f9ca5e60a15850ca890fa620

@@ -85,7 +85,7 @@ function completeChangedSelection(
   return choices.filter((choice): choice is NonNullable<typeof choice> => choice !== null)
 }
 
-/** One candidate already admitted by the bounded Fast graph router. */
+/** One native candidate admitted for local calibration or bounded Fast review. */
 export interface PersonalContextCandidate {
   readonly id: string
   readonly reason: string
@@ -432,7 +432,7 @@ export function personalContextCandidateBonus(
  * @param objective - Current user objective.
  * @param contents - Full message content by graph node ID.
  * @param edits - Reviewed choices in the Session family.
- * @param candidates - Model-visible Fast packet; only its eligible nodes may be added.
+ * @param candidates - Local native features or a bounded Fast packet; only eligible nodes may be added.
  * @param reviewableExcludedNodeIds - Prior reviewed temporary exclusions eligible for a new Include proposal.
  * @returns A decision for ordinary graph validation before user review.
  */

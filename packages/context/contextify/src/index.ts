@@ -17,6 +17,7 @@ import {
   type ContextRecommendationDecision,
 } from './recommendation.ts'
 import { buildFastRecommendationInput, type FastRecommendationInput } from './fast-recommendation.ts'
+import { buildLocalContextCandidates } from './local-recommendation.ts'
 import { explicitWebSourceExclusion, explicitWebSourceInclusion } from './explicit-web-source.ts'
 import { contextPolicyWatermarks, currentPolicyInspections } from './policy-memory.ts'
 import { buildContextActionPacket, parseFastContextDecisionText,
@@ -748,6 +749,7 @@ export class ContextifyService extends TypertRemoteService {
       let routePacket: ContextActionPacket | undefined
       let semanticRoute: SemanticContextRoute | undefined
       let fastInput: ReturnType<typeof buildFastRecommendationInput> | undefined
+      let localCandidates: ReturnType<typeof buildLocalContextCandidates> | undefined
       let jevScopeSessionId: SessionId | undefined
       let goalAbstained = false
       const exactWebSources = recommendationMode !== 'deep' && draftBound
@@ -786,7 +788,11 @@ export class ContextifyService extends TypertRemoteService {
       } else {
         let input
         try {
-          input = buildFastRecommendationInput({
+          if (recommendationMode === 'local') {
+            localCandidates = buildLocalContextCandidates({ graph: family.graph, contents, objective: goal,
+              effectiveIncludedNodeIds: [...effective], explicitExcludedNodeIds: plan.excluded.map(item => item.nodeId),
+              reviewableExcludedNodeIds })
+          } else input = buildFastRecommendationInput({
             graph: family.graph,
             contents,
             objective: goal,
@@ -803,7 +809,7 @@ export class ContextifyService extends TypertRemoteService {
           fastInput = input
           invariant(profileEvidence !== undefined, 'non-Deep reviews always capture Profile policy evidence')
           routePacket = buildContextActionPacket({ graph: family.graph, contents, objective: goal, base,
-            visibleNodeIds: input.nodes.map(node => node.id),
+            ...(input === undefined ? {} : { visibleNodeIds: input.nodes.map(node => node.id) }),
             preferenceExamples: personal ? profileEvidence.observations : [] })
         } catch (cause) {
           throw new ContextifyError(
@@ -814,6 +820,7 @@ export class ContextifyService extends TypertRemoteService {
         if (recommendationMode === 'local') {
           decision = { exclude: [], include: [], archive: [] }
         } else {
+          invariant(input !== undefined, 'Fast review must capture its bounded model input')
           const contextPrompt = effectivePrompt(CONTEXTIFY_DEFAULT_PROMPTS.context, promptSettings.context)
           const system = [
             contextPrompt,
@@ -904,7 +911,7 @@ export class ContextifyService extends TypertRemoteService {
             exclude: generic.selection.filter(item => item.action === 'exclude'),
             include: generic.selection.filter(item => item.action === 'include'),
             archive: generic.archive,
-          }, goal, contents, calibrationEdits, fastInput?.nodes, reviewableExcludedNodeIds)
+          }, goal, contents, calibrationEdits, localCandidates ?? fastInput?.nodes, reviewableExcludedNodeIds)
           : undefined
         let contextProposal = calibrated === undefined
           ? generic

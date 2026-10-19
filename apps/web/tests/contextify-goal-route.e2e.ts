@@ -189,6 +189,18 @@ it('projects confirmed management workflows through the real Loader and removes 
     expect(goalInputs[2]?.managementMemory).toBeUndefined()
     expect(jevInputs[2]?.managementMemory).toBeUndefined()
     expect(scaffold.ctx.contextify.get(root).plan.revision).toBe(revision)
+    for (let i = 0; i < 35; i++) append(root.session, `Planning record ${i}`)
+    const wide = await scaffold.ctx.contextify.familyPage(root, undefined, 500)
+    await scaffold.ctx.contextify.setNodeModes(root, { revision: scaffold.ctx.contextify.get(root).plan.revision },
+      wide.records.filter(node => node.role === 'user' && node.owner.sessionId === root.id).slice(0, 33)
+        .map(node => ({ node: node.owner, mode: 'exclude' as const })))
+    const widePage = await scaffold.ctx.contextify.familyPage(root)
+    const local = await scaffold.ctx.contextify.recommend(root, { activeSessionId: root.id, graphRevision: widePage.revision,
+      planRevision: scaffold.ctx.contextify.get(root).plan.revision }, 'New topic: Separate planning task', 'local', true)
+    expect(local.route?.action).toBe('branch')
+    expect(local.proposedNodeIds).toEqual(local.currentNodeIds)
+    expect(goalInputs).toHaveLength(3)
+    expect(jevInputs).toHaveLength(3)
     expect(JSON.stringify(root.session.snapshotEvents())).not.toContain('fixture-only-key')
   } finally {
     clock.mockRestore(); fetcher.mockRestore(); credential.mockRestore()

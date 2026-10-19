@@ -252,3 +252,40 @@ it('cancels stalled credential preflight without a model call and releases the f
     await expect(review(b, b.parent)).resolves.toMatchObject({ selection: [] })
   } finally { finish?.({ value: 'fixture-only-key' }); fetcher.mockRestore(); await b.close() }
 })
+
+it('keeps Local draft routing available after many manual Context choices without relaxing Fast limits', async () => {
+  const b = await lineageHarness()
+  try {
+    for (let i = 0; i < 35; i++) append(b.parent.session, `Planning note ${i}`)
+    const page = await b.ctx.contextify.familyPage(b.parent, undefined, 500)
+    const mutations = page.records.filter(node => node.role === 'user').slice(0, 33)
+      .map(node => ({ node: node.owner, mode: 'exclude' as const }))
+    await b.ctx.contextify.setNodeModes(b.parent, { revision: b.ctx.contextify.get(b.parent).plan.revision }, mutations)
+    const current = await b.ctx.contextify.familyPage(b.parent)
+    const base = { activeSessionId: b.parent.id, graphRevision: current.revision,
+      planRevision: b.ctx.contextify.get(b.parent).plan.revision }
+    const before = compileContextify({ session: b.parent.session, turn: b.parent.session.seq + 1, step: 1 })
+    await expect(b.ctx.contextify.recommend(b.parent, base, 'New topic: Independent planning task', 'fast', true))
+      .rejects.toMatchObject({ code: 'CONTEXTIFY_RECOMMENDATION_TOO_LARGE' })
+    const local = await b.ctx.contextify.recommend(b.parent, base, 'New topic: Independent planning task', 'local', true)
+    expect(local.route?.action).toBe('branch')
+    expect(local.currentNodeIds).toEqual(local.proposedNodeIds)
+    const events = b.parent.session.snapshotEvents()
+    const seed = events.slice(0, events.findLastIndex(event => event.type === 'turn/end') + 1)
+    const child = (await b.ctx.agents.create({ sessionId: SessionId('local-many-pins-child'), seed,
+      inheritedEventCount: SessionLogOffset(seed.length), meta: { parentSession: b.parent.id, isSeeded: true },
+      agentOptions: { provider: 'mock', model: 'mock' } })).agent
+    if (local.route === undefined) throw new Error('Local Branch proposal missing')
+    await b.ctx.contextify.reviewRoute(b.parent, local.route, 'accept', child.id, undefined, true)
+    expect(compileContextify({ session: child.session, turn: child.session.seq + 1, step: 1 }).messages).toEqual(before.messages)
+    const childPage = await b.ctx.contextify.familyPage(child)
+    const back = await b.ctx.contextify.recommend(child, { activeSessionId: child.id, graphRevision: childPage.revision,
+      planRevision: b.ctx.contextify.get(child).plan.revision }, 'Return to the mainline', 'local', true)
+    expect(back.route?.action).toBe('return')
+    if (back.route === undefined) throw new Error('Local Return proposal missing')
+    await b.ctx.contextify.reviewRoute(child, back.route, 'accept', b.parent.id, undefined, true)
+    expect(b.ctx.contextify.get(b.parent).plan.revision).toBe(base.planRevision)
+    expect(compileContextify({ session: b.parent.session, turn: b.parent.session.seq + 1, step: 1 })).toEqual(before)
+    expect(b.adapter.requests).toEqual([])
+  } finally { await b.close() }
+})
