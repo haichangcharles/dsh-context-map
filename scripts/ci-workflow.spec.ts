@@ -220,7 +220,9 @@ describe('CI workflow', () => {
     const coverageCommands = coverageSteps.filter((step): step is Record<string, unknown> & { run: string } => (
       isRecord(step) && typeof step.run === 'string'
     ))
-    expect(coverageCommands.map(step => step.run)).toContain('pnpm run check:ci:coverage')
+    expect(coverageCommands.some(step => step.run.startsWith('./scripts/run-windows-native.ps1 -Lane coverage '))).toBe(true)
+    const windowsWrapper = readFileSync(resolve(root, 'scripts/run-windows-native.ps1'), 'utf8')
+    expect(windowsWrapper).toContain('& pnpm run check:ci:coverage | Out-Host')
     // Windows coverage runs zero-build like the Linux lane: workspace imports
     // resolve to src through the tsconfig paths map, and the lib-consuming
     // suites (webworker-packer image-loadable, webworker-runtime
@@ -229,6 +231,7 @@ describe('CI workflow', () => {
     // 'corepack pnpm run build' or folded into a multi-line run block, which
     // an exact string match would miss.
     expect(coverageCommands.every(step => !/\bpnpm\s+run\s+build(?:\s|$)/.test(step.run))).toBe(true)
+    expect(windowsWrapper).not.toMatch(/\bpnpm\s+run\s+build(?:\s|$)/)
 
     // windows-native-tests runs the Windows-specific specs.
     expect(windowsNativeTests.name).toBe('windows node 24 / native tests')

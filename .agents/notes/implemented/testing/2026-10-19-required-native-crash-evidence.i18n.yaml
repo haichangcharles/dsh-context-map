@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/testing/2026-10-19-required-native-crash-evidence.md
-2026-10-19-required-native-crash-evidence.md: ec40d030e5b5de3d1d085f4e40bb069a9c792a66
-2026-10-19-required-native-crash-evidence.zh.md: d70608cfd7214dc328c67948db0b2a9f43c92add
+2026-10-19-required-native-crash-evidence.md: bd2f4eedb5c1fa02f1c5abbd89a6c0669fba5cda
+2026-10-19-required-native-crash-evidence.zh.md: 8976208234383bd44049d8f684e6eaed29684df9

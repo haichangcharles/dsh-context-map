@@ -491,6 +491,11 @@ jobs:
     name: windows node 24 / coverage
     timeout-minutes: 120
     env:
+      DEEPSEEK_API_KEY: ''
+      SILICONFLOW_API_KEY: ''
+      TYPESAFE_API_KEY: ''
+      JEV_API_KEY: ''
+      OPENAI_API_KEY: ''
       DSH_COVERAGE_MAX_WORKERS: ${{ (vars.DSH_CI_WINDOWS_RUNNER != '' || vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted') && '6' || '2' }}
       DSH_COVERAGE_PARTITIONS: ${{ (vars.DSH_CI_WINDOWS_RUNNER != '' || vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted') && '4' || '2' }}
       DSH_COVERAGE_TEST_TIMEOUT_MS: '90000'
@@ -546,7 +551,9 @@ jobs:
       # unbuilt checkouts.
       - name: Run Windows coverage
         shell: pwsh
-        run: pnpm run check:ci:coverage
+        env:
+          DSH_EPHEMERAL_NATIVE_CAPTURE: ${{ runner.environment == 'github-hosted' && '1' || '0' }}
+        run: ./scripts/run-windows-native.ps1 -Lane coverage -CaptureCrash:($env:DSH_EPHEMERAL_NATIVE_CAPTURE -ceq '1')
       - name: Save coverage duration history
         # Coverage flakes must not prevent the cache from building; the
         # measured durations remain useful even when a partition failed. The

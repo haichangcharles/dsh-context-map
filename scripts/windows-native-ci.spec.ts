@@ -31,3 +31,18 @@ it('retains the original single invocation and propagates its failure', () => {
   expect(wrapper).toContain('if ($nativeExitCode -ne 0) { throw')
   expect(wrapper).toContain("if ($env:DSH_EPHEMERAL_NATIVE_CAPTURE -cne '1') { throw")
 })
+
+it('captures the original coverage command without narrowing its partitions or ignoring a worker crash', () => {
+  const workflow = yaml.load(read('.github/workflows/ci.yml')) as {
+    jobs: Record<string, { env: Record<string, string>; steps: { name?: string; run?: string }[] }>
+  }
+  const job = workflow.jobs['windows-coverage']!
+  for (const key of ['DEEPSEEK_API_KEY', 'SILICONFLOW_API_KEY', 'TYPESAFE_API_KEY', 'JEV_API_KEY', 'OPENAI_API_KEY']) expect(job.env[key]).toBe('')
+  expect(job.steps.find(step => step.name === 'Run Windows coverage')?.run).toContain('-Lane coverage -CaptureCrash:')
+  const wrapper = read('scripts/run-windows-native.ps1')
+  expect(wrapper).toContain("[ValidateSet('native', 'coverage')]")
+  expect(wrapper).toContain('pnpm run check:ci:coverage | Out-Host')
+  expect(wrapper.match(/pnpm run check:ci:coverage/g)).toHaveLength(1)
+  expect(wrapper).toContain("if ($Lane -eq 'coverage')")
+  expect(wrapper).toContain('required-$Lane-crash.log')
+})
