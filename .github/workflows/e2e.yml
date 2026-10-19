@@ -24,6 +24,11 @@ on:
         type: choice
         options: [launch, postmortem]
         default: launch
+      native_debugger_iterations:
+        description: Bounded complete native sequences, stopping on first failure (not retries)
+        type: choice
+        options: ['1', '8']
+        default: '1'
       diagnostic_node:
         description: Node version for manual keyless diagnostics only
         type: choice
@@ -301,7 +306,8 @@ jobs:
         shell: pwsh
         env:
           DSH_NATIVE_DEBUGGER_MODE: ${{ inputs.native_debugger_mode || 'launch' }}
-        run: ./scripts/capture-native-debugger.ps1 -Mode $env:DSH_NATIVE_DEBUGGER_MODE
+          DSH_NATIVE_DEBUGGER_ITERATIONS: ${{ inputs.native_debugger_iterations || '1' }}
+        run: ./scripts/capture-native-debugger.ps1 -Mode $env:DSH_NATIVE_DEBUGGER_MODE -Iterations $env:DSH_NATIVE_DEBUGGER_ITERATIONS
 
   real-api:
     if: github.event_name == 'workflow_dispatch' && inputs.real_api

@@ -14,6 +14,7 @@ it('keeps the original Windows debugger capture opt-in, keyless and separate fro
   }
   expect(workflow.on.workflow_dispatch.inputs.native_debugger?.default).toBe(false)
   expect(workflow.on.workflow_dispatch.inputs.native_debugger_mode?.default).toBe('launch')
+  expect(workflow.on.workflow_dispatch.inputs.native_debugger_iterations?.default).toBe('1')
   expect(workflow.jobs['native-debugger']?.if).toBe("github.event_name == 'workflow_dispatch' && inputs.runtime_diagnostics && inputs.native_debugger")
   expect(workflow.jobs['runtime-diagnostics']?.if).toContain('!inputs.native_debugger')
   for (const key of ['DEEPSEEK_API_KEY', 'SILICONFLOW_API_KEY', 'TYPESAFE_API_KEY', 'JEV_API_KEY']) {

@@ -1,5 +1,8 @@
 # Run the original native lane once, following forks and recording unhandled native stacks.
-param([ValidateSet('launch', 'postmortem')][string] $Mode = 'launch')
+param(
+  [ValidateSet('launch', 'postmortem')][string] $Mode = 'launch',
+  [ValidateRange(1, 8)][int] $Iterations = 1
+)
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $debugger = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Debuggers\x64\cdb.exe'
@@ -23,9 +26,11 @@ Invoke-WebRequest "https://nodejs.org/dist/$version/win-x64/node_pdb.7z" -OutFil
 if ($LASTEXITCODE -ne 0) { throw 'Cannot extract matching public Node symbols' }
 $node = (Get-Command node).Source
 $vitest = Join-Path $PWD 'node_modules\vitest\vitest.mjs'
-$report = Join-Path $env:RUNNER_TEMP 'native-debugger-result.json'
-$log = Join-Path $env:RUNNER_TEMP 'native-debugger.log'
-$console = Join-Path $env:RUNNER_TEMP 'native-debugger-console.log'
+for ($iteration = 1; $iteration -le $Iterations; $iteration++) {
+  Write-Host "Bounded native capture $iteration of $Iterations; stop on first failure"
+$report = Join-Path $env:RUNNER_TEMP "native-debugger-$iteration-result.json"
+$log = Join-Path $env:RUNNER_TEMP "native-debugger-$iteration.log"
+$console = Join-Path $env:RUNNER_TEMP "native-debugger-$iteration-console.log"
 $symbolPath = "$symbols;srv*$symbols*https://msdl.microsoft.com/download/symbols"
 $testArguments = @($vitest, 'run', '--no-file-parallelism', '--maxWorkers=2', '--testTimeout', '90000',
   '--reporter=default', '--reporter=json', "--outputFile.json=$report",
@@ -57,3 +62,4 @@ Write-Host "Native $Mode exit code: $nativeExitCode"
 if ($nativeExitCode -ne 0) { throw "Native $Mode failed: $nativeExitCode" }
 node scripts/verify-native-debugger-result.mjs $report $log $console
 if ($LASTEXITCODE -ne 0) { throw 'Native debugger result failed verification' }
+}
