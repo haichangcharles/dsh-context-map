@@ -13,12 +13,13 @@ it('keeps the original Windows debugger capture opt-in, keyless and separate fro
     jobs: Record<string, { if?: string; env?: Record<string, string>; steps: { run?: string }[] }>
   }
   expect(workflow.on.workflow_dispatch.inputs.native_debugger?.default).toBe(false)
+  expect(workflow.on.workflow_dispatch.inputs.native_debugger_mode?.default).toBe('launch')
   expect(workflow.jobs['native-debugger']?.if).toBe("github.event_name == 'workflow_dispatch' && inputs.runtime_diagnostics && inputs.native_debugger")
   expect(workflow.jobs['runtime-diagnostics']?.if).toContain('!inputs.native_debugger')
   for (const key of ['DEEPSEEK_API_KEY', 'SILICONFLOW_API_KEY', 'TYPESAFE_API_KEY', 'JEV_API_KEY']) {
     expect(workflow.jobs['native-debugger']?.env?.[key]).toBe('')
   }
-  expect(workflow.jobs['native-debugger']?.steps.some(step => step.run === './scripts/capture-native-debugger.ps1')).toBe(true)
+  expect(workflow.jobs['native-debugger']?.steps.some(step => step.run?.startsWith('./scripts/capture-native-debugger.ps1 -Mode '))).toBe(true)
 })
 
 it('keeps the pure Node reproduction opt-in and separate from project probes and dependency installation', () => {

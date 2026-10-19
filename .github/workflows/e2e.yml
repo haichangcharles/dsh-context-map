@@ -19,6 +19,11 @@ on:
         description: Capture the original Windows native lane under Microsoft CDB, including forks
         type: boolean
         default: false
+      native_debugger_mode:
+        description: Launch under CDB or attach only after an unhandled crash
+        type: choice
+        options: [launch, postmortem]
+        default: launch
       diagnostic_node:
         description: Node version for manual keyless diagnostics only
         type: choice
@@ -289,9 +294,14 @@ jobs:
           } else {
             pnpm install --frozen-lockfile
           }
+      - name: Verify postmortem registry restoration in private user keys
+        shell: pwsh
+        run: ./scripts/native-postmortem-registry.ps1 -SelfTest
       - name: Capture native exception stacks and verify all original cases
         shell: pwsh
-        run: ./scripts/capture-native-debugger.ps1
+        env:
+          DSH_NATIVE_DEBUGGER_MODE: ${{ inputs.native_debugger_mode || 'launch' }}
+        run: ./scripts/capture-native-debugger.ps1 -Mode $env:DSH_NATIVE_DEBUGGER_MODE
 
   real-api:
     if: github.event_name == 'workflow_dispatch' && inputs.real_api

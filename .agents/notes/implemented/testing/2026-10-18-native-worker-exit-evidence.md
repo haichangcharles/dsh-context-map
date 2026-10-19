@@ -24,6 +24,8 @@ The optional CLI phase `online` terminates on Node's startup event rather than w
 
 The separate opt-in `native_debugger=true` job runs the original four-file order under [Microsoft CDB](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/cdb-command-line-options), following child forks and recording only second-chance access violations with matching Node symbols. It preserves ordinary dependency installation and does not patch Vitest. The verifier checks both debugger and captured console streams, rejects unhandled errors, and requires all 68 original cases (67 passing, one skipped) across four unique files. An echoed debugger command is not an exception marker. This is stack capture, not a replacement for required CI or a claimed crash fix.
 
+If launch debugging changes timing, `native_debugger_mode=postmortem` runs Node normally and registers [AeDebug](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/enabling-postmortem-debugging) on the disposable runner. Only an unhandled crash starts CDB; `.jdinfo` restores the original exception context rather than continuing a transient fault. A `finally` block restores the original Debugger/Auto values and types, verifies restoration, and removes only its own newly created empty key. Both modes retain the same complete-report and console-error guards.
+
 The [explicit CI budget decision](2026-10-13-explicit-ci-api-budget.md) remains authoritative: this manual diagnostic requires `runtime_diagnostics=true`, clears model credentials, and leaves `real_api=false`. It grants no model authorization. This is additive diagnostic evidence and supersedes no existing test or budget decision.
 
 ## Alternatives considered

@@ -24,6 +24,8 @@ Windows 通过 [WER 按应用配置](https://learn.microsoft.com/en-us/windows/w
 
 单独主动选择 `native_debugger=true` 的任务在 [Microsoft CDB](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/cdb-command-line-options) 下按原顺序运行四个文件，跟踪子进程，并使用匹配的 Node 符号只记录第二次机会访问异常。它保留普通依赖安装方式，不修改 Vitest。校验器同时检查调试器日志和捕获的控制台输出，拒绝未处理错误，并要求四个不同文件中的原有 68 个用例完整存在（67 个通过、一个跳过）。回显的调试命令不算异常标记。这是堆栈捕获，不替代必需 CI，也不声称已修复崩溃。
 
+若启动时调试改变时序，`native_debugger_mode=postmortem` 会正常运行 Node，并在一次性运行器上注册 [AeDebug](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/enabling-postmortem-debugging)。仅未处理崩溃才启动 CDB；`.jdinfo` 恢复原始异常上下文，不通过继续执行来重现瞬时故障。`finally` 块恢复原有 Debugger/Auto 值及类型，校验恢复结果，并只移除自己新建且为空的键。两种模式保留相同的完整报告和控制台错误校验。
+
 [显式 CI 预算决策](2026-10-13-explicit-ci-api-budget.zh.md)继续有效：手动诊断要求 `runtime_diagnostics=true`，清空模型凭据，并保持 `real_api=false`。它不授予模型调用授权。此机制补充诊断证据，不替代既有测试或预算决定。
 ## Alternatives considered
 
