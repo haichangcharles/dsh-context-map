@@ -81,16 +81,20 @@ async function expectHeadlessStream(normalized: string, expectedPath: string): P
 }
 
 /** Serve one deterministic DeepSeek-compatible response while retaining its request body. */
-async function deepseekDefaultsServer(options: { waitForTitleRequest?: boolean } = {}): Promise<DeepSeekDefaultsServer> {
+async function deepseekDefaultsServer(options: {
+  waitForTitleRequest?: boolean
+  mainKeepAlives?: number
+} = {}): Promise<DeepSeekDefaultsServer> {
   const requests: JsonObject[] = []
   const server = createServer((request: IncomingMessage, response: ServerResponse) => {
     let body = ''
     request.setEncoding('utf8')
     request.on('data', (chunk: string) => { body += chunk })
     request.on('end', () => {
-      requests.push(JSON.parse(body) as JsonObject)
+      const requestBody = JSON.parse(body) as JsonObject
+      requests.push(requestBody)
       response.writeHead(200, { 'content-type': 'text/event-stream' })
-      let keepAlives = 3
+      let keepAlives = requestBody.max_tokens === 256_000 ? options.mainKeepAlives ?? 3 : 3
       const write = (): void => {
         // One-shot teardown may cancel background title work after the main response.
         if (keepAlives-- > 0
@@ -445,7 +449,8 @@ describe('headless stream-json snapshots', () => {
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)
 
   it('keeps provider comments alive and sends DeepSeek defaults through the one-shot app', async () => {
-    const server = await deepseekDefaultsServer()
+    // Twenty heartbeats still cross the fixture's 1000ms idle watchdog.
+    const server = await deepseekDefaultsServer({ waitForTitleRequest: true, mainKeepAlives: 20 })
     try {
       const result = await runLoaderSmoke({
         label: 'DeepSeek adapter defaults headless stream-json snapshot',
@@ -468,9 +473,15 @@ describe('headless stream-json snapshots', () => {
       })
 
       expect(result.stderr).toBe('')
-      expect(server.requests).toHaveLength(2)
+      const events = parseJsonl(result.stdout).map(record => record.event as JsonObject | undefined)
+      const retries = events.filter(event => event?.type === 'llm/retry')
+      const requestLimits = server.requests.map(request => request.max_tokens)
+      expect(retries, JSON.stringify({ requestLimits, retries })).toEqual([])
+      expect(server.requests, JSON.stringify(requestLimits)).toHaveLength(2)
       const agentRequest = server.requests.find(request => request.max_tokens === 256_000)
       const titleRequest = server.requests.find(request => request.max_tokens === 64)
+      expect(server.requests.filter(request => request.max_tokens === 256_000)).toHaveLength(1)
+      expect(server.requests.filter(request => request.max_tokens === 64)).toHaveLength(1)
       expect(agentRequest?.reasoning_effort).toBe('low')
       expect(titleRequest).toBeDefined()
       const header = (parseJsonl(result.stdout)
