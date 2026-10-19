@@ -1,0 +1,25 @@
+# Agent Note: Required Windows native crash evidence
+
+Status: implemented
+
+English | [中文](2026-10-19-required-native-crash-evidence.zh.md)
+
+## Problem
+
+A required Windows Vitest fork previously exited with access violation `0xC0000005`. Separate bounded diagnostics did not reproduce it. A later passing diagnostic does not fix or replace the failed required verdict. Capture must follow the actual required runner, Node selection, pnpm environment and test invocation.
+
+## Decision
+
+The required native job in [ci.yml](../../../../.github/workflows/ci.yml) calls [the native wrapper](../../../../scripts/run-windows-native.ps1). It preserves the original four files, `pnpm exec`, default reporter, serialization and timeout. It makes one attempt and propagates failure. No dependency, runtime flag, assertion or production behavior changes.
+
+On disposable GitHub-hosted Windows only, [debugger preparation](../../../../scripts/prepare-native-debugger.ps1) uses the official signed Microsoft SDK and matching public Node symbols. [AeDebug](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/enabling-postmortem-debugging) starts CDB only after an unhandled crash. `.jdinfo` selects the original exception context; the log contains a stack and module inventory, not a memory dump. A standalone fault marker also fails the wrapper even if the test command returned zero.
+
+The [registry owner](../../../../scripts/native-postmortem-registry.ps1) saves and restores only Debugger/Auto values with their original types and raw values, including case-insensitive names and unexpanded strings. Its `finally` restores settings after success, failure or partial setup. A six-case private HKCU fixture checks normal and throwing callbacks for absent keys, unrelated values and lowercase expanded-string/DWord settings. Self-hosted runners run the original test command without debugger setup or machine-registry changes. Model credential variables are blank for this keyless job.
+
+## Alternatives considered
+
+Retrying until green or changing Node/JIT/termination without a fault stack would obscure the cause. Running all tests under an attached debugger changes timing. Postmortem capture leaves normal execution uninstrumented until failure, but SDK/symbol availability is an additional hosted-runner dependency.
+
+## Consequences
+
+This is observability, not a claimed runtime repair. The original failure remains recorded. Native execution of the wrapper must be checked by the required CI itself; fixture and diagnostic passes cannot substitute for that result. No model API, training or paid workflow is authorized.

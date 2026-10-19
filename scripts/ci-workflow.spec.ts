@@ -236,7 +236,8 @@ describe('CI workflow', () => {
     const nativeTestCommands = nativeTestSteps.filter((step): step is Record<string, unknown> & { run: string } => (
       isRecord(step) && typeof step.run === 'string'
     ))
-    const nativeTestCommand = nativeTestCommands.map(step => step.run).join('\n')
+    expect(nativeTestCommands.some(step => step.run.startsWith('./scripts/run-windows-native.ps1 '))).toBe(true)
+    const nativeTestCommand = readFileSync(resolve(root, 'scripts/run-windows-native.ps1'), 'utf8')
     expect(nativeTestCommand).toContain('--no-file-parallelism')
     expect(nativeTestCommand).toContain('--testTimeout 90000')
     expect(nativeTestCommand).toContain('tool-pwsh/tests/loader.spec.ts')
