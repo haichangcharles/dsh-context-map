@@ -612,7 +612,9 @@ jobs:
       - name: Verify crash-capture registry restoration
         if: runner.environment == 'github-hosted'
         shell: pwsh
-        run: ./scripts/native-postmortem-registry.ps1 -SelfTest
+        run: |
+          ./scripts/native-postmortem-registry.ps1 -SelfTest
+          ./scripts/windows-process-exit-evidence.ps1 -SelfTest
       - name: Run Windows-specific native tests
         shell: pwsh
         env:

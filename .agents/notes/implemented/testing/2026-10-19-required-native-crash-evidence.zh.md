@@ -16,6 +16,8 @@ Status: implemented
 
 [注册表所有者](../../../../scripts/native-postmortem-registry.ps1)只保存、恢复 Debugger/Auto 的原类型及原始值，正确处理名称大小写和不展开的字符串。成功、失败或部分初始化后，`finally` 都恢复配置。私有 HKCU 六例替身分别以正常和抛错回调检查不存在的键、无关值、小写展开字符串及 DWord。Self-hosted runner 只运行原命令，不准备调试器或改变机器注册表。两个无密钥任务的模型凭据环境变量均为空，各通道使用独立诊断日志。
 
+Hosted 包装脚本还使用[操作系统进程退出通知](../../../../scripts/windows-process-exit-evidence.ps1)，在没有未处理异常堆栈时记录后代进程的数值退出状态。私有 CIM 订阅缓冲[进程启动](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/krnlprov/win32-processstarttrace)与[退出](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/krnlprov/win32-processstoptrace)事件；按系统时间排序，从包装进程PID确定归属并撤去复用PID的归属。日志只包含进程名、ID、时间和退出状态，不含参数、环境或内存转储。汇总明确属于尽力观察：延迟或缺失通知会漏记，最多解码50000条通知、保留32条非零退出详情，并记录省略数。测试中预期的非零子进程不会使成功命令失败。初始化或采集失败只警告，原回调仍只执行一次；所有路径均清理私有订阅和事件。纯替身检查归属、排序、PID复用、上限，以及部分初始化失败后回调的返回/抛错传播；实际CIM通知交付由Windows CI观察，替身不证明该行为。
+
 ## Alternatives considered
 
 反复重试直到通过，或未抓到栈就改变 Node/JIT/终止方式，会掩盖原因。全程附加调试器会改变时序；事后捕获在失败前不附加调试器，但增加了 hosted runner 对 SDK/符号可用性的依赖。

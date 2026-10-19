@@ -46,3 +46,17 @@ it('captures the original coverage command without narrowing its partitions or i
   expect(wrapper).toContain("if ($Lane -eq 'coverage')")
   expect(wrapper).toContain('required-$Lane-crash.log')
 })
+
+it('records owned OS exit metadata without instrumenting or retrying the original command', () => {
+  const wrapper = read('scripts/run-windows-native.ps1')
+  expect(wrapper).toContain('Invoke-WithProcessExitEvidence { Invoke-OriginalWindowsCheck }')
+  const observer = read('scripts/windows-process-exit-evidence.ps1')
+  expect(observer).toContain('Win32_ProcessStartTrace')
+  expect(observer).toContain('Win32_ProcessStopTrace')
+  expect(observer).toContain('Unregister-Event')
+  expect(observer).toContain('Remove-Event')
+  expect(observer).toContain('BestEffort = $true')
+  expect(observer).not.toMatch(/CommandLine|EnvironmentVariables|Start-Sleep|NODE_OPTIONS|Invoke-Expression/)
+  const workflow = read('.github/workflows/ci.yml')
+  expect(workflow).toContain('./scripts/windows-process-exit-evidence.ps1 -SelfTest')
+})

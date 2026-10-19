@@ -19,11 +19,12 @@ if ($CaptureCrash) {
   if ($env:DSH_EPHEMERAL_NATIVE_CAPTURE -cne '1') { throw 'Native crash capture requires an explicitly ephemeral runner' }
   $tools = & "$PSScriptRoot/prepare-native-debugger.ps1"
   . "$PSScriptRoot/native-postmortem-registry.ps1"
+  . "$PSScriptRoot/windows-process-exit-evidence.ps1"
   $log = Join-Path $env:RUNNER_TEMP "required-$Lane-crash.log"
   Set-Content -LiteralPath $log -Value ''
   $command = '"{0}" -p %ld -e %ld -nosqm -noshell -y "{1}" -logo "{2}" -c ".echo DSH_UNHANDLED_NATIVE_EXCEPTION;.jdinfo 0x%p;kv 32;lm;q"' -f $tools.Debugger, $tools.Symbols, $log
   try {
-    $nativeExitCode = Invoke-WithNativePostmortem ([Microsoft.Win32.Registry]::LocalMachine) 'SOFTWARE\Microsoft\Windows NT\CurrentVersion\AeDebug' $command { Invoke-OriginalWindowsCheck }
+    $nativeExitCode = Invoke-WithNativePostmortem ([Microsoft.Win32.Registry]::LocalMachine) 'SOFTWARE\Microsoft\Windows NT\CurrentVersion\AeDebug' $command { Invoke-WithProcessExitEvidence { Invoke-OriginalWindowsCheck } }
   } finally { Get-Content -LiteralPath $log }
   if ((Get-Content -LiteralPath $log -Raw) -match '(?m)^\s*DSH_UNHANDLED_NATIVE_EXCEPTION\s*$') { throw "Required $Lane lane captured an unhandled native fault" }
 } else {
