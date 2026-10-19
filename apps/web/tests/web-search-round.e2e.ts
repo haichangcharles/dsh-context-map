@@ -269,7 +269,7 @@ describe('web e2e: shipped default web search', () => {
     const searchTool = page.locator('[data-tool="web_search"]')
     await expandOwningTurnProcess(page, searchTool)
     await searchTool.waitFor({ timeout: 10_000 })
-    await waitForMessageContextControls(page, 1)
+    await waitForMessageContextControls(page, 2)
     await restoreFullWidthChat(page)
     const snapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(UI_EXPECTED, snapshot, MODE)

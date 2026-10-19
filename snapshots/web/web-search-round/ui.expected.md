@@ -39,6 +39,10 @@
   - img
 - button "Bad response":
   - img
+- button "natural context for SEARCH_DONE" [disabled]: Auto
+- button "include context for SEARCH_DONE": Use
+- button "exclude context for SEARCH_DONE": Skip
+- button "Locate SEARCH_DONE in Context Map": Map
 - button "Branch into a new conversation":
   - img
 - button "Ran for {{duration}}":
