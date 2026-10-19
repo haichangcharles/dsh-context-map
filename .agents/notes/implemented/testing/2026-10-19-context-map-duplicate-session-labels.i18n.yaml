@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/testing/2026-10-19-context-map-duplicate-session-labels.md
+2026-10-19-context-map-duplicate-session-labels.md: 3f999ca1c51ef94103994723454402d708a1a9cc
+2026-10-19-context-map-duplicate-session-labels.zh.md: 4e97d82681cc2fe21d83a05afac2152978f05d69

@@ -146,6 +146,85 @@ describe('review ownership and bounded confirmation', () => {
     await expect(b.controller.applyRecommendations()).rejects.toThrow('stale')
     expect(b.transport.setNodeModes).not.toHaveBeenCalled()
   })
+  it('refreshes an already-loaded graph and Plan before sending one review', async () => {
+    const b = bench()
+    await b.controller.refresh()
+    b.state.revision = 'graph-2'
+    b.state.view = { ...b.state.view, plan: { ...b.state.view.plan, revision: 2 } }
+    b.state.proposal = { ...b.state.proposal, base: { ...b.state.proposal.base, planRevision: 2, graphRevision: 'graph-2' } }
+    await b.controller.recommend('fast', 'Review the archived family', true)
+    expect(b.transport.recommend).toHaveBeenCalledExactlyOnceWith(
+      b.state.proposal.base, 'Review the archived family', 'fast', true)
+    expect(b.controller.getSnapshot().recommendation.phase).toBe('ready')
+  })
+
+  it('does not dispatch from a retained graph when the fresh read fails', async () => {
+    const b = bench()
+    await b.controller.refresh()
+    b.transport.get.mockRejectedValueOnce(new Error('family unavailable'))
+    await expect(b.controller.recommend()).rejects.toThrow('family unavailable')
+    expect(b.controller.getSnapshot().graph).toBeDefined()
+    expect(b.transport.recommend).not.toHaveBeenCalled()
+  })
+
+  it('does not resurrect a review cleared while its fresh read is pending', async () => {
+    const b = bench()
+    await b.controller.refresh()
+    const read = Promise.withResolvers<ContextifyView>()
+    b.transport.get.mockImplementationOnce(() => read.promise)
+    const refresh = b.controller.refresh()
+    const review = b.controller.recommend('fast', 'Obsolete draft', true)
+    b.controller.clearRecommendation()
+    read.resolve(b.state.view)
+    await Promise.all([refresh, review])
+    expect(b.transport.recommend).not.toHaveBeenCalled()
+    expect(b.controller.getSnapshot().recommendation.phase).toBe('idle')
+  })
+
+  it('dispatches only the newest review waiting for the same fresh graph', async () => {
+    const b = bench()
+    await b.controller.refresh()
+    const read = Promise.withResolvers<ContextifyView>()
+    b.transport.get.mockImplementationOnce(() => read.promise)
+    const refresh = b.controller.refresh()
+    const earlier = b.controller.recommend('local', 'Earlier draft', true)
+    const latest = b.controller.recommend('fast', 'Latest draft', true)
+    read.resolve(b.state.view)
+    await Promise.all([refresh, earlier, latest])
+    expect(b.transport.recommend).toHaveBeenCalledExactlyOnceWith(
+      b.state.proposal.base, 'Latest draft', 'fast', true)
+  })
+
+  it('refuses a review while a Plan mutation is pending', async () => {
+    const b = bench()
+    await b.controller.refresh()
+    const write = Promise.withResolvers<ContextifyView>()
+    b.transport.reset.mockImplementationOnce(() => write.promise)
+    const mutation = b.controller.reset()
+    const review = expect(b.controller.recommend()).rejects.toThrow('already pending')
+    write.resolve(b.state.view)
+    await Promise.all([review, mutation])
+    expect(b.transport.recommend).not.toHaveBeenCalled()
+  })
+
+  it('refuses a review when a mutation takes ownership during the fresh read', async () => {
+    const b = bench()
+    await b.controller.refresh()
+    const read = Promise.withResolvers<ContextifyView>()
+    const write = Promise.withResolvers<ContextifyView>()
+    b.transport.get.mockImplementationOnce(() => read.promise)
+    b.transport.reset.mockImplementationOnce(() => write.promise)
+    const refresh = b.controller.refresh()
+    const mutation = b.controller.reset()
+    const review = expect(b.controller.recommend()).rejects.toThrow('already pending')
+    read.resolve(b.state.view)
+    await refresh
+    await review
+    write.resolve(b.state.view)
+    await mutation
+    expect(b.transport.recommend).not.toHaveBeenCalled()
+  })
+
   it('waits for the current load and forbids a second running recommendation', async () => {
     const b = bench()
     const read = Promise.withResolvers<ContextifyView>()
@@ -177,6 +256,7 @@ describe('review ownership and bounded confirmation', () => {
     const result = Promise.withResolvers<ContextRecommendationProposal>()
     b.transport.recommend.mockImplementationOnce(() => result.promise)
     const review = b.controller.recommend()
+    await vi.waitFor(() => { expect(b.transport.recommend).toHaveBeenCalledTimes(1) })
     b.controller.clearRecommendation()
     if (settlement === 'resolve') result.resolve(b.state.proposal)
     else result.reject(new Error('obsolete classifier'))
@@ -284,6 +364,7 @@ describe('review ownership and bounded confirmation', () => {
     const result = Promise.withResolvers<ContextRecommendationProposal>()
     b.transport.recommend.mockImplementationOnce(() => result.promise)
     const review = b.controller.recommend('deep')
+    await vi.waitFor(() => { expect(b.transport.recommend).toHaveBeenCalledTimes(1) })
     await b.controller.cancelRecommendation()
     result.resolve(b.state.proposal)
     await review
@@ -296,6 +377,7 @@ describe('review ownership and bounded confirmation', () => {
     const result = Promise.withResolvers<ContextRecommendationProposal>()
     b.transport.recommend.mockImplementationOnce(() => result.promise)
     const review = b.controller.recommend('deep')
+    await vi.waitFor(() => { expect(b.transport.recommend).toHaveBeenCalledTimes(1) })
     b.transport.cancelRecommendation.mockRejectedValueOnce(failure)
     await expect(b.controller.cancelRecommendation()).rejects.toBe(failure)
     expect(b.controller.getSnapshot().recommendation).toMatchObject({ phase: 'error', mode: 'deep', error: failure instanceof Error ? failure.message : failure })
@@ -311,6 +393,7 @@ describe('review ownership and bounded confirmation', () => {
     b.transport.recommend.mockImplementationOnce(() => result.promise)
     b.transport.cancelRecommendation.mockImplementationOnce(() => cancelGate.promise)
     const review = b.controller.recommend('deep')
+    await vi.waitFor(() => { expect(b.transport.recommend).toHaveBeenCalledTimes(1) })
     const cancel = b.controller.cancelRecommendation()
     const observed = cancel.catch((error: unknown) => error)
     b.controller.clearRecommendation()

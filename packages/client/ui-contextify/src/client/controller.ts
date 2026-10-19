@@ -183,7 +183,8 @@ export class ContextifyController {
   async redo(): Promise<void> { await this.mutate(ref => this.transport.redo(ref)) }
 
   /**
-   * Run an isolated, review-only Context recommendation against the current revision.
+   * Run an isolated, review-only Context recommendation after a fresh graph read.
+   * A newer preflight or clear discards an undispatched request; pending writes and failed reads refuse review.
    * @param mode - Manually selected Local, bounded Fast, or full-tree Deep review.
    * @param objective - Optional review objective forwarded to the isolated Agent.
    * @param draftBound - Whether the review must remain bound to the current unsent draft.
@@ -193,19 +194,21 @@ export class ContextifyController {
     if (this.snapshot.recommendation.phase === 'running') {
       throw new Error('Context recommendation is already running')
     }
-    if (this.refreshPromise !== undefined) await this.refreshPromise
-    if (this.snapshot.view === undefined || this.snapshot.graph === undefined) await this.refresh()
-    const { view, graph, graphRevision } = this.snapshot
-    if (view === undefined || graph === undefined || graphRevision === undefined) {
-      // A failed initial load always publishes its error; loaded graphs are retained.
-      throw new Error(this.snapshot.error)
+    if (this.snapshot.pending) throw new Error('Context Map mutation is already pending')
+    const request = ++this.recommendationRequest
+    await this.refresh()
+    if (request !== this.recommendationRequest) return
+    const snapshot = this.getSnapshot()
+    if (snapshot.pending) throw new Error('Context Map mutation is already pending')
+    const { view, graph, graphRevision } = snapshot
+    if (snapshot.phase !== 'ready' || view === undefined || graph === undefined || graphRevision === undefined) {
+      throw new Error(snapshot.error)
     }
     const base: ContextRecommendationBase = Object.freeze({
       planRevision: view.plan.revision,
       graphRevision,
       activeSessionId: graph.activeSessionId,
     })
-    const request = ++this.recommendationRequest
     this.publish({ ...this.snapshot, recommendation: Object.freeze({ phase: 'running', mode }) })
     try {
       const proposal = await this.transport.recommend(base, objective, mode, draftBound)

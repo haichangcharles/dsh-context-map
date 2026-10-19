@@ -1192,7 +1192,7 @@ describe('ContextifyController', () => {
     const controller = new ContextifyController(transport)
     await controller.refresh()
     const recommending = controller.recommend()
-    expect(controller.getSnapshot().recommendation.phase).toBe('running')
+    await vi.waitFor(() => { expect(controller.getSnapshot().recommendation.phase).toBe('running') })
     const proposal = {
       mode: 'fast' as const,
       base: { planRevision: 3, graphRevision: 'family-20', activeSessionId: child },
@@ -1306,7 +1306,7 @@ describe('ContextifyController', () => {
     await controller.refresh()
 
     const recommendation = controller.recommend('deep')
-    expect(controller.getSnapshot().recommendation).toEqual({ phase: 'running', mode: 'deep' })
+    await vi.waitFor(() => { expect(controller.getSnapshot().recommendation).toEqual({ phase: 'running', mode: 'deep' }) })
     expect(transport.recommend).toHaveBeenCalledWith(
       { planRevision: 3, graphRevision: 'family-20', activeSessionId: child },
       undefined,
