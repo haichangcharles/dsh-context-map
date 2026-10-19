@@ -15,6 +15,10 @@ on:
         type: boolean
         required: false
         default: false
+      native_debugger:
+        description: Capture the original Windows native lane under Microsoft CDB, including forks
+        type: boolean
+        default: false
       diagnostic_node:
         description: Node version for manual keyless diagnostics only
         type: choice
@@ -74,7 +78,7 @@ jobs:
         run: pnpm run test:web:built
 
   runtime-diagnostics:
-    if: github.event_name == 'workflow_dispatch' && inputs.runtime_diagnostics
+    if: github.event_name == 'workflow_dispatch' && inputs.runtime_diagnostics && !inputs.native_debugger
     strategy:
       fail-fast: false
       matrix:
@@ -248,6 +252,46 @@ jobs:
           --testTimeout=90000 --coverage
           --coverage.include='packages/subprocess/subprocess-local/src/**'
           --coverage.reportsDirectory=coverage/runtime-diagnostics
+
+  native-debugger:
+    if: github.event_name == 'workflow_dispatch' && inputs.runtime_diagnostics && inputs.native_debugger
+    runs-on: windows-2025
+    name: keyless original Windows native lane / CDB
+    timeout-minutes: 20
+    env:
+      DEEPSEEK_API_KEY: ''
+      SILICONFLOW_API_KEY: ''
+      OPENAI_API_KEY: ''
+      TYPESAFE_API_KEY: ''
+      JEV_API_KEY: ''
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Enable Windows symlink support
+        shell: pwsh
+        run: >-
+          reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
+          /t REG_DWORD /f /v "AllowDevelopmentWithoutDevLicense" /d "1"
+      - uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm-native-debugger
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24.21.0'
+      - name: Install with the original native lane filesystem policy
+        shell: pwsh
+        run: >-
+          $drive = (Split-Path -Qualifier $env:GITHUB_WORKSPACE).TrimEnd(':');
+          $fs = (Get-Volume -DriveLetter $drive).FileSystem;
+          if ($fs -eq 'ReFS') {
+            corepack pnpm install --frozen-lockfile --package-import-method=clone
+          } else {
+            pnpm install --frozen-lockfile
+          }
+      - name: Capture native exception stacks and verify all original cases
+        shell: pwsh
+        run: ./scripts/capture-native-debugger.ps1
 
   real-api:
     if: github.event_name == 'workflow_dispatch' && inputs.real_api

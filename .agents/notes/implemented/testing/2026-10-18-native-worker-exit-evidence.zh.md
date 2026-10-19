@@ -22,6 +22,8 @@ Windows 通过 [WER 按应用配置](https://learn.microsoft.com/en-us/windows/w
 
 `worker_import_probe=cancel-case` 使用 Vitest 的 `repeats` 机制，将既有“取消后 worker 死亡”原生用例执行 32 次，不重试或修改断言。[项目配置包装](../../../../scripts/native-worker-repro.config.mjs)保留仓库的初始化文件，仅选择[诊断 runner](../../../../scripts/worker-death-repeats.ts)。[API 入口](../../../../scripts/reproduce-worker-death.mjs)要求恰好一个通过的选中用例、`repeatCount=31` 且没有未处理错误；目标改名或缺失时失败。它缩小到已观察 Windows 故障中最后未完成的状态转换，但不证明该转换导致崩溃。
 
+单独主动选择 `native_debugger=true` 的任务在 [Microsoft CDB](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/cdb-command-line-options) 下按原顺序运行四个文件，跟踪子进程，并使用匹配的 Node 符号只记录第二次机会访问异常。它保留普通依赖安装方式，不修改 Vitest。校验器同时检查调试器日志和捕获的控制台输出，拒绝未处理错误，并要求四个不同文件中的原有 68 个用例完整存在（67 个通过、一个跳过）。回显的调试命令不算异常标记。这是堆栈捕获，不替代必需 CI，也不声称已修复崩溃。
+
 [显式 CI 预算决策](2026-10-13-explicit-ci-api-budget.zh.md)继续有效：手动诊断要求 `runtime_diagnostics=true`，清空模型凭据，并保持 `real_api=false`。它不授予模型调用授权。此机制补充诊断证据，不替代既有测试或预算决定。
 ## Alternatives considered
 
