@@ -22,6 +22,24 @@ function append(session: Session, text: string) {
   session.append('turn/end', { turn, reason: { kind: 'completed' } })
 }
 
+function installJevFixture() {
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+    expect(url).toBe('https://api.typesafe.ai/v1/systemone')
+    if (typeof init?.body !== 'string') throw new Error('Expected fixture request body')
+    const body = JSON.parse(init.body) as { questions: Record<string, {
+      type: string
+      instructions: string
+      criteria?: Record<string, string>
+    }> }
+    return Response.json({ model: 'jev-1.13.0', answers: Object.fromEntries(Object.entries(body.questions).map(([key, q]) => {
+      if (q.type === 'noul') return [key, { type: 'noul', noul: key === 'wholeTask'
+        || key.startsWith('n') && q.instructions.includes('"baseIncluded":true') ? 1 : .05 }]
+      const choice = q.criteria?.p0 === undefined ? 'active' : 'p0'
+      return [key, { type: 'choice', choice, probabilities: { [choice]: 1 } }]
+    })) as Record<string, unknown> })
+  })
+}
+
 it('restores selected native logs with original approval references and reversible policy eligibility', async () => {
   const b = await lineageHarness()
   let restoreFetch = () => {}
@@ -41,21 +59,7 @@ it('restores selected native logs with original approval references and reversib
       yield* textResponse(JSON.stringify({ goal: 'Continue writing', retention: 'task-owned',
         assignment: 'existing', sessionId: child.id }))
     }
-    const fetcher = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
-      expect(url).toBe('https://api.typesafe.ai/v1/systemone')
-      if (typeof init?.body !== 'string') throw new Error('Expected fixture request body')
-      const body = JSON.parse(init.body) as { questions: Record<string, {
-        type: string
-        instructions: string
-        criteria?: Record<string, string>
-      }> }
-      return Response.json({ model: 'jev-1.13.0', answers: Object.fromEntries(Object.entries(body.questions).map(([key, q]) => {
-        if (q.type === 'noul') return [key, { type: 'noul', noul: key === 'wholeTask'
-          || key.startsWith('n') && q.instructions.includes('"baseIncluded":true') ? 1 : .05 }]
-        const choice = q.criteria?.p0 === undefined ? 'active' : 'p0'
-        return [key, { type: 'choice', choice, probabilities: { [choice]: 1 } }]
-      })) as Record<string, unknown> })
-    })
+    const fetcher = installJevFixture()
     restoreFetch = () => { fetcher.mockRestore() }
     const page = await b.ctx.contextify.familyPage(child)
     const proposal = await b.ctx.contextify.recommend(child, { activeSessionId: child.id,
@@ -195,21 +199,7 @@ it('keeps repeated request prefixes separate from unresolved attempts and cross-
         assignment: 'existing', sessionId: destination.id }))
     }
     b.adapter.stream = stream
-    const fetcher = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
-      expect(url).toBe('https://api.typesafe.ai/v1/systemone')
-      if (typeof init?.body !== 'string') throw new Error('Expected fixture request body')
-      const body = JSON.parse(init.body) as { questions: Record<string, {
-        type: string
-        instructions: string
-        criteria?: Record<string, string>
-      }> }
-      return Response.json({ model: 'jev-1.13.0', answers: Object.fromEntries(Object.entries(body.questions).map(([key, q]) => {
-        if (q.type === 'noul') return [key, { type: 'noul', noul: key === 'wholeTask'
-          || key.startsWith('n') && q.instructions.includes('"baseIncluded":true') ? 1 : .05 }]
-        const choice = q.criteria?.p0 === undefined ? 'active' : 'p0'
-        return [key, { type: 'choice', choice, probabilities: { [choice]: 1 } }]
-      })) as Record<string, unknown> })
-    })
+    const fetcher = installJevFixture()
     restoreFetch = () => { fetcher.mockRestore() }
     const recommend = async () => {
       const page = await b.ctx.contextify.familyPage(source)
