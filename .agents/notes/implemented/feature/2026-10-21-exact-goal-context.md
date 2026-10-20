@@ -10,13 +10,15 @@ A complete task-preservation request and a per-source relevance review serve dif
 
 ## Decision
 
-The optional `goal-model-native` Fast reviewer uses the existing Goal request and validated categorical assignment, then the native ownership/lineage resolver, route planner and Context compiler. It makes at most one chat-model request, resolves no Jev credential and sends no Jev request. Unit route values encode categories, not provider confidence. Default and existing reviewer behavior remain unchanged.
+The optional `goal-model-native` Fast reviewer uses the existing Goal request and validated categorical assignment, then the native ownership/lineage resolver, route planner and Context compiler. It makes at most one chat-model request, resolves no Jev credential and sends no Jev request. Unit route values encode categories, not provider confidence. The default reviewer and existing Goal+Jev source-exception semantics are unchanged.
 
 Only complete task-owned or task-lineage policies proceed. Unknown or relevance policies, unavailable provenance and recognized individual-source exception requests abstain. Natural-language exception recognition remains model-dependent; an incorrectly classified task-owned result still preserves that complete base. A new task-owned branch has empty history; its parent determines placement. Other destinations require the same exact draft accepted by the route planner. Missing, empty or truncated drafts cannot authorize a new-task scope without its Branch.
 
 The Host retains the initial complete base independently of later planning. Before publishing it checks the final set, unavailable destinations and selected replacements. A manual choice or route conflict cannot silently weaken the exact scope. Approval, cancellation, stale-state validation and existing Undo/reset evidence remain authoritative. There is no new event, memory store, model provider, permission or preference weight.
 
 The method borrows the operation-first decomposition from [SOM-DST](https://aclanthology.org/2020.acl-main.53/); it does not use its neural tracker or claim replication. The reusable implementation is the existing native product service.
+
+The shared Goal input discloses a positive omitted-task count when the existing eight-candidate cap hides other native tasks. Both Goal reviewers receive the partial-inventory instruction. This retains the existing slate and legal IDs; it does not recover an omitted destination or certify that the model will abstain correctly. A missing count in a legacy packet is not proof of global completeness.
 
 ## Alternatives considered
 

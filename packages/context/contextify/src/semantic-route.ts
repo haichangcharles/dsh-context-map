@@ -36,6 +36,8 @@ export interface ContextActionPacket {
   readonly explicitIntent: ContextRouteIntent
   readonly parentSessionId?: SessionId
   readonly candidates: readonly ContextActionCandidate[]
+  /** Positive count of native non-active tasks omitted by the bounded candidate slate. */
+  readonly omittedTaskCount?: number
   /** Owned evidence for the active task, separate from inherited Context. */
   readonly activeTask?: ContextActionCandidate
   /** Confirmed historical route examples; target IDs here do not authorize current actions. */
@@ -91,8 +93,9 @@ export function buildContextActionPacket(input: {
     ancestorRanks.set(parentId, ancestorRanks.size)
     parentId = input.graph.sessions.find(session => session.id === parentId)?.parentSessionId
   }
-  const candidates = [...buildContextRouteCandidates(input)]
+  const available = [...buildContextRouteCandidates(input)]
     .sort((a, b) => (ancestorRanks.get(a.sessionId) ?? Infinity) - (ancestorRanks.get(b.sessionId) ?? Infinity))
+  const candidates = available
     .slice(0, CONTEXT_ACTION_MAX_SESSIONS)
     .map((candidate) => {
       const card = buildTaskCard(candidate, input.graph, input.contents, input.objective)
@@ -129,6 +132,7 @@ export function buildContextActionPacket(input: {
     explicitIntent: draftRouteIntent(input.objective),
     ...(active?.parentSessionId === undefined ? {} : { parentSessionId: active.parentSessionId }),
     candidates: Object.freeze(candidates),
+    ...(available.length > candidates.length ? { omittedTaskCount: available.length - candidates.length } : {}),
     ...(activeTask === undefined ? {} : { activeTask }),
   })
 }

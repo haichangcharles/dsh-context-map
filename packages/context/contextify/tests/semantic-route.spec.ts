@@ -47,6 +47,12 @@ describe('bounded semantic Context actions', () => {
     const value = buildContextActionPacket({ graph: many, contents: {}, objective: 'A separate task', base })
     expect(value.candidates).toHaveLength(8)
     expect(value.candidates[0]?.sessionId).toBe(main)
+    expect(value.omittedTaskCount).toBe(6)
+    expect(packet.omittedTaskCount).toBeUndefined()
+    const boundary = buildContextActionPacket({ graph: { ...many, sessions: many.sessions.slice(0, 9) },
+      contents: {}, objective: 'A separate task', base })
+    expect(boundary.candidates).toHaveLength(8)
+    expect(boundary.omittedTaskCount).toBeUndefined()
   })
 
   it('creates a sibling beneath a scored native parent instead of resuming that parent', () => {

@@ -39,6 +39,21 @@ it('provides native tasks and confirmed route examples without asking the model 
   expect(data.policy).toContain('services separate')
   expect(JSON.stringify(data)).toContain('Find a hotel.')
 })
+it('discloses omitted tasks without making their IDs valid route destinations', () => {
+  const partial = { ...packet, omittedTaskCount: 6 }
+  for (const exact of [false, true]) {
+    const result = buildGoalRouteInput(partial, '', exact)
+    expect(JSON.parse(result.userText)).toMatchObject({ omittedTaskCount: 6 })
+    expect(result.system).toContain('The supplied task inventory is partial')
+    expect(result.system).toContain('Absence from this inventory does not establish a new task')
+    expect(result.system).toContain('Choose assignment=unknown if deciding new versus existing would depend on an omitted task.')
+    expect(() => parseGoalRouteText(JSON.stringify({ ...assignment, sessionId: 'omitted-task' }), partial))
+      .toThrow('outside its task inventory')
+  }
+  const ordinary = buildGoalRouteInput(packet, '')
+  expect(JSON.parse(ordinary.userText)).not.toHaveProperty('omittedTaskCount')
+  expect(ordinary.system).not.toContain('The supplied task inventory is partial')
+})
 it('passes the exact bounded management projection as historical data without adding route authority', () => {
   const managementMemory = buildManagementMemory(Array.from({ length: 4 }, (_, at) => ({
     action: 'branch', choice: 'accept', origin: 'manual-action', branchDepth: 1, at,

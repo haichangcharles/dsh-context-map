@@ -17,6 +17,52 @@ function append(session: Session, text: string) {
   session.append('turn/end', { turn, reason: { kind: 'completed' } })
 }
 
+it('logs omitted task count through the real Loader without granting omitted routes', async () => {
+  const scaffold = await launchWebScaffold()
+  try {
+    const settings = scaffold.ctx.contextify as unknown as { promptSettings: () => ContextifyPromptSettings }
+    settings.promptSettings = () => ({ ...CONTEXTIFY_DEFAULT_SETTINGS, fastDecisionProvider: 'goal-model-native',
+      automaticBranchReview: false })
+    const root = (await scaffold.ctx.agents.create({ sessionId: SessionId('inventory-root'),
+      agentOptions: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } })).agent
+    append(root.session, 'Root planning task.')
+    const seed = root.session.snapshotEvents()
+    let active = root
+    for (let index = 0; index < 9; index++) {
+      active = (await scaffold.ctx.agents.create({ sessionId: SessionId(`inventory-${index}`), seed,
+        inheritedEventCount: SessionLogOffset(seed.length), meta: { parentSession: root.id, isSeeded: true },
+        agentOptions: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } })).agent
+      append(active.session, `Separate planning task ${index}.`)
+    }
+    let calls = 0
+    scaffold.ctx.on('llm/stream', (): AsyncIterable<StreamChunk> => {
+      calls++
+      const text = '{"goal":"Unidentified continuation","assignment":"unknown","sessionId":null,"retention":"unknown"}'
+      return (async function* () {
+        yield { type: 'block-start', index: 0, blockType: 'text' }
+        yield { type: 'text-delta', index: 0, text }
+        yield { type: 'block-end', index: 0, block: { type: 'text', text } }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+      })()
+    }, { global: true, prepend: true })
+    const page = await scaffold.ctx.contextify.familyPage(active)
+    const before = scaffold.ctx.contextify.get(active).plan
+    const result = await scaffold.ctx.contextify.recommend(active,
+      { activeSessionId: active.id, graphRevision: page.revision, planRevision: before.revision },
+      'Continue the earlier planning work.', 'fast', true)
+    const requests = active.session.snapshotEvents().filter(event => event.type === 'contextify/recommendation-request')
+    expect(requests).toHaveLength(1)
+    const input = JSON.parse(requests[0]!.data.userText) as { omittedTaskCount: number; tasks: unknown[] }
+    expect(input.omittedTaskCount).toBe(1)
+    expect(input.tasks).toHaveLength(9)
+    expect(requests[0]!.data.system).toContain('The supplied task inventory is partial')
+    expect(result.route).toBeUndefined()
+    expect(result.selection).toEqual([])
+    expect(scaffold.ctx.contextify.get(active).plan).toEqual(before)
+    expect(calls).toBe(1)
+  } finally { await scaffold.close() }
+})
+
 it.each(['goal-model-jev', 'goal-model-native'] as const)('reviews a new sibling task in the browser with %s and applies native parent Context', async (provider) => {
   const scaffold = await launchWebScaffold()
   let browser: Browser | undefined
