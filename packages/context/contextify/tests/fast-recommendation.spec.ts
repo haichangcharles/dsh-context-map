@@ -331,6 +331,18 @@ describe('Fast Context recommendation routing', () => {
     expect(input.preferenceExamples[1]?.weight).toBe(0.5)
   })
 
+  it('carries known historical ownership without inventing it for legacy examples', () => {
+    const graph = fixture()
+    const edits = [
+      { objective: 'camera', content: 'shared constraint', mode: 'include' as const,
+        onActiveBranch: true, ownerRelation: 'ancestor-task' as const },
+      { objective: 'camera', content: 'legacy example', mode: 'exclude' as const },
+    ]
+    const input = buildFastRecommendationInput({ graph, contents: {}, objective: 'camera',
+      effectiveIncludedNodeIds: [], explicitIncludedNodeIds: [], explicitExcludedNodeIds: [], preferenceEdits: edits })
+    expect(input.preferenceExamples).toEqual(edits)
+  })
+
   it('preserves fractional review weight when a confirmed multi-item choice enters the packet', () => {
     const graph = fixture()
     const input = buildFastRecommendationInput({ graph, contents: {},

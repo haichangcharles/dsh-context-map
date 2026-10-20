@@ -1,7 +1,7 @@
 /** Bounded candidate-routing preference from reviewed Context Map choices. */
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { ContextRecommendationDecision } from './recommendation.ts'
-import type { ContextFamilyGraph, ContextFamilyInspection } from './types.ts'
+import type { ContextFamilyGraph, ContextFamilyGraphNode, ContextFamilyInspection } from './types.ts'
 import { jaccardOverlap } from './lexical-tokens.ts'
 import { contextPlanFeedbackStates } from './plan.ts'
 import { contextReviewFeedback } from './context-review-feedback.ts'
@@ -26,6 +26,8 @@ export interface PersonalContextEdit {
   readonly webAction?: 'web_search' | 'web_fetch'
   /** Whether the edited node was on the Session path where the edit occurred. */
   readonly onActiveBranch?: boolean
+  /** Proven native source owner relative to the Session where this choice occurred. */
+  readonly ownerRelation?: 'local-task' | 'ancestor-task' | 'other-task'
   /** Accepted items from one review contribute at most one total edit weight. */
   readonly weight?: number
 }
@@ -47,7 +49,31 @@ export interface PersonalContextPlanExample {
     readonly speakerRole?: 'user' | 'assistant' | 'tool'
     readonly webAction?: 'web_search' | 'web_fetch'
     readonly onActiveBranch: boolean
+    /** Native ownership, distinct from inherited path membership; omitted when unverified. */
+    readonly ownerRelation?: PersonalContextEdit['ownerRelation']
   }[]
+}
+
+/** Resolve original ownership without interpreting current UI parent collapsing as history. */
+function historicalOwnerRelation(
+  node: ContextFamilyGraphNode,
+  edited: ContextFamilyInspection,
+  inspections: ReadonlyMap<SessionId, ContextFamilyInspection>,
+): PersonalContextEdit['ownerRelation'] {
+  const owner = inspections.get(node.owner.sessionId)
+  // A canonical owner can be a child fallback for an unverified copied prefix.
+  if (owner === undefined || node.owner.seq < owner.inheritedEventCount
+    || owner.events[node.owner.seq] === undefined) return undefined
+  let cursor = edited
+  const visited = new Set<SessionId>([cursor.meta.id])
+  while (cursor.meta.parentSession !== undefined) {
+    const parent = inspections.get(cursor.meta.parentSession)
+    if (parent === undefined || visited.has(parent.meta.id)) return undefined
+    visited.add(parent.meta.id)
+    cursor = parent
+  }
+  return edited.meta.id === owner.meta.id ? 'local-task'
+    : visited.has(owner.meta.id) ? 'ancestor-task' : 'other-task'
 }
 
 interface ChangedSelection {
@@ -273,6 +299,7 @@ export function contextEditEvidenceFromFamily(
         if (node === undefined) continue
         const content = node.preview.slice(0, 500)
         if (content.trim().length === 0) continue
+        const ownerRelation = historicalOwnerRelation(node, inspection, inspections)
         edits.push({
           time: event.time, sessionId: String(inspection.meta.id), seq: event.seq,
           edit: { objective: bounded, content, mode: choice.mode,
@@ -281,6 +308,7 @@ export function contextEditEvidenceFromFamily(
             speakerRole: node.role,
             ...(node.webAction === undefined ? {} : { webAction: node.webAction }),
             onActiveBranch: node.sessionIds.includes(inspection.meta.id),
+            ...(ownerRelation === undefined ? {} : { ownerRelation }),
             ...(event.type === 'contextify/recommendation-reviewed'
               || event.data.origin === 'recommendation' ? { weight: choice.weight } : {}) },
         })
@@ -369,12 +397,14 @@ export function contextPlanExamplesFromFamily(
       const choices = selection.flatMap((choice) => {
         const node = nodeById.get(choice.nodeId)
         if (node === undefined || node.preview.trim().length === 0) return []
+        const ownerRelation = historicalOwnerRelation(node, inspection, inspections)
         return [{ content: node.preview.slice(0, 500), action: choice.action,
           beforeIncluded: choice.beforeIncluded, afterIncluded: choice.afterIncluded,
           ...(node.sourceKind === undefined ? {} : { sourceKind: node.sourceKind }),
           speakerRole: node.role,
           ...(node.webAction === undefined ? {} : { webAction: node.webAction }),
-          onActiveBranch: node.sessionIds.includes(inspection.meta.id) }]
+          onActiveBranch: node.sessionIds.includes(inspection.meta.id),
+          ...(ownerRelation === undefined ? {} : { ownerRelation }) }]
       })
       if (choices.length !== selection.length) continue
       examples.push({ time: event.time, sessionId: String(inspection.meta.id), seq: event.seq,

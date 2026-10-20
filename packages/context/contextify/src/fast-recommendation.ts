@@ -142,6 +142,7 @@ function preferenceExamples(
     ...(edit.speakerRole === undefined ? {} : { speakerRole: edit.speakerRole }),
     ...(edit.webAction === undefined ? {} : { webAction: edit.webAction }),
     ...(edit.onActiveBranch === undefined ? {} : { onActiveBranch: edit.onActiveBranch }),
+    ...(edit.ownerRelation === undefined ? {} : { ownerRelation: edit.ownerRelation }),
   })] : []))
 }
 

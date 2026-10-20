@@ -38,7 +38,14 @@ it('reviews a new sibling task in the browser, preserves its draft and applies n
       agentOptions: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } })).agent
     append(hotel.session, 'HOTEL_ONLY: lodging preferences.')
     scaffold.ctx.sessionTitle.rename(hotel.session, 'Hotel task fixture')
+    const records = (await scaffold.ctx.contextify.familyPage(hotel)).records
+    for (const [ownerId, mode] of [[root.id, 'exclude'], [root.id, 'natural'], [hotel.id, 'exclude']] as const) {
+      const source = records.find(node => node.owner.sessionId === ownerId && node.role === 'user')!
+      await scaffold.ctx.contextify.setNodeMode(hotel,
+        { revision: scaffold.ctx.contextify.get(hotel).plan.revision }, source.owner, mode, 'contextify-client')
+    }
     let modelCalls = 0, jevCalls = 0
+    let observedExamples: unknown[] | undefined
     scaffold.ctx.on('llm/stream', (request): AsyncIterable<StreamChunk> => {
       expect(request.messages[0]?.source).toMatchObject({ kind: 'plugin', plugin: 'contextify' })
       const input = request.messages[0]?.content[0]
@@ -57,10 +64,11 @@ it('reviews a new sibling task in the browser, preserves its draft and applies n
       jevCalls += 1
       if (typeof init?.body !== 'string') throw new Error('Expected JSON Jev fixture request')
       const body = JSON.parse(init.body) as {
-        state: { instructions: string }
+        state: { instructions: string; graph: { preferenceExamples: unknown[] } }
         questions: Record<string, { type: string; instructions: string; criteria?: Record<string, string> }>
       }
       expect(body.state.instructions).toContain(JSON.stringify({ goal: 'Arrange transport', assignment: 'new', sessionId: root.id }))
+      observedExamples = body.state.graph.preferenceExamples
       const questions = Object.values(body.questions)
       expect(questions.some(question => question.instructions.includes(
         JSON.stringify({ ownerSessionId: root.id, relation: 'new-parent' })))).toBe(true)
@@ -84,6 +92,12 @@ it('reviews a new sibling task in the browser, preserves its draft and applies n
     await writeComposerDraft(page, input, 'Arrange transport for the trip.')
     await page.getByRole('button', { name: 'Draft review mode', exact: true }).click()
     await page.getByRole('menuitem', { name: 'Fast review for draft', exact: true }).click()
+    await expect.poll(() => ({ modelCalls, jevCalls })).toEqual({ modelCalls: 1, jevCalls: 1 })
+    expect(observedExamples).toEqual([
+      expect.objectContaining({ mode: 'exclude', onActiveBranch: true, ownerRelation: 'ancestor-task' }),
+      expect.objectContaining({ mode: 'include', onActiveBranch: true, ownerRelation: 'ancestor-task' }),
+      expect.objectContaining({ onActiveBranch: true, ownerRelation: 'local-task' }),
+    ])
     const review = page.getByRole('dialog', { name: 'Context recommendation review' })
     await review.waitFor({ timeout: 15_000 })
     await review.getByRole('button', { name: 'Create branch with proposed Context', exact: true }).click()

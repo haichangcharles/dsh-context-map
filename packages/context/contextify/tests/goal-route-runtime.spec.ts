@@ -154,6 +154,44 @@ it('learns from recorded Branch operations and removes examples when personaliza
   } finally { fetcher.mockRestore(); await b.close() }
 })
 
+it('logs distinct historical owner relations in the real Jev packet and retracts them on reset', async () => {
+  const b = await lineageHarness(), fetcher = vi.spyOn(globalThis, 'fetch')
+  try {
+    append(b.parent.session, 'Shared travel budget.')
+    const child = await fork(b, b.parent, 'goal-history-owners')
+    append(child.session, 'Lodging details.')
+    const nodes = (await b.ctx.contextify.familyPage(child)).records
+    const inherited = nodes.find(node => node.owner.sessionId === b.parent.id && node.role === 'user')!
+    const local = nodes.find(node => node.owner.sessionId === child.id && node.role === 'user')!
+    for (const node of [inherited, local]) await b.ctx.contextify.setNodeMode(child,
+      { revision: b.ctx.contextify.get(child).plan.revision }, node.owner, 'exclude', 'contextify-client')
+    configure(b, JSON.stringify({ goal: 'Review lodging', assignment: 'existing', sessionId: child.id }))
+    const observed: unknown[][] = []
+    fetcher.mockImplementation(async (_url, init) => {
+      const body = requestBody(init) as ReturnType<typeof requestBody> & {
+        state: { graph: { preferenceExamples: unknown[] } }
+      }
+      observed.push(body.state.graph.preferenceExamples)
+      const logged = child.session.snapshotEvents().findLast(e => e.type === 'contextify/recommendation-request')
+      expect(logged?.type === 'contextify/recommendation-request' ? logged.data.userText : undefined).toBe(JSON.stringify(body))
+      return jev(body)
+    })
+    await review(b, child, 'Please organize the lodging notes.')
+    expect(observed[0]).toEqual([
+      expect.objectContaining({ onActiveBranch: true, ownerRelation: 'ancestor-task' }),
+      expect.objectContaining({ onActiveBranch: true, ownerRelation: 'local-task' }),
+    ])
+    const enabled = promptAccess(b).promptSettings()
+    promptAccess(b).promptSettings = () => ({ ...enabled, personalizationEnabled: false })
+    await review(b, child, 'Please organize the lodging notes.')
+    expect(observed[1]).toEqual([])
+    promptAccess(b).promptSettings = () => enabled
+    await b.ctx.contextify.resetPolicy(child, 'contextify-client')
+    await review(b, child, 'Please organize the lodging notes.')
+    expect(observed[2]).toEqual([])
+  } finally { fetcher.mockRestore(); await b.close() }
+})
+
 it('returns to the parent and later reactivates the other task with its complete reviewed Context', async () => {
   const b = await lineageHarness(), fetcher = vi.spyOn(globalThis, 'fetch')
   try {
