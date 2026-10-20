@@ -101,6 +101,7 @@ it('starts the native inventory under CDB and preserves the original result inde
   expect(live).toContain('sxi ibp')
   expect(live).toContain('DSH_NATIVE_BREAKPOINT')
   expect(live).toContain('DSH_NATIVE_FILTERS_READY')
+  expect(live).toContain("$arguments -ccontains '-g'")
   expect(live).toContain('detected heap corruption')
   expect(live).toContain('DSH_FIRST_CHANCE_AV')
   expect(live).toContain('-c2')

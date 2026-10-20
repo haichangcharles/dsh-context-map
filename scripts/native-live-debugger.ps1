@@ -55,7 +55,7 @@ if ($SelfTest) {
             $arguments[-1] -cne $receipt -or ($arguments -join ' ') -notmatch '-Lane native -ResultPath') { throw 'Bad debugger invocation' }
           $commandIndex = [array]::IndexOf($arguments, '-cf')
           $scriptText = Get-Content -LiteralPath $arguments[$commandIndex + 1] -Raw
-          if ($arguments -contains '-g' -or $scriptText -notmatch 'sxi ibp;sxe' -or
+          if ($arguments -ccontains '-g' -or $scriptText -notmatch 'sxi ibp;sxe' -or
             $scriptText -notmatch 'bpe;sxd' -or $scriptText -notmatch 'av;\.echo DSH_NATIVE_FILTERS_READY;g') { throw 'Missing initial exception filters' }
           if ($script:liveFixtureCase -eq 'missing') { return 0 }
           if ($script:liveFixtureCase -eq 'first') { Set-Content -LiteralPath $log -Value 'DSH_FIRST_CHANCE_AV' }
