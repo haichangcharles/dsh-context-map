@@ -23,8 +23,8 @@ export interface ContextifyPromptSettings {
   readonly automaticBranchReview: boolean
   /** Reuse confirmed, undo-aware choices in review packets and calibration. */
   readonly personalizationEnabled: boolean
-  /** Optional goal discovery uses the chat model before a separate Jev Context review. */
-  readonly fastDecisionProvider: 'parent-model' | 'jev' | 'goal-model-jev'
+  /** Fast review uses the chat model, Jev, or a validated goal with Jev or exact native task Context. */
+  readonly fastDecisionProvider: 'parent-model' | 'jev' | 'goal-model-jev' | 'goal-model-native'
   /** Maximum model requests in one explicitly selected Deep review. */
   readonly deepMaxRequests: number
 }
@@ -438,7 +438,7 @@ export interface ContextRecommendationProposal {
   /** Bounded evidence actually supplied to this decision, separate from answer Context. */
   readonly personalization?: {
     readonly enabled: boolean
-    readonly reviewer: 'parent-model' | 'jev' | 'goal-model-jev' | 'local'
+    readonly reviewer: 'parent-model' | 'jev' | 'goal-model-jev' | 'goal-model-native' | 'local'
     /** Owned event identities available to deterministic selection calibration. */
     readonly calibrationSources?: readonly string[]
     /** Owned event identities in the recent per-action threshold input pools. */

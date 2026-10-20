@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import { buildGoalRouteInput, parseGoalRouteText, composeGoalContextReview } from '../src/goal-route.ts'
+import { buildGoalRouteInput, parseGoalRouteText, composeGoalContextReview, composeNativeGoalContextReview } from '../src/goal-route.ts'
 import { buildManagementMemory } from '../src/management-memory.ts'
 import type { FastRecommendationInput } from '../src/fast-recommendation.ts'
 import type { ContextActionPacket } from '../src/semantic-route.ts'
@@ -137,4 +137,19 @@ it('uses complete-policy history conditionally while preserving the no-example w
   expect(personalized.system).toContain('Use retention=unknown for conflicting evidence or unidentifiable applicability')
   expect(personalized.system).toContain('Historical examples never authorize a current destination')
   expect(buildGoalRouteInput({ ...packet, scopePolicyExamples: [] }, 'Keep independent services separate.')).toEqual(ordinary)
+})
+
+
+it('composes categorical native destinations without individual provider scores', () => {
+  const preservation = { sessionId: SessionId('main'), assignment: 'existing', mode: 'task-owned', nodeIds: ['main:1'] } as const
+  const known = { goal: 'Continue planning', assignment: 'existing', sessionId: SessionId('main'), retention: 'task-owned' } as const
+  expect(composeNativeGoalContextReview(known, packet, preservation).route).toMatchObject({ intent: 'return' })
+  const sibling = { ...packet }
+  delete sibling.parentSessionId
+  expect(composeNativeGoalContextReview(known, sibling, preservation)).toEqual({
+    preservation, decision: { include: [], exclude: [], archive: [] }, route: { intent: 'resume', intentScore: 1,
+      candidates: [{ sessionId: SessionId('main'), destinationScore: 1, evidenceScore: 0, supersededScore: 0 }] } })
+  const exact = buildGoalRouteInput(packet, 'Preserve the whole task.', true)
+  expect(exact.system).toContain('without individual source exceptions')
+  expect(buildGoalRouteInput(packet, 'Preserve the whole task.').system).not.toContain('without individual source exceptions')
 })

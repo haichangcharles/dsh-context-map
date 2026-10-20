@@ -38,8 +38,8 @@ function requestBody(init?: RequestInit): Parameters<typeof jev>[0] {
   if (typeof init?.body !== 'string') throw new Error('Expected JSON fixture request')
   return JSON.parse(init.body) as Parameters<typeof jev>[0]
 }
-function configure(b: Fixture, response: string, credential = true) {
-  promptAccess(b).promptSettings = () => ({ ...CONTEXTIFY_DEFAULT_SETTINGS, fastDecisionProvider: 'goal-model-jev',
+function configure(b: Fixture, response: string, credential = true, provider: ContextifyPromptSettings['fastDecisionProvider'] = 'goal-model-jev') {
+  promptAccess(b).promptSettings = () => ({ ...CONTEXTIFY_DEFAULT_SETTINGS, fastDecisionProvider: provider,
     context: { additional: 'Keep the entire selected task and its ancestors. Independent services are siblings.', override: '' } })
   if (credential) b.ctx.provide('credentials', { resolve: async () => ({ value: 'fixture-only-key' }) } as never)
   return vi.spyOn(b.adapter, 'stream').mockImplementation(async function* (options) {
@@ -221,12 +221,12 @@ it('returns to the parent and later reactivates the other task with its complete
   } finally { fetcher.mockRestore(); await b.close() }
 })
 
-it('does not continue to Jev when a valid-looking goal was truncated by the model', async () => {
+it.each(['goal-model-jev', 'goal-model-native'] as const)('rejects a valid-looking truncated goal in %s', async (provider) => {
   const b = await lineageHarness(), fetcher = vi.spyOn(globalThis, 'fetch')
   try {
     append(b.parent.session, 'Write a plan.')
     const output = JSON.stringify({ goal: 'Continue planning', retention: 'task-lineage', assignment: 'existing', sessionId: b.parent.id })
-    configure(b, output)
+    configure(b, output, provider !== 'goal-model-native', provider)
     vi.spyOn(b.adapter, 'stream').mockImplementation(async function* (options) {
       b.adapter.requests.push(options)
       yield* textResponse(output).filter(chunk => chunk.type !== 'finish')
@@ -238,11 +238,11 @@ it('does not continue to Jev when a valid-looking goal was truncated by the mode
   } finally { fetcher.mockRestore(); await b.close() }
 })
 
-it('cancels goal generation before a second provider call and releases the review owner', async () => {
+it.each(['goal-model-jev', 'goal-model-native'] as const)('cancels goal generation and releases the review owner in %s', async (provider) => {
   const b = await lineageHarness(), fetcher = vi.spyOn(globalThis, 'fetch')
   try {
     append(b.parent.session, 'Write a plan.')
-    configure(b, '{}')
+    configure(b, '{}', provider !== 'goal-model-native', provider)
     vi.spyOn(b.adapter, 'stream').mockImplementation(async function* (options) {
       b.adapter.requests.push(options)
       await new Promise<void>((resolve) => { options.signal?.addEventListener('abort', () => { resolve() }, { once: true }) })

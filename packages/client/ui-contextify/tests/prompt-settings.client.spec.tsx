@@ -42,6 +42,26 @@ function scopeFixture(language: 'en' | 'zh' = 'en') {
 }
 
 describe('ContextifyPromptSettingsView', () => {
+  it.each([
+    { language: 'en', label: 'Fast Context reviewer', option: 'Goal model + exact task Context', hint: /at most one chat-model request and no Jev request/ },
+    { language: 'zh', label: '快速 Context 决策模型', option: '目标模型＋完整任务 Context', hint: /至多一次聊天模型，不调用 Jev/ },
+  ] as const)('offers an exact native reviewer in $language', async (scenario) => {
+    const fixture = scopeFixture(scenario.language)
+    render(<fixture.Harness />)
+    expect(screen.getByRole('option', { name: scenario.option })).toBeTruthy()
+    fireEvent.change(screen.getByRole('combobox', { name: scenario.label }), { target: { value: 'goal-model-native' } })
+    await act(async () => {})
+    expect(fixture.set).toHaveBeenCalledWith('fastDecisionProvider', 'goal-model-native')
+    expect(screen.getByText(scenario.hint).textContent).toMatchSnapshot()
+  })
+
+  it('explains that the parent-model reviewer does not require Jev credentials', () => {
+    const fixture = scopeFixture()
+    render(<fixture.Harness />)
+    expect(screen.getByText(/current chat model.*without Jev credentials/)).toBeTruthy()
+    expect(screen.queryByText(/requires TYPESAFE_API_KEY/)).toBeNull()
+  })
+
   it('selects goal-model and Jev review with an explicit extra-call explanation', async () => {
     const fixture = scopeFixture()
     render(<fixture.Harness />)

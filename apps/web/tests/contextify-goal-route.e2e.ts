@@ -17,7 +17,7 @@ function append(session: Session, text: string) {
   session.append('turn/end', { turn, reason: { kind: 'completed' } })
 }
 
-it('reviews a new sibling task in the browser, preserves its draft and applies native parent Context', async () => {
+it.each(['goal-model-jev', 'goal-model-native'] as const)('reviews a new sibling task in the browser with %s and applies native parent Context', async (provider) => {
   const scaffold = await launchWebScaffold()
   let browser: Browser | undefined
   const originalFetch = globalThis.fetch
@@ -26,7 +26,7 @@ it('reviews a new sibling task in the browser, preserves its draft and applies n
   try {
     const settings = scaffold.ctx.contextify as unknown as { promptSettings: () => ContextifyPromptSettings }
     settings.promptSettings = () => ({ ...CONTEXTIFY_DEFAULT_SETTINGS,
-      fastDecisionProvider: 'goal-model-jev', automaticBranchReview: false,
+      fastDecisionProvider: provider, automaticBranchReview: false,
       context: { additional: 'Independent trip services are sibling tasks. Use the complete task and ancestors.', override: '' } })
     const cwd = `${scaffold.workspaceCwd}/workspace`
     const root = (await scaffold.ctx.agents.create({ sessionId: SessionId('goal-web-main'), meta: { cwd },
@@ -95,8 +95,8 @@ it('reviews a new sibling task in the browser, preserves its draft and applies n
     await writeComposerDraft(page, input, 'Arrange transport for the trip.')
     await page.getByRole('button', { name: 'Draft review mode', exact: true }).click()
     await page.getByRole('menuitem', { name: 'Fast review for draft', exact: true }).click()
-    await expect.poll(() => ({ modelCalls, jevCalls })).toEqual({ modelCalls: 1, jevCalls: 1 })
-    expect(observedExamples).toEqual([
+    await expect.poll(() => ({ modelCalls, jevCalls })).toEqual({ modelCalls: 1, jevCalls: provider === 'goal-model-native' ? 0 : 1 })
+    if (provider === 'goal-model-jev') expect(observedExamples).toEqual([
       expect.objectContaining({ mode: 'exclude', onActiveBranch: true, ownerRelation: 'ancestor-task' }),
       expect.objectContaining({ mode: 'include', onActiveBranch: true, ownerRelation: 'ancestor-task' }),
       expect.objectContaining({ onActiveBranch: true, ownerRelation: 'local-task' }),
@@ -117,10 +117,14 @@ it('reviews a new sibling task in the browser, preserves its draft and applies n
     })
     expect(carried?.type === 'contextify/recommendation-reviewed' ? carried.data.scopePolicy : undefined).toBeUndefined()
     const requests = hotel.session.snapshotEvents().filter(e => e.type === 'contextify/recommendation-request')
-    expect(requests).toHaveLength(2)
+    expect(requests).toHaveLength(provider === 'goal-model-native' ? 1 : 2)
     const traceId = requests[0]!.data.recommendationTraceId
     expect(traceId).toEqual(expect.any(String))
-    expect(requests[1]!.data.recommendationTraceId).toBe(traceId)
+    if (provider === 'goal-model-jev') expect(requests[1]!.data.recommendationTraceId).toBe(traceId)
+    else {
+      expect(requests[0]!.data.system).toContain('without individual source exceptions')
+      expect(credential).not.toHaveBeenCalledWith('TYPESAFE_API_KEY')
+    }
     expect(carried?.type === 'contextify/recommendation-reviewed' ? carried.data.recommendationTraceId : undefined).toBe(traceId)
     const compiled = scaffold.ctx.contextCompiler.compile({ session: child.session, turn: child.session.seq + 1, step: 1 })
     expect(JSON.stringify(compiled.messages)).toContain('DINNER_MAINLINE')
@@ -130,7 +134,7 @@ it('reviews a new sibling task in the browser, preserves its draft and applies n
       { timeout: 10_000 }).toContain('Approved transport task fixture')
     await expect.poll(() => input.innerText()).toBe('Arrange transport for the trip.')
     expect(modelCalls).toBe(1)
-    expect(jevCalls).toBe(1)
+    expect(jevCalls).toBe(provider === 'goal-model-native' ? 0 : 1)
     expect(JSON.stringify(hotel.session.snapshotEvents())).not.toContain('fixture-only-key')
   } finally {
     try { await browser?.close() } finally {

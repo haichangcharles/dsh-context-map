@@ -33,3 +33,10 @@ describe('Contextify prompt settings', () => {
     expect(parse({}).fastDecisionProvider).toBe('parent-model')
   })
 })
+
+
+it('accepts the explicit native goal reviewer without changing the default', () => {
+  const parse = ContextifyPromptSettingsSchema as unknown as (input: unknown) => typeof CONTEXTIFY_DEFAULT_SETTINGS
+  expect(parse({ fastDecisionProvider: 'goal-model-native' }).fastDecisionProvider).toBe('goal-model-native')
+  expect(parse({}).fastDecisionProvider).toBe('parent-model')
+})

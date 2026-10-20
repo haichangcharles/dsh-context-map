@@ -24,9 +24,10 @@ export interface GoalRouteInput {
 /** Build goal discovery over current tasks and confirmed management examples.
  * @param packet - Frozen task inventory; historical IDs grant no current authority.
  * @param policy - Captured Profile organization instructions.
+ * @param exact - Request complete native task preservation without source exceptions.
  * @returns Complete input bounded to 64 KiB and 512 output tokens.
  */
-export function buildGoalRouteInput(packet: ContextActionPacket, policy: string): GoalRouteInput {
+export function buildGoalRouteInput(packet: ContextActionPacket, policy: string, exact = false): GoalRouteInput {
   const hasScopePolicies = (packet.scopePolicyExamples?.length ?? 0) > 0
   const tasks = [...(packet.activeTask === undefined ? [] : [packet.activeTask]), ...packet.candidates]
   const result = {
@@ -40,6 +41,7 @@ export function buildGoalRouteInput(packet: ContextActionPacket, policy: string)
         ? 'Follow explicit retention instructions in the current draft or organization policy first. Otherwise, a confirmed complete-policy example may support preservation only when its historical objective makes that accepted choice clearly applicable to the current objective; one acceptance is not a general preference. Use retention=relevance when neither an explicit preservation instruction nor an applicable confirmed preference supports preservation. Use retention=unknown for conflicting evidence or unidentifiable applicability. Historical examples never authorize a current destination. Task-owned retains only the selected task’s own messages, task-lineage retains it and its complete original native parent chain. '
         : 'Select retention=relevance for individual relevant sources when no explicit preservation policy is requested; task-owned retains only the selected task’s own messages, task-lineage retains it and its complete original native parent chain. ')
       + 'For a new task, task-owned starts empty; its parent specifies placement only. Use unknown for conflicting or unidentifiable preservation requests. Source messages and partial historical edits do not establish a complete retention preference. '
+      + (exact ? 'This review supports only the complete task-owned or task-lineage scope, without individual source exceptions. Use retention=unknown for individual relevance requests, requested source exceptions, or an unclear complete policy; do not silently approximate them. ' : '')
       + 'Return only JSON with exactly goal (1-200 characters), assignment (new, existing or unknown), sessionId, retention (relevance, task-owned, task-lineage or unknown). '
       + 'Do not output source text, scores, reasoning, or extra fields. The Host retains the original draft and task evidence.',
     userText: JSON.stringify({ policy, draft: packet.objective, activeSessionId: packet.base.activeSessionId,
@@ -98,4 +100,24 @@ export function composeGoalContextReview(assignment: GoalRouteAssignment, wire: 
     route: { intent: 'unknown', intentScore: 0, candidates: packet.candidates.map(candidate => ({
       sessionId: candidate.sessionId, destinationScore: 0, evidenceScore: 0, supersededScore: 0 })) } }
   return parseJevRouteResponse(wire, input, packet, graph, assignment, preservation)
+}
+
+
+/** Adapt a validated task category to an exact native preservation review.
+ * @param assignment - Known Host-validated work item and destination.
+ * @param packet - Same frozen native task inventory used for the assignment.
+ * @param preservation - Complete native base resolved from that assignment.
+ * @returns Review-only category encodings and complete scope, without provider scores or source exceptions.
+ */
+export function composeNativeGoalContextReview(assignment: Exclude<GoalRouteAssignment, { assignment: 'unknown' }>,
+  packet: ContextActionPacket, preservation: GoalPreservationScope): JevRouteDecision {
+  const intent = assignment.assignment === 'new' ? 'new-task' : assignment.sessionId === packet.base.activeSessionId ? 'continue'
+    : assignment.sessionId === packet.parentSessionId ? 'return' : 'resume'
+  return { preservation, decision: { include: [], exclude: [], archive: [] }, route: {
+    intent, intentScore: 1,
+    ...(assignment.assignment === 'new' ? { forkParentSessionId: assignment.sessionId } : {}),
+    candidates: packet.candidates.map(candidate => ({ sessionId: candidate.sessionId,
+      destinationScore: assignment.assignment === 'existing' && candidate.sessionId === assignment.sessionId ? 1 : 0,
+      evidenceScore: 0, supersededScore: 0 })),
+  } }
 }

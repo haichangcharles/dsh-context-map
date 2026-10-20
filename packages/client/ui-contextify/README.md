@@ -54,7 +54,7 @@ Ordinary Chat user and finalized assistant messages expose compact Auto/Use/Skip
 
 The Workspace sidebar uses the upstream Session list. The map provides the detailed branch-family navigation surface.
 
-The Context prompt settings let users select the current chat model, Jev, or goal-model-plus-Jev for Fast review, and enable or disable historical choice reuse. A review sheet separates the examples sent to the model from deterministic calibration and branch-threshold source records; accepted and rejected choices remain distinct. These records describe management advice and are not added to answer Context.
+The Context prompt settings let users select the current chat model, Jev, goal-model-plus-Jev, or Goal model + exact task Context for Fast review, and enable or disable historical choice reuse. A review sheet separates the examples sent to the model from deterministic calibration and branch-threshold source records; accepted and rejected choices remain distinct. These records describe management advice and are not added to answer Context.
 
 For existing destinations, “Move draft with proposed Context” explicitly approves the complete reviewed source set and avoids another model call. Partial Keep-current choices disable that action. Destination manual conflicts preserve the old Plan; the unsent draft remains available at the destination. The route-only action remains separate.
 
@@ -84,3 +84,5 @@ The UI adds no prompt prose. Auto follows the active Session history, Skip exclu
 ### Dev Note
 
 No invariant companion is published because the Agent Loop companion checks compiled requests and the plugin owns no independent runtime invariant.
+
+Goal model + exact task Context makes at most one chat-model request and no Jev request. It keeps a complete task or original ancestry, with no individual-source exceptions; unknown policies abstain. Without an exact draft it reviews only the current task. Selecting it makes no request; approval, cancellation and manual constraints remain in force.

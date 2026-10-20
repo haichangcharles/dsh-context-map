@@ -25,7 +25,7 @@ import { buildContextActionPacket, parseFastContextDecisionText,
 import { contextLifecycleAdvice } from './lifecycle-advice.ts'
 import { requestJevContextReview, resolveJevContextCredential } from './jev-reviewer.ts'
 import { buildJevRouteRequest, parseJevRouteResponse, type JevRouteDecision } from './jev-route-reviewer.ts'
-import { buildGoalRouteInput, parseGoalRouteText, composeGoalContextReview, type GoalRouteAssignment } from './goal-route.ts'
+import { buildGoalRouteInput, parseGoalRouteText, composeGoalContextReview, composeNativeGoalContextReview, type GoalRouteAssignment } from './goal-route.ts'
 import { resolveGoalPreservationScope, type GoalPreservationScope } from './goal-retention.ts'
 import { buildScopePolicyReview, approvedScopePolicy, scopePolicyExamplesFromInspections } from './scope-policy.ts'
 import type { ContextScopePolicyExample, ContextScopePolicyReview } from './types.ts'
@@ -760,6 +760,8 @@ export class ContextifyService extends TypertRemoteService {
       let localCandidates: ReturnType<typeof buildLocalContextCandidates> | undefined
       let jevScopeSessionId: SessionId | undefined
       let goalPreservation: GoalPreservationScope | undefined
+      let exactGoalPreservation: GoalPreservationScope | undefined
+      const nativeGoalReview = recommendationMode === 'fast' && promptSettings.fastDecisionProvider === 'goal-model-native'
       let goalAbstained = false
       const exactWebSources = recommendationMode !== 'deep' && draftBound
         && objective?.trim() === goal
@@ -793,7 +795,8 @@ export class ContextifyService extends TypertRemoteService {
             CONTEXTIFY_DEFAULT_PROMPTS.archive, promptSettings.archive),
         })
       } else if (exactWebSelection !== null) {
-        decision = exactWebSelection
+        decision = nativeGoalReview ? { include: [], exclude: [], archive: [] } : exactWebSelection
+        goalAbstained = nativeGoalReview
       } else {
         let input
         try {
@@ -846,14 +849,15 @@ export class ContextifyService extends TypertRemoteService {
           ].join('\n\n')
           let fastText: string
           if (promptSettings.fastDecisionProvider !== 'parent-model') {
-            const goalReview = promptSettings.fastDecisionProvider === 'goal-model-jev' && draftBound === true && objective?.trim() === goal
+            const goalReview = nativeGoalReview || promptSettings.fastDecisionProvider === 'goal-model-jev' && draftBound === true && objective?.trim() === goal
             const parsed = goalReview
               ? await this.reviewGoalContext(agent, input, routePacket, family.graph, family.inspections, system,
-                [contextPrompt, effectivePrompt(CONTEXTIFY_DEFAULT_PROMPTS.branch, promptSettings.branch)].join('\n\n'), operation.recommendationTraceId, operation.controller.signal)
+                [contextPrompt, effectivePrompt(CONTEXTIFY_DEFAULT_PROMPTS.branch, promptSettings.branch)].join('\n\n'), operation.recommendationTraceId, operation.controller.signal, nativeGoalReview, draftBound === true && objective?.trim() === goal)
               : await this.reviewJevContext(agent, input, routePacket, family.graph, system,
                 operation.recommendationTraceId, operation.controller.signal)
             jevScopeSessionId = parsed.scopeSessionId
             goalPreservation = parsed.preservation
+            exactGoalPreservation = nativeGoalReview ? parsed.preservation : undefined
             goalAbstained = goalReview && parsed.route?.intent === 'unknown'
             fastText = JSON.stringify({ ...parsed.decision, route: parsed.route })
           } else {
@@ -994,11 +998,22 @@ export class ContextifyService extends TypertRemoteService {
         const explicitWorkStates = draftBound && objective?.trim() === goal
           ? contextLifecycleAdvice(family.graph, goal) : []
         const workStates = explicitWorkStates.length > 0 ? explicitWorkStates : contextProposal.workStates ?? []
+        const replacedNodeIds = goalPreservation === undefined && exactGoalPreservation === undefined ? []
+          : [...family.inspections.values()].flatMap(inspection =>
+            currentContextPlan({ snapshotEvents: () => [...inspection.events] }).replacements.map(item => item.nodeId))
+        if (exactGoalPreservation !== undefined) {
+          const expected = new Set(exactGoalPreservation.nodeIds)
+          const actual = route?.contextNodeIds ?? contextProposal.proposedNodeIds
+          if (goalPreservation === undefined || route?.contextUnavailable === true
+            || actual.length !== expected.size || actual.some(id => !expected.has(id))
+            || replacedNodeIds.some(id => expected.has(id))) {
+            throw new Error('The exact task Context conflicts with a manual choice, replacement, or destination; review it manually.')
+          }
+        }
         const scopePolicy = goalPreservation === undefined ? undefined : buildScopePolicyReview({
           preservation: goalPreservation, base, reviewId: randomUUID(),
           proposedNodeIds: route?.contextNodeIds ?? contextProposal.proposedNodeIds, graph: family.graph, inspections: family.inspections,
-          replacedNodeIds: [...family.inspections.values()].flatMap(inspection =>
-            currentContextPlan({ snapshotEvents: () => [...inspection.events] }).replacements.map(item => item.nodeId)) })
+          replacedNodeIds })
         const proposal: ContextRecommendationProposal = Object.freeze({ ...contextProposal,
           ...(scopePolicy === undefined ? {} : { scopePolicy }),
           ...(profileEvidence === undefined ? {} : { personalization: decisionMemorySnapshot({
@@ -2441,16 +2456,19 @@ export class ContextifyService extends TypertRemoteService {
 
   private async reviewGoalContext(agent: Agent, input: FastRecommendationInput, packet: ContextActionPacket,
     graph: ContextFamilyGraph, inspections: ReadonlyMap<SessionId, ContextFamilyInspection>,
-    system: string, policy: string, recommendationTraceId: string, signal: AbortSignal): Promise<JevRouteDecision> {
+    system: string, policy: string, recommendationTraceId: string, signal: AbortSignal,
+    nativeOnly: boolean, allowPlacement: boolean): Promise<JevRouteDecision> {
     const bounded = AbortSignal.any([signal, AbortSignal.timeout(45_000)])
-    const cancelled = Promise.withResolvers<never>()
-    const listener = addAbortListener(bounded, () => { cancelled.reject(bounded.reason) })
     let credential: string | undefined
-    try {
-      credential = await Promise.race([resolveJevContextCredential(this.ctx, true), cancelled.promise])
-    } finally { listener[Symbol.dispose]() }
+    if (!nativeOnly) {
+      const cancelled = Promise.withResolvers<never>()
+      const listener = addAbortListener(bounded, () => { cancelled.reject(bounded.reason) })
+      try {
+        credential = await Promise.race([resolveJevContextCredential(this.ctx, true), cancelled.promise])
+      } finally { listener[Symbol.dispose]() }
+    }
     bounded.throwIfAborted()
-    const request = buildGoalRouteInput(packet, policy)
+    const request = buildGoalRouteInput(packet, policy, nativeOnly)
     const text = await this.reviewWithParentModel(agent, packet.base, packet.objective,
       request.system, request.userText, request.maxTokens, recommendationTraceId, bounded, true)
     bounded.throwIfAborted()
@@ -2462,6 +2480,13 @@ export class ContextifyService extends TypertRemoteService {
       : resolveGoalPreservationScope({ ...assignment, retention: assignment.retention }, graph, inspections)
     if (preservation === null) return composeGoalContextReview({ ...assignment, retention: 'unknown' },
       undefined, input, packet, graph)
+    if (nativeOnly) {
+      if (preservation === undefined || !allowPlacement
+        && (assignment.assignment === 'new' || assignment.sessionId !== packet.base.activeSessionId)) {
+        return composeGoalContextReview({ ...assignment, retention: 'unknown' }, undefined, input, packet, graph)
+      }
+      return composeNativeGoalContextReview(assignment, packet, preservation)
+    }
     return await this.reviewJevContext(agent, input, packet, graph, system,
       recommendationTraceId, bounded, assignment, credential, preservation)
   }

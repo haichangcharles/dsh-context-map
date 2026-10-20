@@ -41,6 +41,12 @@ function ConnectedPromptSettings({ scope, t }: PropsLocale<'contextifySteward'> 
 
 /** Render package defaults as immutable reference and Profile changes as explicit layers. */
 export function ContextifyPromptSettingsView({ scope, snapshot, t }: ContextifyPromptSettingsViewProps) {
+  const reviewerHints = {
+    'parent-model': 'settings.parentReviewerHint',
+    jev: 'settings.jevHint',
+    'goal-model-jev': 'settings.goalJevHint',
+    'goal-model-native': 'settings.goalNativeHint',
+  } as const
   const settings = snapshot.value ?? CONTEXTIFY_CLIENT_DEFAULT_SETTINGS
   const [drafts, setDrafts] = useState<ContextifyPromptSettings>(settings)
   const [confirming, setConfirming] = useState<PromptKind | null>(null)
@@ -85,13 +91,14 @@ export function ContextifyPromptSettingsView({ scope, snapshot, t }: ContextifyP
       <span>{t('settings.fastReviewer')}</span>
       <select aria-label={t('settings.fastReviewer')} value={settings.fastDecisionProvider}
         disabled={!snapshot.writable || pending !== null} onChange={(event) => {
-          if (event.target.value === 'parent-model' || event.target.value === 'jev' || event.target.value === 'goal-model-jev') saveDecisionSetting('fastDecisionProvider', event.target.value)
+          if (event.target.value === 'parent-model' || event.target.value === 'jev' || event.target.value === 'goal-model-jev' || event.target.value === 'goal-model-native') saveDecisionSetting('fastDecisionProvider', event.target.value)
         }}>
         <option value="parent-model">{t('settings.parentReviewer')}</option>
         <option value="jev">{t('settings.jevReviewer')}</option>
         <option value="goal-model-jev">{t('settings.goalJevReviewer')}</option>
+        <option value="goal-model-native">{t('settings.goalNativeReviewer')}</option>
       </select>
-      <small>{settings.fastDecisionProvider === 'goal-model-jev' ? t('settings.goalJevHint') : t('settings.jevHint')}</small>
+      <small>{t(reviewerHints[settings.fastDecisionProvider])}</small>
     </label>
     <label className={css.card}>
       <span>{t('settings.personalization')}</span>

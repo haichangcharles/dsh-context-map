@@ -1,7 +1,8 @@
 /** Explicit preservation uses the complete native family, not only the model slate. */
 import { expect, it, vi } from 'vitest'
-import { SessionId, SessionLogOffset, type Session } from '@deepseek-ai/dsh-session'
-import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
+import { SessionId, SessionLogOffset, SessionSeq, type Session } from '@deepseek-ai/dsh-session'
+import { createAssistantMessage, createUserMessage, createToolResultMessage } from '@deepseek-ai/dsh-llm'
+import { ToolCallId } from '@deepseek-ai/dsh-llm/brand'
 import { textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import { lineageHarness } from './lineage-coverage-harness.ts'
 import { CONTEXTIFY_DEFAULT_SETTINGS, type ContextifyPromptSettings } from '../src/types.ts'
@@ -24,12 +25,15 @@ async function fork(b: Harness, parent: Harness['parent'], id: string) {
   return (await b.ctx.agents.create({ sessionId: SessionId(id), seed, inheritedEventCount: SessionLogOffset(seed.length),
     meta: { parentSession: parent.id, isSeeded: true }, agentOptions: { provider: 'mock', model: 'mock' } })).agent
 }
-function configure(b: Harness, response: object) {
+function configure(b: Harness, response: object, provider: ContextifyPromptSettings['fastDecisionProvider'] = 'goal-model-jev') {
   ;(b.ctx.contextify as unknown as { promptSettings: () => ContextifyPromptSettings }).promptSettings = () => ({
-    ...CONTEXTIFY_DEFAULT_SETTINGS, personalizationEnabled: false, fastDecisionProvider: 'goal-model-jev',
+    ...CONTEXTIFY_DEFAULT_SETTINGS, personalizationEnabled: false, fastDecisionProvider: provider,
   })
-  b.ctx.provide('credentials', { resolve: async () => ({ value: 'fixture-only-key' }) } as never)
-  b.adapter.stream = async function* () { yield* textResponse(JSON.stringify(response)) }
+  if (provider === 'goal-model-jev') b.ctx.provide('credentials', { resolve: async () => ({ value: 'fixture-only-key' }) } as never)
+  b.adapter.stream = async function* (options) {
+    b.adapter.requests.push(options)
+    yield* textResponse(JSON.stringify(response))
+  }
 }
 async function review(b: Harness, agent: Harness['parent'], draft = 'Keep only the selected task own messages.') {
   const page = await b.ctx.contextify.familyPage(agent)
@@ -194,14 +198,14 @@ it('refuses to restore replaced destination text while carrying preserved Contex
   } finally { fetcher.mockRestore(); await b.close() }
 })
 
-it('abstains when a required native lineage is unavailable before Jev', async () => {
+it.each(['goal-model-jev', 'goal-model-native'] as const)('abstains when a required native lineage is unavailable with %s', async (provider) => {
   const b = await lineageHarness(), fetcher = vi.spyOn(globalThis, 'fetch')
   try {
     const orphan = (await b.ctx.agents.create({ sessionId: SessionId('retention-orphan'),
       meta: { parentSession: SessionId('retention-unavailable-parent') },
       agentOptions: { provider: 'mock', model: 'mock' } })).agent
     append(orphan.session, 'OWN_SOURCE_WITH_MISSING_ANCESTRY')
-    configure(b, { goal: 'Preserve native lineage', assignment: 'existing', sessionId: orphan.id, retention: 'task-lineage' })
+    configure(b, { goal: 'Preserve native lineage', assignment: 'existing', sessionId: orphan.id, retention: 'task-lineage' }, provider)
     fetcher.mockRejectedValue(new Error('Unverified lineage must not invoke Jev'))
     const proposal = await review(b, orphan)
     expect(proposal.route).toBeUndefined()
@@ -234,4 +238,213 @@ it.each([
     expect(proposal.selection).toEqual([])
     expect(b.ctx.contextify.get(child).plan).toEqual(before)
   } finally { fetcher.mockRestore(); await b.close() }
+})
+
+
+it.each(['continue', 'return'] as const)('uses exact native task Context without Jev credentials on %s', async (operation) => {
+  const b = await lineageHarness(), fetcher = vi.spyOn(globalThis, 'fetch')
+  try {
+    append(b.parent.session, 'EXACT_ANCESTOR_ONLY')
+    const task = await fork(b, b.parent, 'exact-native-task')
+    const texts = Array.from({ length: 40 }, (_, i) => `EXACT_OWN_${String(i)}`)
+    const own = texts.map(text => append(task.session, text))
+    const active = operation === 'return' ? await fork(b, task, 'exact-native-child') : task
+    if (active !== task) append(active.session, 'EXACT_OLD_CHILD')
+    const provider = 'goal-model-native'
+    configure(b, { goal: 'Continue the selected task', assignment: 'existing', sessionId: task.id, retention: 'task-owned' }, provider)
+    fetcher.mockRejectedValue(new Error('Exact native mode must not invoke a Jev transport'))
+    const proposal = await review(b, active, 'Keep only the selected task own complete Context.')
+    expect(proposal.personalization?.reviewer).toBe('goal-model-native')
+    expect(new Set(proposal.proposedNodeIds)).toEqual(new Set(own))
+    expect(b.adapter.requests).toHaveLength(1)
+    expect(fetcher).not.toHaveBeenCalled()
+    expect(active.session.snapshotEvents().filter(event => event.type === 'contextify/recommendation-request')).toHaveLength(1)
+    if (operation === 'return') {
+      expect(proposal.route).toMatchObject({ action: 'return', targetSessionId: task.id })
+      expect(new Set(proposal.route?.contextNodeIds)).toEqual(new Set(own))
+      await b.ctx.contextify.reviewRoute(active, proposal.route!, 'accept', task.id, undefined, true)
+    } else {
+      const page = await b.ctx.contextify.familyPage(task)
+      await b.ctx.contextify.setNodeModes(task, { revision: proposal.base.planRevision }, proposal.selection.map(item => ({
+        node: page.records.find(record => record.id === item.nodeId)!.owner,
+        mode: item.action === 'include' ? 'include' : 'exclude',
+      })), proposal.base.graphRevision)
+    }
+    const userTexts = (session: Session) => compileContextify({ session, turn: session.seq + 1, step: 1 }).messages
+      .flatMap(message => message.role === 'user' ? message.content.flatMap(block => block.type === 'text' ? [block.text] : []) : [])
+    expect(userTexts(task.session)).toEqual(texts)
+    if (operation === 'return') {
+      configure(b, { goal: 'Resume the side task', assignment: 'existing', sessionId: active.id, retention: 'task-owned' }, provider)
+      const reactivated = await review(b, task, 'Resume the side task using only its own complete Context.')
+      expect(reactivated.route).toMatchObject({ action: 'navigate', targetSessionId: active.id })
+      await b.ctx.contextify.reviewRoute(task, reactivated.route!, 'accept', active.id, undefined, true)
+      append(active.session, 'EXACT_LATER_QUERY')
+      expect(userTexts(active.session)).toEqual(['EXACT_OLD_CHILD', 'EXACT_LATER_QUERY'])
+      expect(b.adapter.requests).toHaveLength(2)
+      expect(fetcher).not.toHaveBeenCalled()
+    }
+  } finally { fetcher.mockRestore(); await b.close() }
+})
+
+
+it.each(['task-owned', 'task-lineage'] as const)('creates an exact native sibling with %s Context', async (retention) => {
+  const b = await lineageHarness(), fetcher = vi.spyOn(globalThis, 'fetch')
+  try {
+    const root = append(b.parent.session, 'EXACT_ROOT_CONTEXT')
+    const old = await fork(b, b.parent, 'exact-native-old-task')
+    append(old.session, 'EXACT_UNRELATED_TASK')
+    configure(b, { goal: 'A new independent task', assignment: 'new', sessionId: b.parent.id, retention }, 'goal-model-native')
+    fetcher.mockRejectedValue(new Error('Native sibling review must not call Jev'))
+    const proposal = await review(b, old, 'A separate work item with the requested complete task Context.')
+    expect(proposal.route).toMatchObject({ action: 'branch', forkParentSessionId: b.parent.id })
+    expect(proposal.route?.contextNodeIds).toEqual(retention === 'task-owned' ? [] : [root])
+    const target = await fork(b, b.parent, 'exact-native-new-task')
+    await b.ctx.contextify.reviewRoute(old, proposal.route!, 'accept', target.id, undefined, true)
+    append(target.session, 'EXACT_NEW_INPUT')
+    const users = compileContextify({ session: target.session, turn: target.session.seq + 1, step: 1 }).messages
+      .flatMap(message => message.role === 'user' ? message.content.flatMap(block => block.type === 'text' ? [block.text] : []) : [])
+    expect(users).toEqual(retention === 'task-owned' ? ['EXACT_NEW_INPUT'] : ['EXACT_ROOT_CONTEXT', 'EXACT_NEW_INPUT'])
+    expect(b.adapter.requests).toHaveLength(1)
+    expect(fetcher).not.toHaveBeenCalled()
+  } finally { fetcher.mockRestore(); await b.close() }
+})
+
+it.each(['unknown', 'relevance', 'unknown-assignment', 'other-without-draft', 'new-without-draft'] as const)(
+  'abstains from unsupported exact native intent: %s', async (kind) => {
+    const b = await lineageHarness(), fetcher = vi.spyOn(globalThis, 'fetch')
+    try {
+      append(b.parent.session, 'EXACT_UNKNOWN_ROOT')
+      const active = await fork(b, b.parent, 'exact-unknown-active')
+      append(active.session, 'EXACT_UNKNOWN_ACTIVE')
+      const noDraft = kind.endsWith('without-draft')
+      configure(b, { goal: 'Unidentified complete task scope',
+        assignment: kind === 'unknown-assignment' ? 'unknown' : kind === 'new-without-draft' ? 'new' : 'existing',
+        sessionId: kind === 'unknown-assignment' ? null : noDraft ? b.parent.id : active.id,
+        retention: kind === 'unknown' || kind === 'relevance' ? kind : 'task-owned' }, 'goal-model-native')
+      fetcher.mockRejectedValue(new Error('Abstention cannot fall back to Jev'))
+      const before = b.ctx.contextify.get(active).plan
+      const page = await b.ctx.contextify.familyPage(active)
+      const proposal = await b.ctx.contextify.recommend(active, { activeSessionId: active.id, graphRevision: page.revision,
+        planRevision: before.revision }, 'Preserve the requested work.', 'fast', !noDraft)
+      expect(proposal.route).toBeUndefined()
+      expect(proposal.selection).toEqual([])
+      expect(b.ctx.contextify.get(active).plan).toEqual(before)
+      expect(b.adapter.requests).toHaveLength(1)
+      expect(fetcher).not.toHaveBeenCalled()
+    } finally { fetcher.mockRestore(); await b.close() }
+  },
+)
+
+it.each(['continue', 'return'] as const)('refuses replaced original bodies in exact native %s', async (operation) => {
+  const b = await lineageHarness(), fetcher = vi.spyOn(globalThis, 'fetch')
+  try {
+    const original = append(b.parent.session, 'EXACT_ORIGINAL_BODY')
+    const active = operation === 'return' ? await fork(b, b.parent, 'exact-replaced-child') : b.parent
+    if (active !== b.parent) append(active.session, 'EXACT_OTHER_CONTEXT')
+    const node = (await b.ctx.contextify.familyPage(b.parent)).records.find(record => record.id === original)!
+    await b.ctx.contextify.focusNodeExcerpt(b.parent, { revision: b.ctx.contextify.get(b.parent).plan.revision },
+      node.owner, 0, 5, 'Keep the approved short excerpt')
+    const before = b.ctx.contextify.get(b.parent).plan
+    const compiledBefore = compileContextify({ session: b.parent.session, turn: b.parent.session.seq + 1, step: 1 }).messages
+    configure(b, { goal: 'Preserve complete original task', assignment: 'existing', sessionId: b.parent.id,
+      retention: 'task-owned' }, 'goal-model-native')
+    fetcher.mockRejectedValue(new Error('Exact replacement refusal must not call Jev'))
+    await expect(review(b, active)).rejects.toMatchObject({ code: 'CONTEXTIFY_INVALID_RECOMMENDATION' })
+    expect(b.ctx.contextify.get(b.parent).plan).toEqual(before)
+    expect(compileContextify({ session: b.parent.session, turn: b.parent.session.seq + 1, step: 1 }).messages).toEqual(compiledBefore)
+    expect(fetcher).not.toHaveBeenCalled()
+  } finally { fetcher.mockRestore(); await b.close() }
+})
+
+it('keeps the initial exact base authoritative after an explicit route conflict', async () => {
+  const b = await lineageHarness(), fetcher = vi.spyOn(globalThis, 'fetch')
+  try {
+    append(b.parent.session, 'EXACT_CONFLICT_PARENT')
+    const active = await fork(b, b.parent, 'exact-route-conflict')
+    append(active.session, 'EXACT_CONFLICT_CHILD')
+    configure(b, { goal: 'Preserve active task', assignment: 'existing', sessionId: active.id, retention: 'task-owned' }, 'goal-model-native')
+    fetcher.mockRejectedValue(new Error('A route conflict must not call Jev'))
+    const before = b.ctx.contextify.get(active).plan
+    await expect(review(b, active, 'Return to the mainline')).rejects.toMatchObject({ code: 'CONTEXTIFY_INVALID_RECOMMENDATION' })
+    expect(b.ctx.contextify.get(active).plan).toEqual(before)
+    expect(fetcher).not.toHaveBeenCalled()
+  } finally { fetcher.mockRestore(); await b.close() }
+})
+
+
+it.each([{ kind: 'missing', objective: undefined }, { kind: 'empty', objective: '' },
+  { kind: 'truncated', objective: 'x'.repeat(5000) }])('does not apply a new task scope without an exact routable draft: $kind', async ({ objective }) => {
+  const b = await lineageHarness()
+  try {
+    append(b.parent.session, 'EXACT_DRAFT_REQUIRED_SOURCE')
+    configure(b, { goal: 'New work', assignment: 'new', sessionId: b.parent.id, retention: 'task-owned' }, 'goal-model-native')
+    const page = await b.ctx.contextify.familyPage(b.parent)
+    const before = b.ctx.contextify.get(b.parent).plan
+    const proposal = await b.ctx.contextify.recommend(b.parent, { activeSessionId: b.parent.id,
+      graphRevision: page.revision, planRevision: before.revision }, objective, 'fast', true)
+    expect(proposal.route).toBeUndefined()
+    expect(proposal.selection).toEqual([])
+    expect(b.ctx.contextify.get(b.parent).plan).toEqual(before)
+    expect(b.adapter.requests).toHaveLength(1)
+  } finally { await b.close() }
+})
+
+
+it('preserves the current owned task without a draft while keeping inherited Context inactive', async () => {
+  const b = await lineageHarness()
+  try {
+    append(b.parent.session, 'NONDRAFT_ANCESTOR')
+    const task = await fork(b, b.parent, 'exact-nondraft-current')
+    const own = append(task.session, 'NONDRAFT_TASK')
+    configure(b, { goal: 'Preserve this task', assignment: 'existing', sessionId: task.id, retention: 'task-owned' }, 'goal-model-native')
+    const page = await b.ctx.contextify.familyPage(task)
+    const result = await b.ctx.contextify.recommend(task, { activeSessionId: task.id, graphRevision: page.revision,
+      planRevision: b.ctx.contextify.get(task).plan.revision }, undefined, 'fast')
+    expect(result.route).toBeUndefined()
+    expect(result.proposedNodeIds).toEqual([own])
+    const input = task.session.snapshotEvents().find(event => event.type === 'contextify/recommendation-request')
+    expect(input?.type === 'contextify/recommendation-request' ? input.data.system : '').toMatchSnapshot()
+  } finally { await b.close() }
+})
+
+
+it('abstains from individual Web source exceptions in exact native mode without a model call', async () => {
+  const b = await lineageHarness()
+  try {
+    append(b.parent.session, 'Compare the source reports')
+    const callId = ToolCallId('exact-native-web-source')
+    const call = b.parent.session.append('tool/call', { turn: 2, step: 1, callId, name: 'web_fetch',
+      arguments: '{"url":"https://source.test/old"}' })
+    b.parent.session.append('tool/result', { turn: 2, step: 1, message: createToolResultMessage({ callId,
+      content: [{ type: 'text', text: 'ORIGINAL_WEB_CONTEXT' }], isError: false }) },
+    { surfaceOp: 'append', sourceEventSeqs: [SessionSeq(call.seq)] })
+    configure(b, {}, 'goal-model-native')
+    const before = b.ctx.contextify.get(b.parent).plan
+    const result = await review(b, b.parent, 'Ignore https://source.test/old. Continue the comparison.')
+    expect(result.selection).toEqual([])
+    expect(result.route).toBeUndefined()
+    expect(b.adapter.requests).toEqual([])
+    expect(b.ctx.contextify.get(b.parent).plan).toEqual(before)
+  } finally { await b.close() }
+})
+
+
+it('refuses a manual Exclude conflict and allows exact review after the user clears it', async () => {
+  const b = await lineageHarness()
+  try {
+    append(b.parent.session, 'MANUAL_ANCESTOR')
+    const task = await fork(b, b.parent, 'exact-manual-task')
+    const own = append(task.session, 'MANUAL_EXCLUDED_TASK_SOURCE')
+    const node = (await b.ctx.contextify.familyPage(task)).records.find(record => record.id === own)!
+    await b.ctx.contextify.setNodeMode(task, { revision: b.ctx.contextify.get(task).plan.revision }, node.owner, 'exclude', 'contextify-client')
+    configure(b, { goal: 'Preserve this task', assignment: 'existing', sessionId: task.id, retention: 'task-owned' }, 'goal-model-native')
+    const before = b.ctx.contextify.get(task).plan
+    await expect(review(b, task)).rejects.toMatchObject({ code: 'CONTEXTIFY_INVALID_RECOMMENDATION' })
+    expect(b.ctx.contextify.get(task).plan).toEqual(before)
+    expect(JSON.stringify(compileContextify({ session: task.session, turn: task.session.seq + 1, step: 1 }).messages))
+      .not.toContain('MANUAL_EXCLUDED_TASK_SOURCE')
+    await b.ctx.contextify.setNodeMode(task, { revision: before.revision }, node.owner, 'natural', 'contextify-client')
+    expect((await review(b, task)).proposedNodeIds).toEqual([own])
+    expect(b.adapter.requests).toHaveLength(2)
+  } finally { await b.close() }
 })

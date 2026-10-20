@@ -4,6 +4,9 @@
 export const zh = {
   'settings.fastReviewer': '快速 Context 决策模型',
   'settings.parentReviewer': '当前聊天模型',
+  'settings.parentReviewerHint': '使用当前聊天模型审核，无需 Jev 凭据。调用可能收费。',
+  'settings.goalNativeReviewer': '目标模型＋完整任务 Context',
+  'settings.goalNativeHint': '至多一次聊天模型，不调用 Jev；仅保留完整任务或祖先链，不逐条选择来源。任务或范围不明确时不建议切换。无草稿时仅审核当前任务。聊天模型调用可能收费。',
   'settings.jevReviewer': 'Jev 1.13.0',
   'settings.goalJevReviewer': '目标模型＋Jev Context',
   'settings.goalJevHint': '草稿检查先确定任务和要保留的历史，再按该范围审核来源。任务或保留范围不明确时不建议自动切换。使用一次聊天模型及至多一次 Jev 调用，均可能收费，需在 Host 配置 Jev 凭据。',
@@ -309,6 +312,9 @@ export type StewardKey = keyof typeof zh
 export const en = {
   'settings.fastReviewer': 'Fast Context reviewer',
   'settings.parentReviewer': 'Current chat model',
+  'settings.parentReviewerHint': 'Use the current chat model without Jev credentials. Calls may incur a charge.',
+  'settings.goalNativeReviewer': 'Goal model + exact task Context',
+  'settings.goalNativeHint': 'Uses at most one chat-model request and no Jev request. Retains the complete task or ancestry, without individual source exceptions. Uncertain tasks or scopes abstain; without a draft, only the current task is reviewed. Chat-model calls may incur a charge.',
   'settings.jevReviewer': 'Jev 1.13.0',
   'settings.goalJevReviewer': 'Goal model + Jev Context',
   'settings.goalJevHint': 'Draft review uses one chat-model request and at most one Jev request to choose a task, retain the requested history, and review sources under that choice. Uncertain tasks or retention scopes do not propose automatic routing. Both calls may incur charges; Jev credentials are required on the Host.',
