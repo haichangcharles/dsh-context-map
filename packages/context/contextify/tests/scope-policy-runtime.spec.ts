@@ -339,3 +339,27 @@ it('restores the same confirmed policy from JSONL after cold resume and preserve
     finally { await rm(root, { recursive: true, force: true }) }
   }
 })
+
+
+it('retains a complete scope with actual borrowed snapshots after an ordinary later Context edit', async () => {
+  const { b, child, fetcher } = await setupScope('scope-include-integrity')
+  try {
+    const sibling = await fork(b, b.parent, 'scope-include-target')
+    append(sibling.session, 'BORROWED_TASK_ONLY')
+    const nodes = (await b.ctx.contextify.familyPage(child)).records
+    const foreign = nodes.find(node => node.owner.sessionId === sibling.id)!
+    await b.ctx.contextify.setNodeMode(child, { revision: b.ctx.contextify.get(child).plan.revision }, foreign.owner, 'include')
+    await b.ctx.contextify.setNodeModes(child, { revision: b.ctx.contextify.get(child).plan.revision },
+      nodes.filter(node => node.sessionIds.includes(child.id)).map(node => ({ node: node.owner, mode: 'exclude' as const })))
+    configure(b, JSON.stringify({ goal: 'Use the sibling task', retention: 'task-owned', assignment: 'existing', sessionId: sibling.id }), false)
+    const proposal = await review(b, child)
+    expect(proposal.scopePolicy).toMatchObject({ sessionId: sibling.id, mode: 'task-owned' })
+    await applyScope(b, child, proposal, proposal.scopePolicy!.key)
+    const examples = (await b.ctx.contextify.stewardProfile(child)).scopePolicyExamples
+    expect(examples).toHaveLength(1)
+    expect(child.session.snapshotEvents().filter(event => event.type === 'context/compiler-snapshot')).toHaveLength(2)
+    const parent = nodes.find(node => node.owner.sessionId === b.parent.id)!
+    await b.ctx.contextify.setNodeMode(child, { revision: b.ctx.contextify.get(child).plan.revision }, parent.owner, 'natural')
+    expect((await b.ctx.contextify.stewardProfile(child)).scopePolicyExamples).toEqual(examples)
+  } finally { fetcher.mockRestore(); await b.close() }
+})

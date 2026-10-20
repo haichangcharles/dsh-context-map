@@ -1,10 +1,10 @@
 /** Complete policy approval over existing native events, without inferred partial-mask labels. */
 import { createHash } from 'node:crypto'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ContextFamilyGraph, ContextFamilyInspection, ContextRecommendationBase,
   ContextRecommendationProposal, ContextScopePolicyExample, ContextScopePolicyReview } from './types.ts'
 import { resolveGoalPreservationScope, type GoalPreservationScope } from './goal-retention.ts'
-import { contextPlanFeedbackStates } from './plan.ts'
+import { contextPlanFeedbackStates, nextPlan, normalizeContextPlanSnapshot } from './plan.ts'
 
 function sameSet(a: readonly string[], b: readonly string[]): boolean {
   return a.length === new Set(a).size && b.length === new Set(b).size
@@ -72,10 +72,64 @@ function validPolicy(value: unknown): value is ContextScopePolicyReview {
     && typeof p.sourceCount === 'number' && Number.isSafeInteger(p.sourceCount) && p.sourceCount > 0
 }
 
+/** Local native-state consistency, not authentication of the producer or original source. */
+function appliedReviewMatches(events: readonly SessionEvent[], index: number,
+  review: Extract<SessionEvent, { type: 'contextify/recommendation-reviewed' }>,
+  choice: Extract<SessionEvent, { type: 'contextify/node-choice' }>): boolean {
+  const priorEvents = events.slice(0, index)
+  const planIndex = priorEvents.findLastIndex(event => event.type === 'contextify/plan')
+  const planEvent = priorEvents[planIndex]
+  if (planEvent?.type !== 'contextify/plan') return false
+  const actual = normalizeContextPlanSnapshot(planEvent.data)
+  const beforeEvent = priorEvents.slice(0, planIndex).findLast(event => event.type === 'contextify/plan')
+  if (beforeEvent?.type !== 'contextify/plan') return false
+  const before = normalizeContextPlanSnapshot(beforeEvent.data)
+  if (actual === null || before === null || before.revision !== choice.data.beforePlanRevision
+    || actual.revision !== choice.data.afterPlanRevision || actual.revision !== before.revision + 1) return false
+  if (sameSet(before.excluded.map(item => item.nodeId), actual.excluded.map(item => item.nodeId))
+    && sameSet(before.included.map(item => item.nodeId), actual.included.map(item => item.nodeId))) return false
+  const input: unknown = choice.data.mutations
+  if (!Array.isArray(input) || !input.every((item: unknown): item is typeof choice.data.mutations[number] => {
+    const node = item !== null && typeof item === 'object' ? item as Record<string, unknown> : null
+    return node !== null && typeof node.nodeId === 'string'
+      && (node.mode === 'natural' || node.mode === 'include' || node.mode === 'exclude')
+  })) return false
+  const mutations = input
+  if (!sameSet(mutations.map(item => item.nodeId), review.data.acceptedNodeIds)) return false
+  let excluded = [...before.excluded], included = [...before.included]
+  for (const mutation of mutations) {
+    if (!review.data.selection.some(item => item.nodeId === mutation.nodeId
+      && item.action === (mutation.mode === 'exclude' ? 'exclude' : 'include'))) return false
+    excluded = excluded.filter(item => item.nodeId !== mutation.nodeId)
+    included = included.filter(item => item.nodeId !== mutation.nodeId)
+    const colon = mutation.nodeId.lastIndexOf(':')
+    if (colon < 1) return false
+    const suffix = mutation.nodeId.slice(colon + 1)
+    if (mutation.mode === 'exclude') {
+      const item = actual.excluded.find(item => item.nodeId === mutation.nodeId)
+      const source = item === undefined ? undefined : priorEvents.slice(0, planIndex).find(event => event.seq === item.eventSeq)
+      if (item === undefined || suffix !== String(item.eventSeq) || source?.surfaceOp !== 'append'
+        || !['user/message', 'assistant/message', 'tool/result'].includes(source.type)) return false
+      excluded.push(item)
+    } else if (mutation.mode === 'include') {
+      const item = actual.included.find(item => item.nodeId === mutation.nodeId)
+      const snapshot = item === undefined ? undefined : priorEvents.slice(0, planIndex).find(event => event.seq === item.snapshotSeq)
+      if (item === undefined || snapshot?.type !== 'context/compiler-snapshot' || snapshot.data.id !== mutation.nodeId) return false
+      const provenance = snapshot.data.provenance
+      if (provenance?.provider !== 'contextify' || !provenance.sourceId
+        || !Number.isSafeInteger(provenance.sourceSeq) || provenance.sourceSeq < 0
+        || suffix !== String(provenance.sourceSeq)
+        || provenance.contentHash !== createHash('sha256').update(JSON.stringify(snapshot.data.message)).digest('hex')) return false
+      included.push(item)
+    }
+  }
+  return JSON.stringify(nextPlan(before, { excluded, included, replacements: before.replacements })) === JSON.stringify(actual)
+}
+
 /** Project at most four complete approvals from owned, still-active native Plan history.
  * @param inspections - Actual family logs; inherited copies are excluded.
  * @param watermarks - Existing Profile reset cursors; raw logs are unchanged.
- * @returns Event-referenced historical choices, never current destination authority.
+ * @returns Event-referenced choices corroborated by their historical Plan; never current destination authority.
  */
 export function scopePolicyExamplesFromInspections(
   inspections: readonly ContextFamilyInspection[], watermarks: ReadonlyMap<SessionId, number>,
@@ -97,7 +151,8 @@ export function scopePolicyExamplesFromInspections(
         || !sameSet(event.data.acceptedNodeIds, event.data.selection.map(item => item.nodeId))
         || JSON.stringify(proposal.selection) !== JSON.stringify(event.data.selection)
         || !sameSet(proposal.proposedNodeIds, proposal.proposedNodeIds) || p.sourceCount !== proposal.proposedNodeIds.length
-        || p.key !== policyKey(p, event.data.sourceBase ?? event.data.base, proposal.proposedNodeIds)) continue
+        || p.key !== policyKey(p, event.data.sourceBase ?? event.data.base, proposal.proposedNodeIds)
+        || !appliedReviewMatches(inspection.events, inspection.inheritedEventCount + index - 1, event, previous)) continue
       const objective = Array.from(event.data.objective ?? '').slice(0, 200).join('')
       if (!objective.trim() || !Number.isFinite(event.time)) continue
       result.push(Object.freeze({ sourceSessionId: inspection.meta.id, sourceEventSeq: event.seq,

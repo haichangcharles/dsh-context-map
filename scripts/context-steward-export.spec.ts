@@ -9,7 +9,7 @@ import { compileContextify, currentContextPlan } from '../packages/context/conte
 import { scopePolicyExamplesFromInspections } from '../packages/context/contextify/src/scope-policy.ts'
 import { contextPolicyWatermarks } from '../packages/context/contextify/src/policy-memory.ts'
 import { readSessionLogText } from '../packages/session-query/session-log-export/src/archive.ts'
-import { scanLog } from '../packages/session/session-persistence-jsonl/src/format.ts'
+import { scanLog, toHeaderLine, eventLines } from '../packages/session/session-persistence-jsonl/src/format.ts'
 
 function append(session: Session, text: string) {
   const turn = session.seq + 1
@@ -159,7 +159,23 @@ it('restores selected native logs with original approval references and reversib
       expect((await b.ctx.contextify.stewardProfile(child)).scopePolicyExamples).toEqual(examples)
       return observations
     }
-    await exported(1)
+    const original = await exported(1)
+    const contradictory = original.map((inspection) => {
+      const events = inspection.events.map(event => event.type === 'contextify/plan'
+        && event.data.revision === proposal.base.planRevision + 1
+        ? { ...event, data: { ...event.data, excluded: [] } } : event)
+      const raw = `${JSON.stringify(toHeaderLine(inspection.meta, inspection.inheritedEventCount))}\n${eventLines(events)}\n`
+      const decoded = scanLog(Buffer.from(raw))
+      const restored = Session.fromRestore(decoded.meta.id, decoded.events, decoded.meta,
+        SessionLogOffset(decoded.inheritedEventCount), 'detached')
+      if (restored.id === child.id) {
+        expect(JSON.stringify(compileContextify({ session: restored, turn: restored.seq + 1, step: 1 }).messages))
+          .toContain('PARENT_BRAINSTORMING_ONLY')
+      }
+      return { meta: restored.header, events: restored.snapshotEvents(), inheritedEventCount: restored.inheritedEventCount }
+    })
+    // Counterfactual imported bytes, not a claim that Host generated this contradiction.
+    expect(scopePolicyExamplesFromInspections(contradictory, contextPolicyWatermarks(contradictory))).toEqual([])
     b.ctx.contextify.undo(child, { revision: b.ctx.contextify.get(child).plan.revision })
     await exported(0)
     b.ctx.contextify.redo(child, { revision: b.ctx.contextify.get(child).plan.revision })
