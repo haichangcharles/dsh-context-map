@@ -13,10 +13,10 @@ export interface ContextRecommendationReviewProps extends PropsLocale<'contextif
   readonly state: ContextRecommendationState
   readonly graph: ContextFamilyGraph
   readonly pending: boolean
-  readonly acceptRoute: (route: ContextRouteAdvice, carryContext?: boolean) => Promise<void>
+  readonly acceptRoute: (route: ContextRouteAdvice, carryContext?: boolean, displayedPolicyKey?: string) => Promise<void>
   readonly rejectRoute: (route: ContextRouteAdvice) => Promise<void>
   readonly present: (proposal: ContextRecommendationProposal) => Promise<void>
-  readonly apply: (declinedNodeIds: readonly string[]) => Promise<void>
+  readonly apply: (declinedNodeIds: readonly string[], displayedPolicyKey?: string) => Promise<void>
   readonly confirmArchive: (candidate: ContextArchiveCandidate) => Promise<void>
   readonly dismiss: (declinedNodeIds: readonly string[]) => Promise<void>
   readonly reportError: (cause: unknown) => void
@@ -80,6 +80,11 @@ function ProposalReview({
       <button type="button" aria-label={t('copy.closeRecommendationReview')} onClick={() => { run(() => dismiss(keptCurrent)) }}>×</button>
     </div>
     {stale && <div className={css.stale} role="alert">{t('copy.theConversationOrContextPlanChangedDismissAnd')}</div>}
+    {proposal.scopePolicy !== undefined && <section className={css.section} aria-label={t('scopePolicy.title')}>
+      <h4>{t('scopePolicy.title')}</h4>
+      <p>{t(proposal.scopePolicy.mode === 'task-owned' ? 'scopePolicy.owned' : 'scopePolicy.lineage')}</p>
+      <p>{t('scopePolicy.hint')}</p>
+    </section>}
     {proposal.personalization !== undefined && <details className={css.section}>
       <summary>{t('memory.title')} · {proposal.personalization.examples.length}</summary>
       <p>{t('memory.hint')}</p>
@@ -92,6 +97,13 @@ function ProposalReview({
             {example.content !== undefined && <p>{example.content}</p>}
             {example.sourceSessionId !== undefined && <small>{example.sourceSessionId}:{example.sourceEventSeq}</small>}
           </li>)}</ul>}
+      {proposal.personalization.scopePolicyExamples !== undefined && <details>
+        <summary>{t('scopePolicy.examples')}</summary>
+        <ul>{proposal.personalization.scopePolicyExamples.map(example => <li key={`${example.sourceSessionId}:${String(example.sourceEventSeq)}`}>
+          <strong>{example.objective}</strong> · {t(example.mode === 'task-owned' ? 'scopePolicy.owned' : 'scopePolicy.lineage')}
+          <small>{example.sourceSessionId}:{example.sourceEventSeq}</small>
+        </li>)}</ul>
+      </details>}
       {proposal.personalization.managementMemory !== undefined && <>
         {proposal.personalization.reviewer === 'local' && <p>{t('memory.available')}</p>}
         <details>
@@ -148,7 +160,7 @@ function ProposalReview({
             : route.action === 'return' ? t('copy.returnWithDraft') : t('copy.moveDraftToBranch')}
         </button>
         <button type="button" disabled={stale || pending || keptCurrent.length > 0 || route.contextUnavailable === true}
-          title={t('copy.carryContextHint')} onClick={() => { run(() => acceptRoute(route, true)) }}>
+          title={t('copy.carryContextHint')} onClick={() => { run(() => proposal.scopePolicy === undefined ? acceptRoute(route, true) : acceptRoute(route, true, proposal.scopePolicy.key)) }}>
           {t(route.action === 'branch' ? 'copy.branchWithContext' : 'copy.moveDraftWithContext')}
         </button>
       </div>
@@ -201,7 +213,7 @@ function ProposalReview({
         </article>)}
       </div>
       {proposal.selection.length > 0 && <div className={css.actions}>
-        <button type="button" disabled={stale || pending} onClick={() => { run(() => apply(keptCurrent)) }}>
+        <button type="button" disabled={stale || pending} onClick={() => { run(() => keptCurrent.length > 0 || proposal.scopePolicy === undefined ? apply(keptCurrent) : apply(keptCurrent, proposal.scopePolicy.key)) }}>
           {keptCurrent.length === 0 ? t('copy.applyProposedContext')
             : keptCurrent.length === proposal.selection.length ? t('copy.keepCurrentContext') : t('copy.applySelectedChanges')}
         </button>

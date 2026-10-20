@@ -98,9 +98,11 @@ export function apply(ctx: ClientContext): void {
       setNodeMode: async (ref, node, mode) => valueOf(await remote.setNodeMode(
         sessionId, ref, node, mode, 'contextify-client',
       )),
-      setNodeModes: async (ref, mutations, expectedGraphRevision, reviewedDeclinedNodeIds) => valueOf(await remote.setNodeModes(
-        sessionId, ref, mutations, expectedGraphRevision, 'contextify-client', reviewedDeclinedNodeIds,
-      )),
+      setNodeModes: async (ref, mutations, expectedGraphRevision, reviewedDeclinedNodeIds, displayedPolicyKey) => valueOf(
+        await remote.setNodeModes(
+          sessionId, ref, mutations, expectedGraphRevision, 'contextify-client', reviewedDeclinedNodeIds,
+          ...(displayedPolicyKey === undefined ? [] : [displayedPolicyKey] as const),
+        )),
       reset: async ref => valueOf(await remote.reset(sessionId, ref)),
       undo: async ref => valueOf(await remote.undo(sessionId, ref)),
       redo: async ref => valueOf(await remote.redo(sessionId, ref)),
@@ -231,7 +233,7 @@ export function apply(ctx: ClientContext): void {
             await controller.refresh()
           },
           cancelRecommendation: () => controller.cancelRecommendation(),
-          applyRecommendations: declinedNodeIds => controller.applyRecommendations(declinedNodeIds),
+          applyRecommendations: (declinedNodeIds, key) => controller.applyRecommendations(declinedNodeIds, key),
           clearRecommendation: () => { controller.clearRecommendation() },
           rejectRoute: async (route: ContextRouteAdvice) => {
             const sourceScope = ctx.sessions.scope(sessionId)
@@ -241,7 +243,7 @@ export function apply(ctx: ClientContext): void {
             }
             valueOf(await remote.reviewRoute(sessionId, route, 'reject', undefined, 'contextify-client'))
           },
-          acceptRoute: async (route: ContextRouteAdvice, carryContext?: boolean) => {
+          acceptRoute: async (route: ContextRouteAdvice, carryContext?: boolean, displayedPolicyKey?: string) => {
             if (route.base.activeSessionId !== sessionId) throw new Error(t('error.staleRoute'))
             const page = valueOf(await remote.familyPage(sessionId, undefined, 1))
             const view = valueOf(await remote.get(sessionId))
@@ -282,8 +284,10 @@ export function apply(ctx: ClientContext): void {
             const transferred = targetScope === undefined ? undefined
               : ctx.conversation.input.for(targetScope).state.getSnapshot()
             try {
-              valueOf(await remote.reviewRoute(sessionId, route, 'accept', targetId, 'contextify-client',
-                ...(carryContext === true ? [true] as const : [])))
+              valueOf(await (carryContext === true && displayedPolicyKey !== undefined
+                ? remote.reviewRoute(sessionId, route, 'accept', targetId, 'contextify-client', true, displayedPolicyKey)
+                : remote.reviewRoute(sessionId, route, 'accept', targetId, 'contextify-client',
+                  ...(carryContext === true ? [true] as const : []))))
             } catch (cause) {
               const restored = transferred !== undefined && ctx.conversation.moveDraft(targetId, sessionId,
                 { draft: transferred.draft, draftRev: transferred.draftRev })

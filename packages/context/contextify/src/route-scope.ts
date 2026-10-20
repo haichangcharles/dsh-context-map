@@ -87,5 +87,6 @@ export function carryRouteScope(input: {
     throw new Error('Carried Context conflicts with the destination manual scope')
   }
   return Object.freeze({ ...rebased, sourceBase: proposal.base,
+    ...(proposal.scopePolicy === undefined ? {} : { scopePolicy: proposal.scopePolicy }),
     ...(proposal.personalization === undefined ? {} : { personalization: proposal.personalization }) })
 }

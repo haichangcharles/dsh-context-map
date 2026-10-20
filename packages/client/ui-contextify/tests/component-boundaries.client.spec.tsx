@@ -484,3 +484,30 @@ it.each(['branch', 'navigate'] as const)('previews the complete %s scope and pre
   fireEvent.click(screen.getByRole('button', { name: action === 'branch' ? 'Start a new branch' : 'Move draft to branch' }))
   expect(h.props.acceptRoute).toHaveBeenCalledWith(route)
 })
+
+it('echoes only a displayed complete policy key on complete Apply and Carry', async () => {
+  const scopePolicy = { reviewId: 'fixture-ui-publication', key: 'a'.repeat(64), mode: 'task-owned' as const, assignment: 'existing' as const, sessionId: root, sourceCount: 1 }
+  const route = { action: 'navigate' as const, base: proposal().base, objective: 'Write', reason: 'Resume', targetSessionId: sid('other') }
+  const h = reviewSheet(proposal({ scopePolicy, route }))
+  expect(screen.getByText('Only this task')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Apply proposed context' }))
+  await waitFor(() => { expect(h.props.apply).toHaveBeenCalledWith([], scopePolicy.key) })
+  fireEvent.click(screen.getByRole('button', { name: 'Move draft with proposed Context' }))
+  await waitFor(() => { expect(h.props.acceptRoute).toHaveBeenCalledWith(route, true, scopePolicy.key) })
+  fireEvent.click(screen.getByRole('button', { name: 'Move draft to branch' }))
+  await waitFor(() => { expect(h.props.acceptRoute).toHaveBeenCalledWith(route) })
+})
+
+it('does not acknowledge a complete policy when keeping an item and shows historical scope examples separately', async () => {
+  const scopePolicy = { reviewId: 'fixture-partial-publication', key: 'b'.repeat(64), mode: 'task-lineage' as const, assignment: 'existing' as const, sessionId: root, sourceCount: 1 }
+  const h = reviewSheet(proposal({ scopePolicy, personalization: { enabled: true, reviewer: 'goal-model-jev', examples: [],
+    scopePolicyExamples: [{ sourceSessionId: root, sourceEventSeq: 12, at: 1, objective: 'Earlier full scope', mode: 'task-lineage', assignment: 'existing' },
+      { sourceSessionId: root, sourceEventSeq: 13, at: 2, objective: 'Earlier narrow scope', mode: 'task-owned', assignment: 'existing' }] } }))
+  expect(screen.getByText('This task and its parent tasks')).toBeTruthy()
+  expect(screen.getByText('Earlier full scope').parentElement?.textContent).toContain('This task and its parent tasks')
+  expect(screen.getByText('Earlier narrow scope').parentElement?.textContent).toContain('Only this task')
+  expect(screen.getByText('Earlier full scope')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Keep current context for extra' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Apply selected changes' }))
+  await waitFor(() => { expect(h.props.apply).toHaveBeenCalledWith(['extra']) })
+})

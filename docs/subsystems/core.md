@@ -415,6 +415,8 @@ The two core IDs are `ToolCallId` (correlates a tool call with its result; dsh-l
 
 [Contextify](../../packages/context/contextify/README.md) derives `ContextManagementMemory` from confirmed, retraction-filtered native events. Its optional field on `ContextRecommendationProposal.personalization` is the same object supplied to the Context-action packet and goal reviewer; disabled personalization omits it. Source declarations live in [Contextify types](../../packages/context/contextify/src/types.ts).
 
+`ContextScopePolicyReview` is an optional server-built publication descriptor on `ContextRecommendationProposal`: a unique review identity/key, categorical preservation mode, original assignment/Session and complete source count. The Client echoes only the displayed key; it does not supply source authority. A matching full changed approval can annotate the existing reviewed event. `ContextScopePolicyExample` retains its owned source Session/event, time, bounded objective, mode and assignment after Undo/reset filtering; at most four enter the enabled action/goal packet and inspectable decision snapshot. Partial or unidentifiable history provides no such label. [Scope-policy implementation](../../packages/context/contextify/src/scope-policy.ts) defines validation and bounds.
+
 | Type | Fields and meaning |
 |---|---|
 | `ContextManagementReference` | `sessionId`, `eventSeq`: exact owning native event; neither is a current action target. |
@@ -1055,8 +1057,9 @@ Durable Context Plan mutations and native Session-family graph reads.
  * @param actualTargetSessionId - Native destination after an accepted transfer.
  * @param uiOrigin - Marks a Client review without claiming authenticated identity.
  * @param carryContext - Approve complete Context at the final destination; manual conflicts preserve its Plan.
+ * @param displayedPolicyKey - Optional Client-declared acknowledgement of the displayed server policy; never source authority.
  */
-@Remote('reviewRoute') async reviewRoute( agent: Agent, route: ContextRouteAdvice, choice: 'accept' | 'reject', actualTargetSessionId?: SessionId, uiOrigin?: 'contextify-client', carryContext?: boolean, ): Promise<void>
+@Remote('reviewRoute') async reviewRoute( agent: Agent, route: ContextRouteAdvice, choice: 'accept' | 'reject', actualTargetSessionId?: SessionId, uiOrigin?: 'contextify-client', carryContext?: boolean, displayedPolicyKey?: string, ): Promise<void>
 
 /**
  * Record one completed manual Context Map fork as a positive Branch choice.
@@ -1117,9 +1120,10 @@ requestExplicitBranch(agent: Agent, reason: string): void
  * @param expectedGraphRevision - Optional family revision required by recommendation acceptance.
  * @param uiOrigin - Optional Client-declared origin for a visible plan action.
  * @param reviewedDeclinedNodeIds - Explicit Keep-current choices within the reviewed proposal.
+ * @param displayedPolicyKey - Optional Client acknowledgement of the displayed complete policy; omission keeps it unlearned.
  * @returns The view after one complete plan commits.
  */
-@Remote('setNodeModes') async setNodeModes( agent: Agent, ref: ContextPlanRef, mutations: readonly ContextNodeMutation[], expectedGraphRevision?: string, uiOrigin?: 'contextify-client', reviewedDeclinedNodeIds?: readonly string[], ): Promise<ContextifyView>
+@Remote('setNodeModes') async setNodeModes( agent: Agent, ref: ContextPlanRef, mutations: readonly ContextNodeMutation[], expectedGraphRevision?: string, uiOrigin?: 'contextify-client', reviewedDeclinedNodeIds?: readonly string[], displayedPolicyKey?: string, ): Promise<ContextifyView>
 
 /**
  * Archive one node's model-visible semantics with a reversible role-preserving placeholder.

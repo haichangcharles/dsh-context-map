@@ -238,3 +238,86 @@ it('projects confirmed management workflows through the real Loader and removes 
     await scaffold.close()
   }
 }, 90_000)
+
+it('acknowledges the displayed complete policy through the shipped Client and supplies its owned example to the next goal review', async () => {
+  const scaffold = await launchWebScaffold()
+  let browser: Browser | undefined
+  let restoreFetch: (() => void) | undefined
+  let restoreCredential: (() => void) | undefined
+  const originalFetch = globalThis.fetch
+  try {
+    const credential = vi.spyOn(scaffold.ctx.credentials, 'resolve').mockResolvedValue({ value: 'fixture-only-key', source: 'test' })
+    restoreCredential = () => { credential.mockRestore() }
+    const settings = scaffold.ctx.contextify as unknown as { promptSettings: () => ContextifyPromptSettings }
+    settings.promptSettings = () => ({ ...CONTEXTIFY_DEFAULT_SETTINGS, fastDecisionProvider: 'goal-model-jev', automaticBranchReview: false })
+    const cwd = `${scaffold.workspaceCwd}/workspace`
+    const root = (await scaffold.ctx.agents.create({ sessionId: SessionId('scope-web-parent'), meta: { cwd },
+      agentOptions: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } })).agent
+    append(root.session, 'PARENT_SCOPE_SOURCE')
+    const seed = root.session.snapshotEvents()
+    const child = (await scaffold.ctx.agents.create({ sessionId: SessionId('scope-web-child'), seed,
+      inheritedEventCount: SessionLogOffset(seed.length), meta: { cwd, parentSession: root.id, isSeeded: true },
+      agentOptions: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } })).agent
+    append(child.session, 'OWN_SCOPE_SOURCE')
+    scaffold.ctx.sessionTitle.rename(child.session, 'Complete policy fixture')
+    const inputs: { confirmedScopePolicies?: unknown[] }[] = []
+    scaffold.ctx.on('llm/stream', (request): AsyncIterable<StreamChunk> => {
+      expect(request.messages[0]?.source).toMatchObject({ kind: 'plugin', plugin: 'contextify' })
+      const input = request.messages[0]?.content[0]
+      if (input?.type !== 'text') throw new Error('Expected goal input')
+      inputs.push(JSON.parse(input.text) as { confirmedScopePolicies?: unknown[] })
+      const text = JSON.stringify({ goal: 'Continue own writing', retention: 'task-owned', assignment: 'existing', sessionId: child.id })
+      return (async function* () {
+        yield { type: 'block-start', index: 0, blockType: 'text' }
+        yield { type: 'text-delta', index: 0, text }
+        yield { type: 'block-end', index: 0, block: { type: 'text', text } }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+      })()
+    }, { global: true, prepend: true })
+    const fetcher = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      if (url !== 'https://api.typesafe.ai/v1/systemone') return originalFetch(url, init)
+      if (typeof init?.body !== 'string') throw new Error('Expected fixture body')
+      const body = JSON.parse(init.body) as { questions: Record<string, {
+        type: string
+        instructions: string
+        criteria?: Record<string, string>
+      }> }
+      return Response.json({ model: 'jev-1.13.0', answers: Object.fromEntries(Object.entries(body.questions).map(([key, q]) => {
+        if (q.type === 'noul') return [key, { type: 'noul', noul: key.startsWith('n') && q.instructions.includes('"baseIncluded":true') ? 1 : .05 }]
+        const choice = q.criteria?.p0 === undefined ? 'active' : 'p0'
+        return [key, { type: 'choice', choice, probabilities: { [choice]: 1 } }]
+      })) as Record<string, unknown> })
+    })
+    restoreFetch = () => { fetcher.mockRestore() }
+    browser = await chromium.launch()
+    const page = await newEnglishPage(browser)
+    await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
+    await connectFreshWorkspace(page, scaffold.workspaceCwd)
+    const workspace = await scaffold.ctx.workspaceRegistry.resolveByPath(cwd)
+    if (workspace === undefined) throw new Error('Fixture workspace unavailable')
+    await workspace.attachSession(child.id)
+    await page.getByRole('treeitem').filter({ hasText: 'Complete policy fixture' }).click()
+    await writeComposerDraft(page, page.locator('[data-composer-input]').first(), 'Continue own writing with only this task.')
+    await page.getByRole('button', { name: 'Draft review mode', exact: true }).click()
+    await page.getByRole('menuitem', { name: 'Fast review for draft', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'Context recommendation review' })
+    await dialog.getByText('Only this task', { exact: true }).waitFor({ timeout: 15_000 })
+    await dialog.getByRole('button', { name: 'Apply proposed context', exact: true }).click()
+    await expect.poll(() => child.session.snapshotEvents().some(e => e.type === 'contextify/recommendation-reviewed' && e.data.scopePolicy?.mode === 'task-owned'), { timeout: 15_000 }).toBe(true)
+    const compiled = scaffold.ctx.contextCompiler.compile({ session: child.session, turn: child.session.seq + 1, step: 1 })
+    expect(JSON.stringify(compiled.messages)).toContain('OWN_SCOPE_SOURCE')
+    expect(JSON.stringify(compiled.messages)).not.toContain('PARENT_SCOPE_SOURCE')
+    const family = await scaffold.ctx.contextify.familyPage(child)
+    const next = await scaffold.ctx.contextify.recommend(child, { activeSessionId: child.id, graphRevision: family.revision,
+      planRevision: scaffold.ctx.contextify.get(child).plan.revision }, 'Continue the next section.', 'fast', true)
+    expect(inputs[0]?.confirmedScopePolicies).toBeUndefined()
+    expect(inputs[1]?.confirmedScopePolicies).toEqual([expect.objectContaining({ mode: 'task-owned', sourceSessionId: child.id })])
+    expect(next.personalization?.scopePolicyExamples).toHaveLength(1)
+    expect(inputs).toHaveLength(2)
+  } finally {
+    try { await browser?.close() } finally {
+      restoreFetch?.(); restoreCredential?.()
+      await scaffold.close()
+    }
+  }
+}, 90_000)

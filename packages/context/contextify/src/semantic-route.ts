@@ -1,6 +1,6 @@
 /** Bounded Context-action data shared by Fast review, local scorers and offline replay. */
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { ContextFamilyGraph, ContextManagementMemory, ContextPolicyObservation, ContextRecommendationBase, ContextStewardProfile } from './types.ts'
+import type { ContextFamilyGraph, ContextManagementMemory, ContextPolicyObservation, ContextRecommendationBase, ContextStewardProfile, ContextScopePolicyExample } from './types.ts'
 import { buildContextRouteCandidates, planContextRoute, draftRouteIntent,
   type ContextRouteCandidate, type ContextRouteIntent, type ContextRouteProposal } from './context-route-policy.ts'
 import { parseRecommendationJson, parseRecommendationDecisionText, type ContextRecommendationDecision } from './recommendation.ts'
@@ -41,6 +41,7 @@ export interface ContextActionPacket {
   /** Confirmed historical route examples; target IDs here do not authorize current actions. */
   readonly preferenceExamples?: readonly ContextPolicyObservation[]
   /** Conditional preference rules and causal workflows; historical references grant no authority. */
+  readonly scopePolicyExamples?: readonly ContextScopePolicyExample[]
   readonly managementMemory?: ContextManagementMemory
 }
 
@@ -80,6 +81,7 @@ export function buildContextActionPacket(input: {
   readonly base: ContextRecommendationBase
   readonly visibleNodeIds?: readonly string[]
   readonly preferenceExamples?: readonly ContextPolicyObservation[]
+  readonly scopePolicyExamples?: readonly ContextScopePolicyExample[]
 }): ContextActionPacket {
   const visible = input.visibleNodeIds === undefined ? undefined : new Set(input.visibleNodeIds)
   const active = input.graph.sessions.find(session => session.id === input.graph.activeSessionId)
@@ -115,7 +117,10 @@ export function buildContextActionPacket(input: {
   const memory = active === undefined ? undefined : buildManagementMemory(input.preferenceExamples ?? [], {
     branchDepth: active.depth, ...(activity === undefined ? {} : { activity }),
   })
+  const scopePolicyExamples = (input.scopePolicyExamples ?? []).slice(-4)
+    .map(example => Object.freeze({ ...example, objective: bounded(example.objective, 200) }))
   return Object.freeze({
+    ...(scopePolicyExamples.length === 0 ? {} : { scopePolicyExamples: Object.freeze(scopePolicyExamples) }),
     ...(memory === undefined || memory.rules.length === 0 && memory.workflows.length === 0
       ? {} : { managementMemory: memory }),
     ...(preferenceExamples.length === 0 ? {} : { preferenceExamples: Object.freeze(preferenceExamples) }),

@@ -405,3 +405,15 @@ describe('review ownership and bounded confirmation', () => {
     await review
   })
 })
+
+it('forwards only an explicit complete-policy acknowledgement and preserves legacy transport arguments', async () => {
+  const b = bench()
+  b.state.proposal = { ...b.state.proposal, scopePolicy: { reviewId: 'fixture-publication', key: 'a'.repeat(64), mode: 'task-owned', assignment: 'existing', sessionId: source, sourceCount: 1 },
+    selection: [{ nodeId: 'active-exclude', action: 'exclude', reason: 'reviewed', confidence: 'high' }] }
+  await b.controller.recommend()
+  await b.controller.applyRecommendations()
+  expect(b.transport.setNodeModes.mock.calls.at(-1)).toHaveLength(4)
+  await b.controller.recommend()
+  await b.controller.applyRecommendations([], b.state.proposal.scopePolicy!.key)
+  expect(b.transport.setNodeModes.mock.calls.at(-1)?.[4]).toBe(b.state.proposal.scopePolicy!.key)
+})

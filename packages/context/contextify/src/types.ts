@@ -397,8 +397,32 @@ export interface ContextArchiveCandidate {
   readonly evidenceNodeIds: readonly string[]
 }
 
+/** Server-bound complete preservation choice; the key is not authentication. */
+export interface ContextScopePolicyReview {
+  /** Server-owned identity of this publication, independent of graph revisions. */
+  readonly reviewId: string
+  readonly key: string
+  readonly mode: 'task-owned' | 'task-lineage'
+  readonly assignment: 'new' | 'existing'
+  /** Original selected task or new-task parent, never an inherited UI alias. */
+  readonly sessionId: SessionId
+  readonly sourceCount: number
+}
+
+/** One Client-acknowledged complete policy approval, with owned Undo provenance. */
+export interface ContextScopePolicyExample {
+  readonly sourceSessionId: SessionId
+  readonly sourceEventSeq: number
+  readonly at: number
+  readonly objective: string
+  readonly mode: ContextScopePolicyReview['mode']
+  readonly assignment: ContextScopePolicyReview['assignment']
+}
+
 /** Ephemeral, revision-scoped Agent output. Nothing here is a mutation. */
 export interface ContextRecommendationProposal {
+  /** Optional unambiguous complete policy displayed before explicit full approval. */
+  readonly scopePolicy?: ContextScopePolicyReview
   readonly mode: ContextRecommendationMode
   readonly base: ContextRecommendationBase
   /** Original model decision when an approved scope is carried to another Session. */
@@ -419,6 +443,8 @@ export interface ContextRecommendationProposal {
     readonly thresholdSources?: readonly string[]
     /** Exact conditional rules/workflows supplied to this management decision. */
     readonly managementMemory?: ContextManagementMemory
+    /** Confirmed complete policies actually supplied to this decision. */
+    readonly scopePolicyExamples?: readonly ContextScopePolicyExample[]
     readonly examples: readonly {
       readonly objective: string
       readonly action: ContextPolicyAction | 'exclude'
@@ -600,6 +626,8 @@ declare module '@deepseek-ai/dsh-session/types' {
     }
     /** Resolution of a current review; accepted and declined proposed changes are disjoint. */
     'contextify/recommendation-reviewed': {
+      /** Server-bound policy after matching Client display acknowledgement and complete changed application. */
+      readonly scopePolicy?: ContextScopePolicyReview
       readonly mode: ContextRecommendationMode
       readonly base: ContextRecommendationBase
       /** Original decision log for an explicitly approved cross-Session scope. */

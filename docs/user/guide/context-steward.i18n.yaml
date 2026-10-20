@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/user/guide/context-steward.md
-context-steward.md: d3f1c41e38bca238510f1f1eb7e19e3107d04a2c
-context-steward.zh.md: 7d3cb594d4032c40c0314bd892c1dbcc04623779
+context-steward.md: db91a410c527ab4ba921109d58caa8cb92cba0f9
+context-steward.zh.md: a20f49b7fb37231a1f3187b4d6e20dd026d64783

@@ -60,6 +60,8 @@ In Context Map prompt settings, Fast Context reviewer selects the current chat m
 
 Goal model + Jev Context first identifies the exact draft's task and requested history. You can ask to retain only that task's messages or also its ancestor tasks; a new task's own history starts empty. For a preservation request, Jev reviews explicitly requested source exceptions: low relevance alone does not discard preserved messages, and relevance alone does not authorize borrowing from another task. The ordinary approval sheet shows the proposed selection before any change.
 
+When the review displays **Only this task** or **This task and its parent tasks**, approving the complete changed scope can keep an example of that whole choice for later suggestions. Keeping any item unchanged records only partial feedback. Undo removes the complete-policy example; Redo restores it, and Reset learning discards it from future reviews. Empty scopes, unchanged selections and proposals with source exceptions do not create these examples. A displayed choice is not a claim about your general personality.
+
 An uncertain task, retention request or required ancestry skips Jev and suppresses the combined automatic recommendation; manual choices remain available. A conflicting task destination or new/existing choice also suppresses it. Relevance review remains available for drafts without a preservation request. A draft uses one chat-model call and at most one Jev call; a non-draft Fast review uses Jev alone. The Host checks credentials before the first call and bounds the composite review to 45 seconds. This mode is optional, not a demonstrated accuracy guarantee.
 
 <a id="verify-without-an-api"></a>

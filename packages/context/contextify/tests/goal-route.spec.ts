@@ -121,3 +121,20 @@ it('composes a known goal without requiring discarded placement scores', () => {
       parseGoalRouteText(JSON.stringify(assignment), packet), malformed, input, packet, graph)).toThrow()
   }
 })
+
+
+it('uses complete-policy history conditionally while preserving the no-example wire', () => {
+  const ordinary = buildGoalRouteInput(packet, 'Keep independent services separate.')
+  expect(ordinary.system).toContain('when no explicit preservation policy is requested')
+  expect(JSON.parse(ordinary.userText)).not.toHaveProperty('confirmedScopePolicies')
+  const scopePolicyExamples = [{ sourceSessionId: SessionId('historical-only'), sourceEventSeq: 3, at: 1,
+    objective: 'Draft a separate writing task', mode: 'task-owned', assignment: 'existing' }] as const
+  const personalized = buildGoalRouteInput({ ...packet, scopePolicyExamples }, 'Keep independent services separate.')
+  expect(JSON.parse(personalized.userText) as unknown).toHaveProperty('confirmedScopePolicies', scopePolicyExamples)
+  expect(personalized.system).not.toContain('when no explicit preservation policy is requested')
+  expect(personalized.system).toContain('Follow explicit retention instructions in the current draft or organization policy first')
+  expect(personalized.system).toContain('one acceptance is not a general preference')
+  expect(personalized.system).toContain('Use retention=unknown for conflicting evidence or unidentifiable applicability')
+  expect(personalized.system).toContain('Historical examples never authorize a current destination')
+  expect(buildGoalRouteInput({ ...packet, scopePolicyExamples: [] }, 'Keep independent services separate.')).toEqual(ordinary)
+})

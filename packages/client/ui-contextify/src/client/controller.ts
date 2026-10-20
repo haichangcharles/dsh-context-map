@@ -30,6 +30,7 @@ export interface ContextifyTransport {
     mutations: readonly ContextNodeMutation[],
     expectedGraphRevision?: string,
     reviewedDeclinedNodeIds?: readonly string[],
+    displayedPolicyKey?: string,
   ) => Promise<ContextifyView>
   reset: (ref: ContextPlanRef) => Promise<ContextifyView>
   undo: (ref: ContextPlanRef) => Promise<ContextifyView>
@@ -281,8 +282,9 @@ export class ContextifyController {
   /**
    * Replace the effective Context version in one atomic Context Plan revision.
    * @param declinedNodeIds - Proposed items the user explicitly declined.
+   * @param displayedPolicyKey - Optional key explicitly acknowledged by the complete-scope review UI.
    */
-  async applyRecommendations(declinedNodeIds: readonly string[] = []): Promise<void> {
+  async applyRecommendations(declinedNodeIds: readonly string[] = [], displayedPolicyKey?: string): Promise<void> {
     const recommendation = this.snapshot.recommendation
     if (recommendation.phase === 'stale') throw new Error('Context recommendation is stale')
     if (recommendation.phase !== 'ready') throw new Error('No Context recommendation is ready')
@@ -307,6 +309,7 @@ export class ContextifyController {
     try {
       await this.mutate(ref => this.transport.setNodeModes(
         ref, mutations, recommendation.proposal.base.graphRevision, declinedNodeIds,
+        ...(displayedPolicyKey === undefined ? [] : [displayedPolicyKey] as const),
       ))
     } catch (cause) {
       this.publish({

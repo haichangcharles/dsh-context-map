@@ -427,6 +427,8 @@ type Branded<B extends string> = string & { readonly [BRAND]: B }
 
 [Contextify](../../packages/context/contextify/README.zh.md)从已确认、已过滤撤销记录的原生事件中派生 `ContextManagementMemory`。`ContextRecommendationProposal.personalization` 的可选同名字段与 Context 操作数据包和目标审核模型收到的是同一个对象；关闭个性化时省略该字段。源声明位于 [Contextify 类型](../../packages/context/contextify/src/types.ts)。
 
+`ContextScopePolicyReview` 是 `ContextRecommendationProposal` 上可选的服务端发布描述符，包含唯一审核身份与 key、分类保留策略、原始归属/Session 和完整来源数量。Client 只回显展示过的 key，不提供来源权限。匹配且完整接受的实际变更可在既有审核事件上附加标注。`ContextScopePolicyExample` 在 Undo/重置过滤后保留自有来源 Session/事件、时间、有界目标、策略和归属；最多四条进入已启用的动作/目标 packet 和可检查决策快照。局部或不可识别的历史不提供此类标签。[策略实现](../../packages/context/contextify/src/scope-policy.ts)定义校验与边界。
+
 | 类型 | 字段与含义 |
 |---|---|
 | `ContextManagementReference` | `sessionId`、`eventSeq`：拥有记录的确切原生事件；两者都不是当前操作目标。 |
@@ -1067,8 +1069,9 @@ Durable Context Plan mutations and native Session-family graph reads.
  * @param actualTargetSessionId - Native destination after an accepted transfer.
  * @param uiOrigin - Marks a Client review without claiming authenticated identity.
  * @param carryContext - Approve complete Context at the final destination; manual conflicts preserve its Plan.
+ * @param displayedPolicyKey - Optional Client-declared acknowledgement of the displayed server policy; never source authority.
  */
-@Remote('reviewRoute') async reviewRoute( agent: Agent, route: ContextRouteAdvice, choice: 'accept' | 'reject', actualTargetSessionId?: SessionId, uiOrigin?: 'contextify-client', carryContext?: boolean, ): Promise<void>
+@Remote('reviewRoute') async reviewRoute( agent: Agent, route: ContextRouteAdvice, choice: 'accept' | 'reject', actualTargetSessionId?: SessionId, uiOrigin?: 'contextify-client', carryContext?: boolean, displayedPolicyKey?: string, ): Promise<void>
 
 /**
  * Record one completed manual Context Map fork as a positive Branch choice.
@@ -1129,9 +1132,10 @@ requestExplicitBranch(agent: Agent, reason: string): void
  * @param expectedGraphRevision - Optional family revision required by recommendation acceptance.
  * @param uiOrigin - Optional Client-declared origin for a visible plan action.
  * @param reviewedDeclinedNodeIds - Explicit Keep-current choices within the reviewed proposal.
+ * @param displayedPolicyKey - Optional Client acknowledgement of the displayed complete policy; omission keeps it unlearned.
  * @returns The view after one complete plan commits.
  */
-@Remote('setNodeModes') async setNodeModes( agent: Agent, ref: ContextPlanRef, mutations: readonly ContextNodeMutation[], expectedGraphRevision?: string, uiOrigin?: 'contextify-client', reviewedDeclinedNodeIds?: readonly string[], ): Promise<ContextifyView>
+@Remote('setNodeModes') async setNodeModes( agent: Agent, ref: ContextPlanRef, mutations: readonly ContextNodeMutation[], expectedGraphRevision?: string, uiOrigin?: 'contextify-client', reviewedDeclinedNodeIds?: readonly string[], displayedPolicyKey?: string, ): Promise<ContextifyView>
 
 /**
  * Archive one node's model-visible semantics with a reversible role-preserving placeholder.
