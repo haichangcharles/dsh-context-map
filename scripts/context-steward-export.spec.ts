@@ -5,7 +5,7 @@ import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { lineageHarness } from '../packages/context/contextify/tests/lineage-coverage-harness.ts'
 import { textResponse } from '../packages/core/agent-loop/tests/mock-adapter.ts'
 import { CONTEXTIFY_DEFAULT_SETTINGS, type ContextifyPromptSettings } from '../packages/context/contextify/src/types.ts'
-import { compileContextify } from '../packages/context/contextify/src/plan.ts'
+import { compileContextify, currentContextPlan } from '../packages/context/contextify/src/plan.ts'
 import { scopePolicyExamplesFromInspections } from '../packages/context/contextify/src/scope-policy.ts'
 import { contextPolicyWatermarks } from '../packages/context/contextify/src/policy-memory.ts'
 import { readSessionLogText } from '../packages/session-query/session-log-export/src/archive.ts'
@@ -75,6 +75,8 @@ it('restores selected native logs with original approval references and reversib
     await b.ctx.contextify.recordManualRoute(b.parent, child.id, 'fixture-reactivate',
       (await b.ctx.contextify.familyPage(b.parent)).revision, 'contextify-client', 'Resume writing.')
 
+    let frozenInput: string | undefined
+    let frozenOutcome: string | undefined
     const exported = async (expectedExamples: number) => {
       const sessions = [b.parent.session, child.session]
       const observations = []
@@ -95,6 +97,47 @@ it('restores selected native logs with original approval references and reversib
       }
       const own = observations[1]!.events.slice(observations[1]!.inheritedEventCount)
       expect(own.find(event => event.seq === approved.seq)).toEqual(approved)
+      const presentations = own.filter(event => event.type === 'contextify/recommendation-presented')
+      expect(presentations).toHaveLength(1)
+      const presentation = presentations[0]!
+      const requests = own.filter(event => event.type === 'contextify/recommendation-request')
+        .filter(event => event.seq < presentation.seq)
+      const goals = requests.filter(event => event.data.provider === 'mock')
+      const jevs = requests.filter(event => event.data.provider === 'typesafe')
+      expect(goals).toHaveLength(1)
+      expect(jevs).toHaveLength(1)
+      expect(requests).toHaveLength(2)
+      const goal = goals[0]!, jev = jevs[0]!
+      expect(goal.seq).toBeLessThan(jev.seq)
+      expect(jev.seq).toBeLessThan(presentation.seq)
+      expect(presentation.seq).toBeLessThan(approved.seq)
+      for (const request of requests) {
+        expect(request.data.base).toEqual(presentation.data.base)
+        expect(request.data.objective).toBe('Keep only this writing task.')
+      }
+      expect(approved.type === 'contextify/recommendation-reviewed' && approved.data.base).toEqual(presentation.data.base)
+      const source = observations[1]!
+      const inputPrefix = source.events.slice(0, goal.seq)
+      expect(inputPrefix.every(event => event.seq < goal.seq)).toBe(true)
+      const before = Session.fromRestore(source.meta.id, inputPrefix, source.meta,
+        SessionLogOffset(source.inheritedEventCount), 'detached')
+      expect(currentContextPlan(before).revision).toBe(goal.data.base.planRevision)
+      const beforeMessages = compileContextify({ session: before, turn: before.seq + 1, step: 1 }).messages
+      expect(JSON.stringify(beforeMessages)).toContain('PARENT_BRAINSTORMING_ONLY')
+      expect(JSON.stringify(beforeMessages)).toContain('CHILD_WRITING_ONLY')
+      const input = JSON.stringify({ nativePrefix: inputPrefix, stages: requests.map(request => ({
+        sessionId: source.meta.id, seq: request.seq, request: request.data,
+      })) })
+      if (frozenInput === undefined) frozenInput = input
+      expect(input).toBe(frozenInput)
+      const after = Session.fromRestore(source.meta.id, source.events.slice(0, approved.seq + 1), source.meta,
+        SessionLogOffset(source.inheritedEventCount), 'detached')
+      const afterMessages = compileContextify({ session: after, turn: after.seq + 1, step: 1 }).messages
+      expect(JSON.stringify(afterMessages)).not.toContain('PARENT_BRAINSTORMING_ONLY')
+      expect(JSON.stringify(afterMessages)).toContain('CHILD_WRITING_ONLY')
+      const outcome = JSON.stringify({ sessionId: source.meta.id, seq: approved.seq, approval: approved.data, afterMessages })
+      if (frozenOutcome === undefined) frozenOutcome = outcome
+      expect(outcome).toBe(frozenOutcome)
       const types = own.map(event => event.type)
       expect(types.indexOf('contextify/recommendation-request')).toBeLessThan(types.indexOf('contextify/recommendation-presented'))
       expect(types.indexOf('contextify/recommendation-presented')).toBeLessThan(types.indexOf('contextify/recommendation-reviewed'))
