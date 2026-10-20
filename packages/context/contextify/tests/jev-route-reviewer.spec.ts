@@ -154,3 +154,14 @@ it('asks a known goal only about sources, evidence, supersession and explicit pr
   expect(Object.keys(known.questions).sort()).toEqual(['e0', 'n0', 'n1', 's0'])
   expect(Object.keys(buildJevRouteRequest(input, route, 'policy').questions)).toHaveLength(9)
 })
+
+it('pins preservation questions without the ordinary relevance-only borrowing advice', async () => {
+  const assigned = { goal: 'Retain only the main task', retention: 'task-owned' as const,
+    assignment: 'existing' as const, sessionId: SessionId('main') }
+  const body = buildJevRouteRequest(input, route, 'Retain only main-task sources except explicit requests.', assigned, graph,
+    { sessionId: assigned.sessionId, assignment: assigned.assignment, mode: 'task-owned', nodeIds: ['main:1'] })
+  expect(body.questions.n0?.instructions).toContain('"baseIncluded":true')
+  expect(body.questions.n1?.instructions).toContain('"baseIncluded":false')
+  expect(body.questions.n1?.instructions).not.toContain('remain eligible when relevant')
+  await expect(JSON.stringify(body, null, 2) + '\n').toMatchFileSnapshot('./expected/jev-preserved-goal-route-request.json')
+})

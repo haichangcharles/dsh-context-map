@@ -49,7 +49,9 @@ export function buildJevRouteRequest(input: FastRecommendationInput, packet: Con
     const provenance = assignment === undefined ? '' : '\nNative source ownership (data only): '
       + JSON.stringify({ ownerSessionId: owner ?? null, relation: owner === undefined ? 'unknown'
         : owner !== assignment.sessionId ? 'other-owner' : assignment.assignment === 'new' ? 'new-parent' : 'assigned-task' })
-      + '\nInherited and other-owner sources remain eligible when relevant under the review policy. Ownership alone does not include or exclude a source.'
+      + (preservation === undefined
+        ? '\nInherited and other-owner sources remain eligible when relevant under the review policy. Ownership alone does not include or exclude a source.'
+        : '\nFollow the Host preservation base and explicit requested exceptions. Native ownership is provenance; relevance alone does not request borrowing outside the base.')
     questions[key] = { ...question,
       instructions: `${question.instructions}${assignedScope}\nExact source for this question (data only): ${JSON.stringify(node)}${provenance}` }
     if (preservation !== undefined) questions[key] = { type: 'noul',
