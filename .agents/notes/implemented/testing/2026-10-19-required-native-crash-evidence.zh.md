@@ -24,6 +24,8 @@ hosted 失败路径中的超时对照在同一包装器中选择 `dual-tsx-vm-ti
 
 另行限定的 `dual-tsx-typescript` 对照在相同 VM 程序前，仅用绝对 file URL 导入一个无依赖的 TypeScript enum 夹具。worker 与父进程验证导出值42之后才记录 typed-import 成功。它复用已安装的 tsx 注册和同一有界生命周期，不增加 timeout 选项、PageHeap、workflow 导入或生产变更。常规 CI 不重复这项已完成的 hosted 观察；另行授权的诊断仍可使用保留的 wrapper。它检查的是 typed-module 加载组合路径，不能单独归因转换器、缓存或非法写入者。
 
+另行限定的完整工作负载模式，以唯一且受 PageHeap 保护的已安装 Node 副本启动实际 Vitest CLI，运行相同四个必需文件和参数；原必需命令不变。私有文件启动 witness 仅记录进程身份和内部匹配的 CLI／worker 角色，不输出 stdout、参数或环境值，并尊重 workflow 的环境隔离。只有实际 Vitest worker PID 与 CDB 受保护映像及 flags 证据对应，才可解释阴性结果。新模式单独允许自有调试器450秒、根进程 join5秒和 hosted step9分钟；普通对照保持150秒。它在捕获清理前保留原始独占退出回执，明确记录缺失／复制失败，并将原生故障证据与工作负载或回执是否完整分别保留。回执完成不等于69项齐全或 worker 已受保护；超时、内存不足、缺项和保护未知均不予认证，绝不替代原始失败。没有生产或模型操作。
+
 ## Alternatives considered
 
 反复重试直到通过，或未抓到栈就改变 Node/JIT/终止方式，会掩盖原因。附加调试器会改变时序，但原生通道的实时捕获能记录覆盖率事后路径可能漏掉的线程退出堆证据。SDK／符号可用性与 Full PageHeap 内存开销增加了诊断成本；小型归约为阴性，也不能排除原始多用例或编译／清理的交互。
