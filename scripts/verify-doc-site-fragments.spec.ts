@@ -46,6 +46,22 @@ describe('inspectSiteFragments', () => {
     expect(inspectSiteFragments(root)).toEqual({ checked: 6, broken: [] })
   })
 
+  it('preserves full-document and decoded HTML attributes while excluding inert content and namespaced links', () => {
+    const root = fixture()
+    writeFileSync(join(root, 'guide/full.html'), [
+      '<!doctype html><html id="root"><head><meta id="head"></head><body id="body">',
+      '<a id="a&amp;b" href="#a&amp;b">encoded attribute</a><a href="#root">root</a>',
+      '<a href="#head">head</a><a href="#body">body</a>',
+      '<!-- <a href="#comment-missing"> -->',
+      '<script>"<a href=\"#script-missing\">"</script>',
+      '<template><a href="#template-missing">inert</a></template>',
+      '<noscript><a id="fallback" href="#body">fallback</a></noscript><a href="#fallback">jump</a>',
+      '<svg><a xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#namespace-missing">namespaced</a></svg>',
+      '</body></html>',
+    ].join(''))
+    expect(inspectSiteFragments(root)).toEqual({ checked: 10, broken: [] })
+  })
+
   it('rejects ambiguous built routes', () => {
     const root = fixture()
     writeFileSync(join(root, 'guide.html'), '<h1 id="flat">Flat</h1>')

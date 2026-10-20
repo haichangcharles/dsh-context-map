@@ -106,6 +106,9 @@ importers:
       oxlint-tsgolint:
         specifier: 7.0.2001
         version: 7.0.2001
+      parse5:
+        specifier: 8.0.1
+        version: 8.0.1
       publint:
         specifier: ^0.3.21
         version: 0.3.21

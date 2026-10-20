@@ -213,6 +213,7 @@
     "micromark-extension-gfm": "^3.0.0",
     "oxlint": "1.76.0",
     "oxlint-tsgolint": "7.0.2001",
+    "parse5": "8.0.1",
     "publint": "^0.3.21",
     "smol-toml": "^1.7.1",
     "spdx-expression-parse": "^5.0.0",

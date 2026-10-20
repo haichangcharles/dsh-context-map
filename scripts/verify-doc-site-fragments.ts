@@ -10,7 +10,7 @@
 
 import { existsSync, globSync, readFileSync } from 'node:fs'
 import { resolve, sep } from 'node:path'
-import { JSDOM } from 'jsdom'
+import { parse, type DefaultTreeAdapterMap } from 'parse5'
 import { rawMarkdownFiles } from './project-doc-site.ts'
 
 const root = resolve(import.meta.dirname, '..')
@@ -39,7 +39,7 @@ interface BuiltPage {
   file: string
   route: string
   ids: Set<string>
-  document: Document
+  fragmentHrefs: string[]
 }
 
 function posixPath(path: string): string {
@@ -83,14 +83,26 @@ export function inspectSiteFragments(distRoot: string): SiteFragmentReport {
     throw new Error(`verify-doc-site-fragments: no HTML files found under ${distRoot}; run docs:build first.`)
   }
   const pages: BuiltPage[] = files.map((file) => {
-    const document = new JSDOM(readFileSync(resolve(distRoot, file), 'utf8')).window.document
-    const ids = new Set<string>()
-    for (const element of document.querySelectorAll<HTMLElement>('[id]')) ids.add(element.id)
-    for (const element of document.querySelectorAll<HTMLAnchorElement>('a[name]')) {
-      const name = element.getAttribute('name')
-      if (name !== null) ids.add(name)
+    const pending: DefaultTreeAdapterMap['node'][] = [parse(readFileSync(resolve(distRoot, file), 'utf8'), { scriptingEnabled: false })]
+    const ids = new Set<string>(), fragmentHrefs: string[] = []
+    while (pending.length > 0) {
+      const node = pending.pop()
+      if (node === undefined) break
+      if ('attrs' in node) {
+        const attribute = (name: string) => node.attrs.find(attr => attr.name === name && attr.namespace === undefined)?.value
+        const id = attribute('id')
+        if (id !== undefined) ids.add(id)
+        if (node.tagName === 'a') {
+          const name = attribute('name'), href = attribute('href')
+          if (name !== undefined) ids.add(name)
+          if (href !== undefined && href.includes('#')) fragmentHrefs.push(href)
+        }
+      }
+      if ('childNodes' in node) {
+        for (const child of node.childNodes.toReversed()) pending.push(child)
+      }
     }
-    return { file, route: routeFor(file), ids, document }
+    return { file, route: routeFor(file), ids, fragmentHrefs }
   })
 
   const byRoute = new Map<string, BuiltPage>()
@@ -110,9 +122,7 @@ export function inspectSiteFragments(distRoot: string): SiteFragmentReport {
   const broken: BrokenSiteFragment[] = []
   let checked = 0
   for (const page of pages) {
-    for (const anchor of page.document.querySelectorAll<HTMLAnchorElement>('a[href]')) {
-      const href = anchor.getAttribute('href')
-      if (href === null || !href.includes('#')) continue
+    for (const href of page.fragmentHrefs) {
       let targetUrl: URL
       try {
         targetUrl = new URL(href, `${origin}${page.route}`)
