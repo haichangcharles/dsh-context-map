@@ -49,7 +49,15 @@ describe('ContextifyPromptSettingsView', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Fast Context reviewer' }), { target: { value: 'goal-model-jev' } })
     await act(async () => {})
     expect(fixture.set).toHaveBeenCalledWith('fastDecisionProvider', 'goal-model-jev')
-    expect(screen.getByText(/one chat-model request and at most one Jev request/)).toBeTruthy()
+    expect(screen.getByText(/one chat-model request and at most one Jev request/).textContent).toMatchInlineSnapshot('"Draft review uses one chat-model request and at most one Jev request to choose a task, retain the requested history, and review sources under that choice. Uncertain tasks or retention scopes do not propose automatic routing. Both calls may incur charges; Jev credentials are required on the Host."')
+  })
+  it('explains task and history preservation in Chinese before confirmation', async () => {
+    const fixture = scopeFixture('zh')
+    render(<fixture.Harness />)
+    fireEvent.change(screen.getByRole('combobox', { name: '快速 Context 决策模型' }), { target: { value: 'goal-model-jev' } })
+    await act(async () => {})
+    expect(screen.getByText(/草稿检查先确定任务和要保留的历史/).textContent).toMatchInlineSnapshot('"草稿检查先确定任务和要保留的历史，再按该范围审核来源。任务或保留范围不明确时不建议自动切换。使用一次聊天模型及至多一次 Jev 调用，均可能收费，需在 Host 配置 Jev 凭据。"')
+    expect(fixture.set).toHaveBeenCalledWith('fastDecisionProvider', 'goal-model-jev')
   })
   it('lets the user choose Jev and disable personal decision evidence', async () => {
     const fixture = scopeFixture()
