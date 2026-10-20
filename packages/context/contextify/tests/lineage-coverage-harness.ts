@@ -23,10 +23,10 @@ class FixtureAdapter extends LlmAdapter {
   }
 }
 
-/** A real Agent registry, compiler and spawned-child path for lifecycle/guard tests. */
-export async function lineageHarness(runtime = false) {
+/** Real lifecycle services; a supplied storage root belongs to the caller and survives close. */
+export async function lineageHarness(runtime = false, storage?: { root: string; resumeParent?: boolean }) {
   const ctx = new Context()
-  const root = await mkdtemp(join(tmpdir(), 'contextify-lineage-coverage-'))
+  const root = storage?.root ?? await mkdtemp(join(tmpdir(), 'contextify-lineage-coverage-'))
   await mountAgentLoopTestDependencies(ctx)
   await ctx.plugin(ContextCompilerRegistry)
   await ctx.plugin(JsonlSessionPersistence, { root })
@@ -37,14 +37,16 @@ export async function lineageHarness(runtime = false) {
   if (runtime) await ctx.plugin(ContextifyRevisionLineageRuntime)
   const adapter = new FixtureAdapter()
   ctx.llm.registerAdapter(['mock'], adapter)
-  const parentHandle = await ctx.agents.create({ sessionId: SessionId('coverage-parent'),
-    agentOptions: { provider: 'mock', model: 'mock' }, meta: { cwd: root } })
+  const parentHandle = storage?.resumeParent === true
+    ? await ctx.agents.resume({ resumeSessionId: SessionId('coverage-parent') })
+    : await ctx.agents.create({ sessionId: SessionId('coverage-parent'),
+      agentOptions: { provider: 'mock', model: 'mock' }, meta: { cwd: root } })
   const parent = parentHandle.agent
   return {
     ctx, parent, adapter, disposeParent: () => parentHandle.dispose(),
     close: async () => {
       await ctx.fiber.dispose()
-      await rm(root, { recursive: true, force: true })
+      if (storage === undefined) await rm(root, { recursive: true, force: true })
     },
   }
 }

@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId, SessionLogOffset, type Session } from '@deepseek-ai/dsh-session'
@@ -203,5 +206,64 @@ it('keeps complete scopes beyond the scoring slate and never learns no-op, cance
       await expect(applyScope(b, child, proposal, proposal.scopePolicy!.key)).rejects.toBeInstanceOf(Error)
       expect(child.session.snapshotEvents().some(e => e.type === 'contextify/recommendation-reviewed' && e.data.scopePolicy !== undefined)).toBe(false)
     } finally { fetcher.mockRestore(); await b.close() }
+  }
+})
+
+
+it('restores the same confirmed policy from JSONL after cold resume and preserves its reset across another resume', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'scope-policy-cold-resume-'))
+  const opened: Fixture[] = []
+  const fetcher = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => jev(requestBody(init)))
+  const childId = SessionId('scope-policy-durable-child')
+  try {
+    const first = await lineageHarness(false, { root })
+    opened.push(first)
+    append(first.parent.session, 'PERSISTED_PARENT_ONLY')
+    const child = await fork(first, first.parent, childId)
+    append(child.session, 'PERSISTED_CHILD_ONLY')
+    configure(first, JSON.stringify({ goal: 'Continue writing', retention: 'task-owned', assignment: 'existing', sessionId: childId }))
+    const proposal = await review(first, child, 'Keep only the writing task.')
+    await applyScope(first, child, proposal, proposal.scopePolicy!.key)
+    const approved = child.session.snapshotEvents().findLast(e => e.type === 'contextify/recommendation-reviewed')!
+    const beforeExamples = (await review(first, child)).personalization?.scopePolicyExamples
+    expect(beforeExamples).toEqual([expect.objectContaining({ sourceSessionId: childId, sourceEventSeq: approved.seq,
+      mode: 'task-owned', objective: 'Keep only the writing task.' })])
+    const beforeScope = compileContextify({ session: child.session, turn: child.session.seq + 1, step: 1 }).messages
+    await first.ctx.sessions.flush(child.session)
+    await first.ctx.sessions.flush(first.parent.session)
+    await first.close()
+    opened.pop()
+
+    const second = await lineageHarness(false, { root, resumeParent: true })
+    opened.push(second)
+    expect(second.ctx).not.toBe(first.ctx)
+    const resumed = (await second.ctx.agents.resume({ resumeSessionId: childId })).agent
+    configure(second, JSON.stringify({ goal: 'Continue writing', retention: 'task-owned', assignment: 'existing', sessionId: childId }))
+    const body = () => JSON.stringify(compileContextify({ session: resumed.session, turn: resumed.session.seq + 1, step: 1 }).messages)
+    expect(JSON.parse(body())).toEqual(beforeScope)
+    expect(body()).toContain('PERSISTED_CHILD_ONLY')
+    expect(body()).not.toContain('PERSISTED_PARENT_ONLY')
+    expect((await review(second, resumed)).personalization?.scopePolicyExamples).toEqual(beforeExamples)
+    const request = resumed.session.snapshotEvents().findLast(e => e.type === 'contextify/recommendation-request'
+      && e.data.userText.includes('confirmedScopePolicies'))
+    expect(request?.type === 'contextify/recommendation-request' && request.data.userText).toContain('task-owned')
+    second.ctx.contextify.undo(resumed, { revision: second.ctx.contextify.get(resumed).plan.revision })
+    expect((await review(second, resumed)).personalization?.scopePolicyExamples).toBeUndefined()
+    second.ctx.contextify.redo(resumed, { revision: second.ctx.contextify.get(resumed).plan.revision })
+    expect((await review(second, resumed)).personalization?.scopePolicyExamples).toEqual(beforeExamples)
+    await second.ctx.contextify.resetPolicy(resumed, 'contextify-client')
+    await second.ctx.sessions.flush(resumed.session)
+    await second.close()
+    opened.pop()
+
+    const third = await lineageHarness(false, { root, resumeParent: true })
+    opened.push(third)
+    const afterReset = (await third.ctx.agents.resume({ resumeSessionId: childId })).agent
+    configure(third, JSON.stringify({ goal: 'Continue writing', retention: 'task-owned', assignment: 'existing', sessionId: childId }))
+    expect((await review(third, afterReset)).personalization?.scopePolicyExamples).toBeUndefined()
+  } finally {
+    fetcher.mockRestore()
+    try { for (const b of opened.reverse()) await b.close() }
+    finally { await rm(root, { recursive: true, force: true }) }
   }
 })

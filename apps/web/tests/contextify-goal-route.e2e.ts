@@ -110,6 +110,12 @@ it('reviews a new sibling task in the browser, preserves its draft and applies n
     if (child === undefined) throw new Error('reviewed sibling missing')
     await expect.poll(() => child.session.snapshotEvents().some(e => e.type === 'contextify/recommendation-reviewed'),
       { timeout: 10_000 }).toBe(true)
+    const carried = child.session.snapshotEvents().findLast(e => e.type === 'contextify/recommendation-reviewed')
+    expect(carried?.type === 'contextify/recommendation-reviewed' ? carried.data : undefined).toMatchObject({
+      sourceBase: { activeSessionId: hotel.id },
+      selection: [],
+    })
+    expect(carried?.type === 'contextify/recommendation-reviewed' ? carried.data.scopePolicy : undefined).toBeUndefined()
     const compiled = scaffold.ctx.contextCompiler.compile({ session: child.session, turn: child.session.seq + 1, step: 1 })
     expect(JSON.stringify(compiled.messages)).toContain('DINNER_MAINLINE')
     expect(JSON.stringify(compiled.messages)).not.toContain('HOTEL_ONLY')
@@ -239,7 +245,7 @@ it('projects confirmed management workflows through the real Loader and removes 
   }
 }, 90_000)
 
-it('acknowledges the displayed complete policy through the shipped Client and supplies its owned example to the next goal review', async () => {
+it.each([false, true])('acknowledges the displayed complete policy through the shipped Client and next goal review (carry=%s)', async (carry) => {
   const scaffold = await launchWebScaffold()
   let browser: Browser | undefined
   let restoreFetch: (() => void) | undefined
@@ -259,7 +265,11 @@ it('acknowledges the displayed complete policy through the shipped Client and su
       inheritedEventCount: SessionLogOffset(seed.length), meta: { cwd, parentSession: root.id, isSeeded: true },
       agentOptions: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } })).agent
     append(child.session, 'OWN_SCOPE_SOURCE')
-    scaffold.ctx.sessionTitle.rename(child.session, 'Complete policy fixture')
+    const source = carry ? (await scaffold.ctx.agents.create({ sessionId: SessionId('scope-web-origin'), seed,
+      inheritedEventCount: SessionLogOffset(seed.length), meta: { cwd, parentSession: root.id, isSeeded: true },
+      agentOptions: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } })).agent : child
+    if (carry) append(source.session, 'UNRELATED_ORIGIN_SOURCE')
+    scaffold.ctx.sessionTitle.rename(source.session, 'Complete policy fixture')
     const inputs: { confirmedScopePolicies?: unknown[] }[] = []
     scaffold.ctx.on('llm/stream', (request): AsyncIterable<StreamChunk> => {
       expect(request.messages[0]?.source).toMatchObject({ kind: 'plugin', plugin: 'contextify' })
@@ -295,18 +305,26 @@ it('acknowledges the displayed complete policy through the shipped Client and su
     await connectFreshWorkspace(page, scaffold.workspaceCwd)
     const workspace = await scaffold.ctx.workspaceRegistry.resolveByPath(cwd)
     if (workspace === undefined) throw new Error('Fixture workspace unavailable')
-    await workspace.attachSession(child.id)
+    await workspace.attachSession(source.id)
     await page.getByRole('treeitem').filter({ hasText: 'Complete policy fixture' }).click()
     await writeComposerDraft(page, page.locator('[data-composer-input]').first(), 'Continue own writing with only this task.')
     await page.getByRole('button', { name: 'Draft review mode', exact: true }).click()
     await page.getByRole('menuitem', { name: 'Fast review for draft', exact: true }).click()
     const dialog = page.getByRole('dialog', { name: 'Context recommendation review' })
     await dialog.getByText('Only this task', { exact: true }).waitFor({ timeout: 15_000 })
-    await dialog.getByRole('button', { name: 'Apply proposed context', exact: true }).click()
+    await dialog.getByRole('button', { name: carry ? 'Move draft with proposed Context' : 'Apply proposed context', exact: true }).click()
     await expect.poll(() => child.session.snapshotEvents().some(e => e.type === 'contextify/recommendation-reviewed' && e.data.scopePolicy?.mode === 'task-owned'), { timeout: 15_000 }).toBe(true)
+    if (carry) {
+      const carried = child.session.snapshotEvents().findLast(e => e.type === 'contextify/recommendation-reviewed')
+      expect(carried?.type === 'contextify/recommendation-reviewed' ? carried.data : undefined).toMatchObject({
+        sourceBase: { activeSessionId: source.id },
+        scopePolicy: { mode: 'task-owned', assignment: 'existing', sessionId: child.id, sourceCount: 2 },
+      })
+    }
     const compiled = scaffold.ctx.contextCompiler.compile({ session: child.session, turn: child.session.seq + 1, step: 1 })
     expect(JSON.stringify(compiled.messages)).toContain('OWN_SCOPE_SOURCE')
     expect(JSON.stringify(compiled.messages)).not.toContain('PARENT_SCOPE_SOURCE')
+    expect(JSON.stringify(compiled.messages)).not.toContain('UNRELATED_ORIGIN_SOURCE')
     const family = await scaffold.ctx.contextify.familyPage(child)
     const next = await scaffold.ctx.contextify.recommend(child, { activeSessionId: child.id, graphRevision: family.revision,
       planRevision: scaffold.ctx.contextify.get(child).plan.revision }, 'Continue the next section.', 'fast', true)
