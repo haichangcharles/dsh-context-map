@@ -281,7 +281,32 @@ async function openSeed(page: Page, fixture: ChatScrollFixture, tailMarker?: str
   // empty-state paint is used as a barrier.
   await search.fill(fixture.markers.user(1))
   const results = page.getByRole('tree', { name: 'Search results' }).getByRole('treeitem')
-  await expect.poll(() => results.count(), { timeout: 60_000 }).toBe(1)
+  try {
+    await expect.poll(() => results.count(), { timeout: 60_000 }).toBe(1)
+  } catch (cause) {
+    // Fixture-only structural evidence distinguishes a lost input, collapsed
+    // sidebar, pending search and completed empty/error response. Never dump
+    // page text, URLs or authentication state into the job log.
+    let state: unknown = { captureUnavailable: true }
+    try {
+      state = await page.evaluate((expected) => {
+        const inputs = [...document.querySelectorAll<HTMLInputElement>('input[placeholder="Search sessions..."]')]
+        const trees = [...document.querySelectorAll<HTMLElement>('[role="tree"][aria-label="Search results"]')]
+        const statuses = [...document.querySelectorAll<HTMLElement>('[role="status"]')]
+        return {
+          inputs: inputs.map(input => ({ matchesExpected: input.value === expected, length: input.value.length,
+            visible: input.getBoundingClientRect().width > 0 && getComputedStyle(input).visibility !== 'hidden' })),
+          searchExpanded: document.querySelector('[aria-label="Search sessions"]')?.getAttribute('aria-expanded') ?? null,
+          searchTrees: trees.length,
+          resultRows: trees.reduce((sum, tree) => sum + tree.querySelectorAll('[role="treeitem"]').length, 0),
+          pending: statuses.some(node => node.textContent === 'Searching session history…'),
+          unavailable: statuses.some(node => node.textContent === 'Content search is temporarily unavailable. Showing name matches.'),
+          empty: [...document.querySelectorAll('[class*="empty"]')].some(node => node.textContent === 'No matching sessions'),
+        }
+      }, fixture.markers.user(1))
+    } catch { /* The original failed assertion remains authoritative. */ }
+    throw new Error(`Fixture session search did not settle: ${JSON.stringify(state)}`, { cause })
+  }
   await results.click()
   await page.getByRole('tab', { name: 'Chat', exact: true }).waitFor({ timeout: 30_000 })
   if (tailMarker !== undefined) {
