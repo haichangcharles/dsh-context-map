@@ -76,6 +76,59 @@ async function applyScope(b: Fixture, child: Fixture['parent'], proposal: Contex
   await b.ctx.contextify.setNodeModes(child, { revision: proposal.base.planRevision }, mutations,
     proposal.base.graphRevision, origin ?? undefined, declined, key)
 }
+it('correlates repeated same-base requests with the pending Host proposal consumed by each review', async () => {
+  const { b, child, fetcher } = await setupScope('scope-trace-repeat')
+  try {
+    const first = await review(b, child)
+    await b.ctx.contextify.presentRecommendation(child, first, 'contextify-client')
+    await b.ctx.contextify.dismissRecommendation(child, first, 'contextify-client')
+    const second = await review(b, child)
+    expect(second.base).toEqual(first.base)
+    await b.ctx.contextify.presentRecommendation(child, second, 'contextify-client')
+    await applyScope(b, child, second, second.scopePolicy!.key)
+    const requests = child.session.snapshotEvents().filter(event => event.type === 'contextify/recommendation-request')
+    expect(requests).toHaveLength(4)
+    const ids = requests.map(event => event.data.recommendationTraceId)
+    expect(ids[0]).toEqual(expect.any(String))
+    expect(ids[2]).toEqual(expect.any(String))
+    expect(ids[1]).toBe(ids[0])
+    expect(ids[3]).toBe(ids[2])
+    expect(ids[2]).not.toBe(ids[0])
+    const presentations = child.session.snapshotEvents().filter(event => event.type === 'contextify/recommendation-presented')
+    expect(presentations.map(event => event.data.recommendationTraceId)).toEqual([ids[0], ids[2]])
+    const dismissed = child.session.snapshotEvents().find(event => event.type === 'contextify/recommendation-dismissed')
+    expect(dismissed?.type === 'contextify/recommendation-dismissed' ? dismissed.data.recommendationTraceId : undefined).toBe(ids[0])
+    const approved = child.session.snapshotEvents().find(event => event.type === 'contextify/recommendation-reviewed')
+    expect(approved?.type === 'contextify/recommendation-reviewed' ? approved.data.recommendationTraceId : undefined).toBe(ids[2])
+    for (const event of requests) expect(event.data.userText).not.toContain(event.data.recommendationTraceId!)
+    expect(first).not.toHaveProperty('recommendationTraceId')
+    expect(second).not.toHaveProperty('recommendationTraceId')
+  } finally { fetcher.mockRestore(); await b.close() }
+})
+it('labels the consumed Host pending when an older equal Client payload is indistinguishable', async () => {
+  const { b, child, fetcher } = await setupScope('scope-trace-equal-client')
+  try {
+    const local = async () => {
+      const page = await b.ctx.contextify.familyPage(child)
+      return b.ctx.contextify.recommend(child, { activeSessionId: child.id, graphRevision: page.revision,
+        planRevision: b.ctx.contextify.get(child).plan.revision }, 'Continue writing.', 'local', true)
+    }
+    const first = await local()
+    await b.ctx.contextify.presentRecommendation(child, first, 'contextify-client')
+    const second = await local()
+    expect(second).toEqual(first)
+    // The existing wire contract cannot attribute this equal payload to A or B.
+    await b.ctx.contextify.presentRecommendation(child, first, 'contextify-client')
+    const presentations = child.session.snapshotEvents().filter(event => event.type === 'contextify/recommendation-presented')
+    expect(presentations).toHaveLength(2)
+    const ids = presentations.map(event => event.data.recommendationTraceId)
+    expect(ids[0]).toEqual(expect.any(String))
+    expect(ids[1]).toEqual(expect.any(String))
+    expect(ids[0]).not.toBe(ids[1])
+    expect(b.adapter.requests).toHaveLength(0)
+    expect(fetcher).not.toHaveBeenCalled()
+  } finally { fetcher.mockRestore(); await b.close() }
+})
 it('learns only an acknowledged complete changed scope while old Clients still apply it', async () => {
   for (const acknowledged of [false, true]) {
     const { b, child, fetcher } = await setupScope('scope-ack-' + String(acknowledged))
@@ -146,8 +199,15 @@ it('retains source descriptor identity only on complete carried Context, never r
       expect(proposal.route).toMatchObject({ action: 'navigate', targetSessionId: destination.id })
       await b.ctx.contextify.reviewRoute(child, proposal.route!, 'accept', destination.id, 'contextify-client', carry, proposal.scopePolicy!.key)
       const reviews = destination.session.snapshotEvents().filter(e => e.type === 'contextify/recommendation-reviewed')
+      const sourceRequests = child.session.snapshotEvents().filter(e => e.type === 'contextify/recommendation-request')
+      const traceId = sourceRequests[0]!.data.recommendationTraceId
+      expect(traceId).toEqual(expect.any(String))
+      expect(sourceRequests.every(event => event.data.recommendationTraceId === traceId)).toBe(true)
+      const routeChoice = child.session.snapshotEvents().find(e => e.type === 'contextify/route-choice')
+      expect(routeChoice?.type === 'contextify/route-choice' ? routeChoice.data.recommendationTraceId : undefined).toBe(traceId)
       if (carry) {
         expect(reviews.at(-1)?.type === 'contextify/recommendation-reviewed' ? reviews.at(-1)!.data : undefined).toMatchObject({ sourceBase: proposal.base, scopePolicy: proposal.scopePolicy })
+        expect(reviews.at(-1)?.type === 'contextify/recommendation-reviewed' ? reviews.at(-1)!.data.recommendationTraceId : undefined).toBe(traceId)
         expect((await review(b, destination)).personalization?.scopePolicyExamples).toHaveLength(1)
       } else expect(reviews).toHaveLength(0)
     } finally { fetcher.mockRestore(); await b.close() }

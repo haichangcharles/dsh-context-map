@@ -512,6 +512,8 @@ declare module '@deepseek-ai/dsh-session/types' {
     }
     /** Explicit decision on a draft-bound native Session route card. */
     'contextify/route-choice': {
+      /** Host-consumed recommendation correlation; not original Client callback identity. */
+      readonly recommendationTraceId?: string
       readonly routeKey: string
       readonly action: ContextRouteAdvice['action']
       readonly choice: 'accept' | 'reject'
@@ -587,6 +589,8 @@ declare module '@deepseek-ai/dsh-session/types' {
     }
     /** Frozen auxiliary Fast model request; no credentials are stored. */
     'contextify/recommendation-request': {
+      /** Host-consumed recommendation correlation; not original Client callback identity. */
+      readonly recommendationTraceId?: string
       readonly base: ContextRecommendationBase
       readonly provider: string
       readonly model: string
@@ -597,6 +601,8 @@ declare module '@deepseek-ai/dsh-session/types' {
     }
     /** A current review rendered in the visible Client document; not proof that it was read. */
     'contextify/recommendation-presented': {
+      /** Host-consumed recommendation correlation; not original Client callback identity. */
+      readonly recommendationTraceId?: string
       readonly mode: ContextRecommendationMode
       readonly base: ContextRecommendationBase
       readonly selection: readonly {
@@ -612,6 +618,8 @@ declare module '@deepseek-ai/dsh-session/types' {
     }
     /** Explicit closure of one reviewed Context proposal; no Plan mutation. */
     'contextify/recommendation-dismissed': {
+      /** Host-consumed recommendation correlation; not original Client callback identity. */
+      readonly recommendationTraceId?: string
       readonly mode: ContextRecommendationMode
       readonly base: ContextRecommendationBase
       /** Bounded reviewed objective, present only when items were explicitly declined. */
@@ -628,6 +636,8 @@ declare module '@deepseek-ai/dsh-session/types' {
     }
     /** Resolution of a current review; accepted and declined proposed changes are disjoint. */
     'contextify/recommendation-reviewed': {
+      /** Host-consumed recommendation correlation; not original Client callback identity. */
+      readonly recommendationTraceId?: string
       /** Server-bound policy after matching Client display acknowledgement and complete changed application. */
       readonly scopePolicy?: ContextScopePolicyReview
       readonly mode: ContextRecommendationMode

@@ -454,7 +454,7 @@ Source: [`packages/context/contextify/src/types.ts:506`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:661`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:671`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifybranch-review--log-only"></a>
 
@@ -500,7 +500,7 @@ Source: [`packages/context/contextify/src/revision-lineage.ts:31`](../packages/c
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:649`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:659`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifymanual-branch--log-only"></a>
 
@@ -517,7 +517,7 @@ Source: [`packages/context/contextify/src/types.ts:649`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:528`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:530`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifymanual-route--log-only"></a>
 
@@ -535,7 +535,7 @@ Source: [`packages/context/contextify/src/types.ts:528`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:536`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:538`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifynode-choice--log-only"></a>
 
@@ -566,7 +566,7 @@ Source: [`packages/context/contextify/src/types.ts:536`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:567`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:569`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyplan--log-only"></a>
 
@@ -591,7 +591,7 @@ Source: [`packages/context/contextify/src/types.ts:499`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:545`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:547`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyrecommendation-dismissed--log-only"></a>
 
@@ -600,6 +600,8 @@ Source: [`packages/context/contextify/src/types.ts:545`](../packages/context/con
 ```ts persistence-catalog
 /** Explicit closure of one reviewed Context proposal; no Plan mutation. */
 'contextify/recommendation-dismissed': {
+  /** Host-consumed recommendation correlation; not original Client callback identity. */
+  readonly recommendationTraceId?: string
   readonly mode: ContextRecommendationMode
   readonly base: ContextRecommendationBase
   /** Bounded reviewed objective, present only when items were explicitly declined. */
@@ -616,7 +618,7 @@ Source: [`packages/context/contextify/src/types.ts:545`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:614`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:620`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyrecommendation-presented--log-only"></a>
 
@@ -625,6 +627,8 @@ Source: [`packages/context/contextify/src/types.ts:614`](../packages/context/con
 ```ts persistence-catalog
 /** A current review rendered in the visible Client document; not proof that it was read. */
 'contextify/recommendation-presented': {
+  /** Host-consumed recommendation correlation; not original Client callback identity. */
+  readonly recommendationTraceId?: string
   readonly mode: ContextRecommendationMode
   readonly base: ContextRecommendationBase
   readonly selection: readonly {
@@ -640,7 +644,7 @@ Source: [`packages/context/contextify/src/types.ts:614`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:599`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:603`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyrecommendation-request--log-only"></a>
 
@@ -649,6 +653,8 @@ Source: [`packages/context/contextify/src/types.ts:599`](../packages/context/con
 ```ts persistence-catalog
 /** Frozen auxiliary Fast model request; no credentials are stored. */
 'contextify/recommendation-request': {
+  /** Host-consumed recommendation correlation; not original Client callback identity. */
+  readonly recommendationTraceId?: string
   readonly base: ContextRecommendationBase
   readonly provider: string
   readonly model: string
@@ -659,7 +665,7 @@ Source: [`packages/context/contextify/src/types.ts:599`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:589`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:591`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyrecommendation-reviewed--log-only"></a>
 
@@ -668,6 +674,8 @@ Source: [`packages/context/contextify/src/types.ts:589`](../packages/context/con
 ```ts persistence-catalog
 /** Resolution of a current review; accepted and declined proposed changes are disjoint. */
 'contextify/recommendation-reviewed': {
+  /** Host-consumed recommendation correlation; not original Client callback identity. */
+  readonly recommendationTraceId?: string
   /** Server-bound policy after matching Client display acknowledgement and complete changed application. */
   readonly scopePolicy?: ContextScopePolicyReview
   readonly mode: ContextRecommendationMode
@@ -687,7 +695,7 @@ Source: [`packages/context/contextify/src/types.ts:589`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:630`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:638`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifyrequest-read-set--log-only"></a>
 
@@ -707,6 +715,8 @@ Source: [`packages/context/contextify/src/revision-lineage.ts:33`](../packages/c
 ```ts persistence-catalog
 /** Explicit decision on a draft-bound native Session route card. */
 'contextify/route-choice': {
+  /** Host-consumed recommendation correlation; not original Client callback identity. */
+  readonly recommendationTraceId?: string
   readonly routeKey: string
   readonly action: ContextRouteAdvice['action']
   readonly choice: 'accept' | 'reject'
@@ -738,7 +748,7 @@ Source: [`packages/context/contextify/src/types.ts:514`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:559`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:561`](../packages/context/contextify/src/types.ts)
 
 <a id="contextifywork-state-choice--log-only"></a>
 
@@ -756,7 +766,7 @@ Source: [`packages/context/contextify/src/types.ts:559`](../packages/context/con
 }
 ```
 
-Source: [`packages/context/contextify/src/types.ts:550`](../packages/context/contextify/src/types.ts)
+Source: [`packages/context/contextify/src/types.ts:552`](../packages/context/contextify/src/types.ts)
 
 ### `deliverables/*`
 

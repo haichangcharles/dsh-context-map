@@ -149,6 +149,7 @@ interface LoadedFamily {
 }
 
 interface RecommendationOperation {
+  readonly recommendationTraceId: string
   readonly mode: ContextRecommendationMode
   readonly controller: AbortController
 }
@@ -360,7 +361,10 @@ export class ContextifyService extends TypertRemoteService {
 
   private readonly recommendations = new Map<SessionId, RecommendationOperation>()
   private readonly completedRecommendations = new Map<SessionId, ContextRecommendationProposal>()
-  private readonly recommendationObjectives = new WeakMap<ContextRecommendationProposal, string>()
+  private readonly recommendationMetadata = new WeakMap<ContextRecommendationProposal, {
+    readonly objective: string
+    readonly recommendationTraceId: string
+  }>()
   private readonly workStateChoices = new WeakMap<ContextRecommendationProposal, Map<SessionId, 'accept' | 'reject'>>()
   private readonly routeChoices = new WeakMap<ContextRouteAdvice, {
     readonly choice: 'accept' | 'reject'
@@ -703,7 +707,8 @@ export class ContextifyService extends TypertRemoteService {
     if (this.recommendations.has(rootSessionId)) {
       throw new ContextifyError('a Context Map recommendation is already running for this Session family', 'CONTEXTIFY_RECOMMENDATION_BUSY')
     }
-    const operation: RecommendationOperation = { mode: recommendationMode, controller: new AbortController() }
+    const operation: RecommendationOperation = { recommendationTraceId: randomUUID(),
+      mode: recommendationMode, controller: new AbortController() }
     this.recommendations.set(rootSessionId, operation)
     const promptSettings = this.promptSettings()
     for (const session of family.graph.sessions) this.recommendationRoots.set(session.id, rootSessionId)
@@ -844,15 +849,17 @@ export class ContextifyService extends TypertRemoteService {
             const goalReview = promptSettings.fastDecisionProvider === 'goal-model-jev' && draftBound === true && objective?.trim() === goal
             const parsed = goalReview
               ? await this.reviewGoalContext(agent, input, routePacket, family.graph, family.inspections, system,
-                [contextPrompt, effectivePrompt(CONTEXTIFY_DEFAULT_PROMPTS.branch, promptSettings.branch)].join('\n\n'), operation.controller.signal)
-              : await this.reviewJevContext(agent, input, routePacket, family.graph, system, operation.controller.signal)
+                [contextPrompt, effectivePrompt(CONTEXTIFY_DEFAULT_PROMPTS.branch, promptSettings.branch)].join('\n\n'), operation.recommendationTraceId, operation.controller.signal)
+              : await this.reviewJevContext(agent, input, routePacket, family.graph, system,
+                operation.recommendationTraceId, operation.controller.signal)
             jevScopeSessionId = parsed.scopeSessionId
             goalPreservation = parsed.preservation
             goalAbstained = goalReview && parsed.route?.intent === 'unknown'
             fastText = JSON.stringify({ ...parsed.decision, route: parsed.route })
           } else {
             const userText = `Objective:\n${goal}\n\nContext-action packet JSON:\n${JSON.stringify(routePacket)}\n\nConversation graph JSON:\n${JSON.stringify(input)}`
-            fastText = await this.reviewWithParentModel(agent, base, goal, system, userText, 640, operation.controller.signal)
+            fastText = await this.reviewWithParentModel(agent, base, goal, system, userText, 640,
+              operation.recommendationTraceId, operation.controller.signal)
           }
           try {
             const parsed = parseFastContextDecisionText(fastText, routePacket)
@@ -1008,7 +1015,7 @@ export class ContextifyService extends TypertRemoteService {
           ...(route === undefined ? {} : { route }),
           ...(workStates.length === 0 ? {} : { workStates }),
         })
-        this.recommendationObjectives.set(proposal, goal)
+        this.recommendationMetadata.set(proposal, { objective: goal, recommendationTraceId: operation.recommendationTraceId })
         this.completedRecommendations.set(agent.id, proposal)
         return proposal
       } catch (cause) {
@@ -1068,6 +1075,7 @@ export class ContextifyService extends TypertRemoteService {
       || pending.base.graphRevision !== family.revision) return
     this.presentedRecommendations.add(pending)
     agent.session.append('contextify/recommendation-presented', {
+      recommendationTraceId: this.reviewMetadata(pending).recommendationTraceId,
       mode: pending.mode,
       base: pending.base,
       selection: pending.selection.map(({ nodeId, action }) => ({ nodeId, action })),
@@ -1156,6 +1164,7 @@ export class ContextifyService extends TypertRemoteService {
       await this.applyCarriedScope(agent, pending, actualTargetSessionId, family.revision, uiOrigin, displayedPolicyKey)
     }
     agent.session.append('contextify/route-choice', {
+      recommendationTraceId: this.reviewMetadata(pending).recommendationTraceId,
       routeKey: key, action: route.action, choice, base: route.base,
       objective: route.objective,
       ...(actualTargetSessionId === undefined ? {} : { targetSessionId: actualTargetSessionId }),
@@ -1207,7 +1216,7 @@ export class ContextifyService extends TypertRemoteService {
       invariant(node, 'carried selection nodes belong to the destination graph')
       return { node: node.owner, mode: item.action === 'exclude' ? 'exclude' : 'include' }
     })
-    this.recommendationObjectives.set(carried, this.reviewObjective(proposal))
+    this.recommendationMetadata.set(carried, this.reviewMetadata(proposal))
     this.completedRecommendations.set(targetId, carried)
     try {
       await this.applyNodeModes(target, { revision: plan.revision }, mutations, family.revision, uiOrigin, undefined, () => {
@@ -1290,6 +1299,7 @@ export class ContextifyService extends TypertRemoteService {
       && pending.base.graphRevision === family.revision) {
       const reviewedObjective = this.reviewObjective(pending)
       agent.session.append('contextify/recommendation-dismissed', {
+        recommendationTraceId: this.reviewMetadata(pending).recommendationTraceId,
         mode: pending.mode,
         base: pending.base,
         ...(explicitDeclines.length === 0 ? {} : { objective: reviewedObjective }),
@@ -2127,6 +2137,7 @@ export class ContextifyService extends TypertRemoteService {
     scopePolicy?: ContextScopePolicyReview,
   ): void {
     session.append('contextify/recommendation-reviewed', {
+      recommendationTraceId: this.reviewMetadata(proposal).recommendationTraceId,
       ...(scopePolicy === undefined ? {} : { scopePolicy }),
       mode: proposal.mode,
       base: proposal.base,
@@ -2387,7 +2398,8 @@ export class ContextifyService extends TypertRemoteService {
   }
 
   private async reviewWithParentModel(agent: Agent, base: ContextRecommendationBase, objective: string,
-    system: string, userText: string, maxTokens: number, signal: AbortSignal, requireComplete = false): Promise<string> {
+    system: string, userText: string, maxTokens: number, recommendationTraceId: string,
+    signal: AbortSignal, requireComplete = false): Promise<string> {
     const latestOutput = [...agent.session.snapshotEvents()].reverse().find(event => event.type === 'assistant/message')
     if (latestOutput?.type !== 'assistant/message') {
       throw new ContextifyError('a model route is unavailable for Context recommendation', 'CONTEXTIFY_RECOMMENDATION_UNAVAILABLE')
@@ -2398,7 +2410,7 @@ export class ContextifyService extends TypertRemoteService {
     const modelInfo = await this.ctx.llm.resolveModelInfo(provider, model, signal)
     const reasoningEffort = modelInfo.reasoning?.efforts.find(effort => String(effort.id) === 'off')?.id
       ?? requestConfig?.reasoningEffort
-    agent.session.append('contextify/recommendation-request', { base, provider, model,
+    agent.session.append('contextify/recommendation-request', { recommendationTraceId, base, provider, model,
       objective, system, userText, maxTokens })
     const assembler = new BlockAssembler()
     for await (const chunk of this.ctx.llm.stream({
@@ -2429,7 +2441,7 @@ export class ContextifyService extends TypertRemoteService {
 
   private async reviewGoalContext(agent: Agent, input: FastRecommendationInput, packet: ContextActionPacket,
     graph: ContextFamilyGraph, inspections: ReadonlyMap<SessionId, ContextFamilyInspection>,
-    system: string, policy: string, signal: AbortSignal): Promise<JevRouteDecision> {
+    system: string, policy: string, recommendationTraceId: string, signal: AbortSignal): Promise<JevRouteDecision> {
     const bounded = AbortSignal.any([signal, AbortSignal.timeout(45_000)])
     const cancelled = Promise.withResolvers<never>()
     const listener = addAbortListener(bounded, () => { cancelled.reject(bounded.reason) })
@@ -2440,7 +2452,7 @@ export class ContextifyService extends TypertRemoteService {
     bounded.throwIfAborted()
     const request = buildGoalRouteInput(packet, policy)
     const text = await this.reviewWithParentModel(agent, packet.base, packet.objective,
-      request.system, request.userText, request.maxTokens, bounded, true)
+      request.system, request.userText, request.maxTokens, recommendationTraceId, bounded, true)
     bounded.throwIfAborted()
     const assignment = parseGoalRouteText(text, packet)
     if (assignment.assignment === 'unknown' || assignment.retention === 'unknown') {
@@ -2450,14 +2462,15 @@ export class ContextifyService extends TypertRemoteService {
       : resolveGoalPreservationScope({ ...assignment, retention: assignment.retention }, graph, inspections)
     if (preservation === null) return composeGoalContextReview({ ...assignment, retention: 'unknown' },
       undefined, input, packet, graph)
-    return await this.reviewJevContext(agent, input, packet, graph, system, bounded, assignment, credential, preservation)
+    return await this.reviewJevContext(agent, input, packet, graph, system,
+      recommendationTraceId, bounded, assignment, credential, preservation)
   }
 
   private async reviewJevContext(agent: Agent, input: FastRecommendationInput, packet: ContextActionPacket,
-    graph: ContextFamilyGraph, system: string, signal: AbortSignal, assignment?: Exclude<GoalRouteAssignment, { assignment: 'unknown' }>,
+    graph: ContextFamilyGraph, system: string, recommendationTraceId: string, signal: AbortSignal, assignment?: Exclude<GoalRouteAssignment, { assignment: 'unknown' }>,
     credential?: string, preservation?: GoalPreservationScope): Promise<JevRouteDecision> {
     const body = buildJevRouteRequest(input, packet, system, assignment, graph, preservation)
-    agent.session.append('contextify/recommendation-request', { base: packet.base, provider: 'typesafe', model: body.model,
+    agent.session.append('contextify/recommendation-request', { recommendationTraceId, base: packet.base, provider: 'typesafe', model: body.model,
       objective: packet.objective, system, userText: JSON.stringify(body), maxTokens: 0 })
     const wire = await requestJevContextReview(body, { signal,
       resolveCredential: () => credential === undefined ? resolveJevContextCredential(this.ctx) : Promise.resolve(credential) })
@@ -2467,9 +2480,13 @@ export class ContextifyService extends TypertRemoteService {
 
   private reviewObjective(proposal: ContextRecommendationProposal): string {
     // The sole publisher stores the objective before publishing this exact proposal object.
-    const objective = this.recommendationObjectives.get(proposal)
-    invariant(objective !== undefined, 'published Context proposals must retain their objective')
-    return objective
+    return this.reviewMetadata(proposal).objective
+  }
+
+  private reviewMetadata(proposal: ContextRecommendationProposal) {
+    const metadata = this.recommendationMetadata.get(proposal)
+    invariant(metadata !== undefined, 'published Context proposals must retain their Host metadata')
+    return metadata
   }
 
   private async readInspection(id: SessionId): Promise<ContextFamilyInspection> {

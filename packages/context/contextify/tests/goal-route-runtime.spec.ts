@@ -257,7 +257,17 @@ it('cancels goal generation before a second provider call and releases the revie
     vi.spyOn(b.adapter, 'stream').mockImplementation(async function* () {
       yield* textResponse('{"goal":"Uncertain task","retention":"task-lineage","assignment":"unknown","sessionId":null}')
     })
-    await expect(review(b, b.parent)).resolves.toMatchObject({ selection: [] })
+    const resumed = await review(b, b.parent)
+    expect(resumed).toMatchObject({ selection: [] })
+    await b.ctx.contextify.presentRecommendation(b.parent, resumed, 'contextify-client')
+    const requests = b.parent.session.snapshotEvents().filter(event => event.type === 'contextify/recommendation-request')
+    expect(requests).toHaveLength(2)
+    expect(requests[0]!.data.recommendationTraceId).toEqual(expect.any(String))
+    expect(requests[1]!.data.recommendationTraceId).toEqual(expect.any(String))
+    expect(requests[1]!.data.recommendationTraceId).not.toBe(requests[0]!.data.recommendationTraceId)
+    const presentations = b.parent.session.snapshotEvents().filter(event => event.type === 'contextify/recommendation-presented')
+    expect(presentations).toHaveLength(1)
+    expect(presentations[0]!.data.recommendationTraceId).toBe(requests[1]!.data.recommendationTraceId)
   } finally { fetcher.mockRestore(); await b.close() }
 })
 

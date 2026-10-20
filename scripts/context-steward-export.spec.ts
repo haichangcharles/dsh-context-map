@@ -108,6 +108,11 @@ it('restores selected native logs with original approval references and reversib
       expect(jevs).toHaveLength(1)
       expect(requests).toHaveLength(2)
       const goal = goals[0]!, jev = jevs[0]!
+      const traceId = goal.data.recommendationTraceId
+      expect(traceId).toEqual(expect.any(String))
+      expect(jev.data.recommendationTraceId).toBe(traceId)
+      expect(presentation.data.recommendationTraceId).toBe(traceId)
+      expect(approved.type === 'contextify/recommendation-reviewed' ? approved.data.recommendationTraceId : undefined).toBe(traceId)
       expect(goal.seq).toBeLessThan(jev.seq)
       expect(jev.seq).toBeLessThan(presentation.seq)
       expect(presentation.seq).toBeLessThan(approved.seq)

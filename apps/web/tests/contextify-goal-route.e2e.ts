@@ -116,6 +116,12 @@ it('reviews a new sibling task in the browser, preserves its draft and applies n
       selection: [],
     })
     expect(carried?.type === 'contextify/recommendation-reviewed' ? carried.data.scopePolicy : undefined).toBeUndefined()
+    const requests = hotel.session.snapshotEvents().filter(e => e.type === 'contextify/recommendation-request')
+    expect(requests).toHaveLength(2)
+    const traceId = requests[0]!.data.recommendationTraceId
+    expect(traceId).toEqual(expect.any(String))
+    expect(requests[1]!.data.recommendationTraceId).toBe(traceId)
+    expect(carried?.type === 'contextify/recommendation-reviewed' ? carried.data.recommendationTraceId : undefined).toBe(traceId)
     const compiled = scaffold.ctx.contextCompiler.compile({ session: child.session, turn: child.session.seq + 1, step: 1 })
     expect(JSON.stringify(compiled.messages)).toContain('DINNER_MAINLINE')
     expect(JSON.stringify(compiled.messages)).not.toContain('HOTEL_ONLY')
