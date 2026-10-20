@@ -2406,7 +2406,7 @@ export class ContextifyService extends TypertRemoteService {
   private async reviewJevContext(agent: Agent, input: FastRecommendationInput, packet: ContextActionPacket,
     graph: ContextFamilyGraph, system: string, signal: AbortSignal, assignment?: Exclude<GoalRouteAssignment, { assignment: 'unknown' }>,
     credential?: string): Promise<JevRouteDecision> {
-    const body = buildJevRouteRequest(input, packet, system, assignment)
+    const body = buildJevRouteRequest(input, packet, system, assignment, graph)
     agent.session.append('contextify/recommendation-request', { base: packet.base, provider: 'typesafe', model: body.model,
       objective: packet.objective, system, userText: JSON.stringify(body), maxTokens: 0 })
     const wire = await requestJevContextReview(body, { signal,

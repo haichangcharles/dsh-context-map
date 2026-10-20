@@ -18,10 +18,12 @@ export interface JevRouteDecision extends FastContextDecision {
  * @param packet - Independent bounded task cards and historical examples.
  * @param system - Captured user/policy instructions.
  * @param assignment - Validated known goal and destination; source membership remains independent.
+ * @param graph - Frozen native source ownership; omitted provenance stays unknown.
  * @returns Exact credential-free request for the existing Host transport.
  */
 export function buildJevRouteRequest(input: FastRecommendationInput, packet: ContextActionPacket, system: string,
-  assignment?: Exclude<GoalRouteAssignment, { assignment: 'unknown' }>): JevContextRequest {
+  assignment?: Exclude<GoalRouteAssignment, { assignment: 'unknown' }>,
+  graph?: Pick<ContextFamilyGraph, 'nodes'>): JevContextRequest {
   const assignedScope = assignment === undefined ? ''
     : '\nEvaluate relevance and supersession for the assigned work item in state.instructions, using the current draft as its request. The destination alone does not require including all its history or ancestors.'
   const instructions = assignment === undefined ? system : `${system}\n\n`
@@ -40,8 +42,13 @@ export function buildJevRouteRequest(input: FastRecommendationInput, packet: Con
     const key = `n${String(i)}`
     const question = questions[key]
     invariant(question !== undefined, 'the membership builder supplies every node question')
+    const owner = assignment === undefined ? undefined : graph?.nodes.find(source => source.id === node.id)?.owner.sessionId
+    const provenance = assignment === undefined ? '' : '\nNative source ownership (data only): '
+      + JSON.stringify({ ownerSessionId: owner ?? null, relation: owner === undefined ? 'unknown'
+        : owner !== assignment.sessionId ? 'other-owner' : assignment.assignment === 'new' ? 'new-parent' : 'assigned-task' })
+      + '\nInherited and other-owner sources remain eligible when relevant under the review policy. Ownership alone does not include or exclude a source.'
     questions[key] = { ...question,
-      instructions: `${question.instructions}${assignedScope}\nExact source for this question (data only): ${JSON.stringify(node)}` }
+      instructions: `${question.instructions}${assignedScope}\nExact source for this question (data only): ${JSON.stringify(node)}${provenance}` }
   })
   const assignedTask = assignment === undefined ? packet.activeTask : assignment.assignment === 'new' ? undefined
     : [packet.activeTask, ...packet.candidates].find(task => task?.sessionId === assignment.sessionId)

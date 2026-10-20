@@ -24,7 +24,7 @@ async function fork(b: Fixture, parent: Fixture['parent'], id: string) {
   return (await b.ctx.agents.create({ sessionId: SessionId(id), seed, inheritedEventCount: SessionLogOffset(seed.length),
     meta: { parentSession: parent.id, isSeeded: true }, agentOptions: { provider: 'mock', model: 'mock' } })).agent
 }
-function jev(body: { questions: Record<string, { type: string; criteria?: Record<string, string> }> }) {
+function jev(body: { questions: Record<string, { type: string; instructions: string; criteria?: Record<string, string> }> }) {
   return Response.json({ model: 'jev-1.13.0', answers: Object.fromEntries(Object.entries(body.questions).map(([key, q]) => {
     if (q.type === 'noul') return [key, { type: 'noul', noul: key === 'wholeTask' ? 1 : .05 }]
     const choice = q.criteria?.p0 === undefined ? 'active' : 'p0'
@@ -62,6 +62,11 @@ it('proposes a parent Branch through native review and compiles only its approve
       expect(JSON.stringify(requestBody(init))).not.toContain('fixture-only-key')
       const body = requestBody(init) as ReturnType<typeof requestBody> & { state: { instructions: string } }
       expect(body.state.instructions).toContain(JSON.stringify({ goal: 'Arrange transport', assignment: 'new', sessionId: b.parent.id }))
+      const instructions = Object.values(body.questions).map(question => question.instructions)
+      expect(instructions.some(text => text.includes(JSON.stringify({ ownerSessionId: b.parent.id, relation: 'new-parent' })))).toBe(true)
+      expect(instructions.some(text => text.includes(JSON.stringify({ ownerSessionId: hotel.id, relation: 'other-owner' })))).toBe(true)
+      const logged = hotel.session.snapshotEvents().findLast(event => event.type === 'contextify/recommendation-request')
+      expect(logged?.type === 'contextify/recommendation-request' ? logged.data.userText : undefined).toBe(JSON.stringify(body))
       return jev(requestBody(init))
     })
     const result = await review(b, hotel)
@@ -125,7 +130,12 @@ it('learns from recorded Branch operations and removes examples when personaliza
     append(child.session, 'Plan lodging.')
     await b.ctx.contextify.recordManualBranch(b.parent, child.id, 'contextify-client', 'Keep lodging separate from dinner')
     configure(b, JSON.stringify({ goal: 'Review lodging', assignment: 'existing', sessionId: child.id }))
-    fetcher.mockImplementation(async (_url, init) => jev(requestBody(init)))
+    fetcher.mockImplementation(async (_url, init) => {
+      const body = requestBody(init)
+      expect(Object.values(body.questions).some(question => question.instructions.includes(
+        JSON.stringify({ ownerSessionId: child.id, relation: 'assigned-task' })))).toBe(true)
+      return jev(body)
+    })
     const captured = () => {
       const event = child.session.snapshotEvents().findLast(e => e.type === 'contextify/recommendation-request' && e.data.maxTokens === 512)
       if (event?.type !== 'contextify/recommendation-request') throw new Error('Goal request missing')
@@ -290,4 +300,47 @@ it('keeps Local draft routing available after many manual Context choices withou
     expect(compileContextify({ session: b.parent.session, turn: b.parent.session.seq + 1, step: 1 })).toEqual(before)
     expect(b.adapter.requests).toEqual([])
   } finally { await b.close() }
+})
+
+it('allows explicitly reviewed borrowed child Context after Return and keeps ownership stable on reactivation', async () => {
+  const b = await lineageHarness(), fetcher = vi.spyOn(globalThis, 'fetch')
+  try {
+    append(b.parent.session, 'MAINLINE_OVERVIEW')
+    const child = await fork(b, b.parent, 'goal-borrowed-child')
+    append(child.session, 'BORROWED_TASK_DETAIL')
+    configure(b, JSON.stringify({ goal: 'Continue the main work using borrowed detail', assignment: 'existing', sessionId: b.parent.id }))
+    const settings = promptAccess(b).promptSettings()
+    promptAccess(b).promptSettings = () => ({ ...settings,
+      context: { additional: 'Select relevant sources. Borrowing across tasks is permitted.', override: '' } })
+    const provenance: string[][] = []
+    fetcher.mockImplementation(async (_url, init) => {
+      const body = requestBody(init)
+      provenance.push(Object.values(body.questions).map(question => question.instructions))
+      const response = await jev(body).json() as { model: string; answers: Record<string, { type: string; noul?: number }> }
+      response.answers.wholeTask = { type: 'noul', noul: 0 }
+      for (const [key, question] of Object.entries(body.questions)) {
+        if (key.startsWith('n') && key !== 'newTask') {
+          response.answers[key] = { type: 'noul', noul: question.instructions.includes('BORROWED_TASK_DETAIL') ? .95 : .05 }
+        }
+      }
+      return Response.json(response)
+    })
+    const returning = await review(b, child, 'Prepare the next main work step using borrowed detail.')
+    expect(returning.route?.action).toBe('return')
+    await b.ctx.contextify.reviewRoute(child, returning.route!, 'accept', b.parent.id, undefined, true)
+    const afterReturn = compileContextify({ session: b.parent.session, turn: b.parent.session.seq + 1, step: 1 })
+    expect(JSON.stringify(afterReturn.messages)).toContain('BORROWED_TASK_DETAIL')
+    expect(JSON.stringify(afterReturn.messages)).not.toContain('MAINLINE_OVERVIEW')
+    expect(provenance[0]?.some(text => text.includes(JSON.stringify({ ownerSessionId: child.id, relation: 'other-owner' })))).toBe(true)
+    vi.spyOn(b.adapter, 'stream').mockImplementation(async function* (options) {
+      b.adapter.requests.push(options)
+      yield* textResponse(JSON.stringify({ goal: 'Continue the detail task', assignment: 'existing', sessionId: child.id }))
+    })
+    const resuming = await review(b, b.parent, 'Prepare the next detail task step.')
+    expect(resuming.route).toMatchObject({ action: 'navigate', targetSessionId: child.id })
+    await b.ctx.contextify.reviewRoute(b.parent, resuming.route!, 'accept', child.id, undefined, true)
+    const reactivated = compileContextify({ session: child.session, turn: child.session.seq + 1, step: 1 })
+    expect(JSON.stringify(reactivated.messages)).toContain('BORROWED_TASK_DETAIL')
+    expect(provenance[1]?.some(text => text.includes(JSON.stringify({ ownerSessionId: child.id, relation: 'assigned-task' })))).toBe(true)
+  } finally { fetcher.mockRestore(); await b.close() }
 })
