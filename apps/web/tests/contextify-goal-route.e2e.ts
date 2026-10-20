@@ -56,7 +56,11 @@ it('reviews a new sibling task in the browser, preserves its draft and applies n
       if (url !== 'https://api.typesafe.ai/v1/systemone') return originalFetch(url, init)
       jevCalls += 1
       if (typeof init?.body !== 'string') throw new Error('Expected JSON Jev fixture request')
-      const body = JSON.parse(init.body) as { questions: Record<string, { type: string; criteria?: Record<string, string> }> }
+      const body = JSON.parse(init.body) as {
+        state: { instructions: string }
+        questions: Record<string, { type: string; criteria?: Record<string, string> }>
+      }
+      expect(body.state.instructions).toContain(JSON.stringify({ goal: 'Arrange transport', assignment: 'new', sessionId: root.id }))
       return Response.json({ model: 'jev-1.13.0', answers: Object.fromEntries(Object.entries(body.questions).map(([key, q]) => {
         if (q.type === 'noul') return [key, { type: 'noul', noul: key === 'wholeTask' ? 1 : .05 }]
         const choice: string = q.criteria?.p0 === undefined ? 'active' : 'p0'

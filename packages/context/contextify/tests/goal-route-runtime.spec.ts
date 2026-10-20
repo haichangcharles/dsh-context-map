@@ -60,6 +60,8 @@ it('proposes a parent Branch through native review and compiles only its approve
     fetcher.mockImplementation(async (_url, init) => {
       expect(hotel.session.snapshotEvents().at(-1)?.type).toBe('contextify/recommendation-request')
       expect(JSON.stringify(requestBody(init))).not.toContain('fixture-only-key')
+      const body = requestBody(init) as ReturnType<typeof requestBody> & { state: { instructions: string } }
+      expect(body.state.instructions).toContain(JSON.stringify({ goal: 'Arrange transport', assignment: 'new', sessionId: b.parent.id }))
       return jev(requestBody(init))
     })
     const result = await review(b, hotel)

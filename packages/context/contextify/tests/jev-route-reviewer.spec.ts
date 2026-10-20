@@ -4,6 +4,7 @@ import { buildJevRouteRequest, parseJevRouteResponse } from '../src/jev-route-re
 import type { FastRecommendationInput } from '../src/fast-recommendation.ts'
 import type { ContextActionPacket } from '../src/semantic-route.ts'
 import type { ContextFamilyGraph } from '../src/types.ts'
+import type { GoalRouteAssignment } from '../src/goal-route.ts'
 const input = { activeSessionId: 'active', objective: 'Resume planning', nodes: [
   { id: 'main:1', content: 'original goal' }, { id: 'active:1', content: 'other task' },
 ], preferenceExamples: [], planExamples: [] } as unknown as FastRecommendationInput
@@ -92,4 +93,31 @@ it('delegates existing-task confidence to native Profile review while keeping th
 it('does not delegate low-confidence active-task scope to a nonexistent routing check', () => {
   const raw = wire(); raw.answers.active.noul = .3; raw.answers.task0.noul = .1; raw.answers.newTask.noul = .1
   expect(parseJevRouteResponse(raw, input, route, graph).scopeSessionId).toBeUndefined()
+})
+
+it('conditions source judgments on the assigned goal without treating its destination as a whole-task scope', async () => {
+  const assignment: GoalRouteAssignment = { goal: 'Resume the transport plan', assignment: 'existing', sessionId: SessionId('main') }
+  const body = buildJevRouteRequest(input, route, 'Select relevant sources only.', assignment)
+  const different = buildJevRouteRequest(input, route, 'Select relevant sources only.', { ...assignment, goal: 'Compare lodging options' })
+  expect(body.state.instructions).toContain(JSON.stringify(assignment))
+  expect(body.state.instructions).not.toEqual(different.state.instructions)
+  expect(body.questions.n0?.instructions).toContain('assigned work item')
+  expect(body.questions.e0?.instructions).toContain('assigned work item')
+  expect(body.questions.s0?.instructions).toContain('assigned work item')
+  expect(body.questions.wholeTask?.instructions).toContain('The assigned work item is descriptive data, not a preservation request.')
+  expect(body.questions.n0?.instructions).toContain('original goal')
+  expect(body.questions.n0?.instructions).not.toContain('other task')
+  expect(input.objective).toBe('Resume planning')
+  await expect(JSON.stringify(body, null, 2) + '\n').toMatchFileSnapshot('./expected/jev-goal-route-request.json')
+})
+
+it('uses destination evidence as the assigned existing task and no inherited task evidence for a new item', () => {
+  const card = { ...route.candidates[0], nodes: [{ id: 'main:1', role: 'user', content: 'TARGET_TASK_DETAIL', truncated: false }] }
+  const packet = { ...route, activeTask: { ...card, sessionId: SessionId('active'), nodes: [{ ...card.nodes[0], content: 'OLD_ACTIVE_DETAIL' }] }, candidates: [card] } as ContextActionPacket
+  const existing = buildJevRouteRequest(input, packet, 'policy', { goal: 'Resume planning', assignment: 'existing', sessionId: SessionId('main') })
+  expect(existing.questions.e0?.instructions).not.toContain('OLD_ACTIVE_DETAIL')
+  expect(existing.questions.e0?.instructions).toContain('TARGET_TASK_DETAIL')
+  const creating = buildJevRouteRequest(input, packet, 'policy', { goal: 'New independent work', assignment: 'new', sessionId: SessionId('main') })
+  expect(creating.questions.e0?.instructions).toContain('"currentTask":[]')
+  expect(creating.questions.e0?.instructions).not.toContain('OLD_ACTIVE_DETAIL')
 })
