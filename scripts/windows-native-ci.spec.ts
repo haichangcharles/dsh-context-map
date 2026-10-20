@@ -176,14 +176,12 @@ it('retains the completed timeout control without automatically repeating it', (
 })
 
 
-it('admits only the new typed-module path after the hosted native failure', () => {
+it('retains the completed typed-module control without automatically repeating it', () => {
   const workflow = yaml.load(read('.github/workflows/ci.yml')) as {
     jobs: Record<string, { steps: { name?: string; if?: string; run?: string; 'timeout-minutes'?: number }[] }>
   }
   const step = workflow.jobs['windows-native-tests']!.steps.find(item => item.name === 'Diagnose registered typed module settlement')
-  expect(step?.if).toBe("failure() && runner.environment == 'github-hosted' && steps.native-check.outcome == 'failure'")
-  expect(step?.run).toBe('./scripts/run-windows-worker-reduction.ps1 -Arm dual-tsx-typescript')
-  expect(step?.['timeout-minutes']).toBe(4)
+  expect(step).toBeUndefined()
   const probe = read('packages/workflow/workflow-worker-thread/tests/fixtures/worker-lifecycle-probe.mjs')
   expect(probe).toContain("new URL('./typed-worker-value.ts', import.meta.url).href")
   expect(probe).toContain('typedModuleValue !== 42')

@@ -22,7 +22,7 @@ Hosted 包装脚本还使用[操作系统进程退出通知](../../../../scripts
 
 hosted 失败路径中的超时对照在同一包装器中选择 `dual-tsx-vm-timeout`。它使用已安装的 Node 映像，不开启 PageHeap 或修改注册表，注册已安装的 tsx ESM/CJS 钩子，并用 `runInContext` timeout5000 执行相同的立即返回 async42 程序。四轮 worker／结果／终止只观察同步超时监护的建立与清理，不触发超时，也不验证异步中断。常规 CI 不重复这一已完成对照；另行获准的诊断使用保留的包装器。步骤跳过不能算阴性结果。原始必需失败仍有权威性，已完成的对照在后续无关推送中停用。
 
-另行限定的 `dual-tsx-typescript` 对照在相同 VM 程序前，仅用绝对 file URL 导入一个无依赖的 TypeScript enum 夹具。worker 与父进程验证导出值42之后才记录 typed-import 成功。它复用已安装的 tsx 注册和同一有界生命周期，不增加 timeout 选项、PageHeap、workflow 导入或生产变更。单次 hosted 观察之后停用自动步骤。它检查的是 typed-module 加载组合路径，不能单独归因转换器、缓存或非法写入者。
+另行限定的 `dual-tsx-typescript` 对照在相同 VM 程序前，仅用绝对 file URL 导入一个无依赖的 TypeScript enum 夹具。worker 与父进程验证导出值42之后才记录 typed-import 成功。它复用已安装的 tsx 注册和同一有界生命周期，不增加 timeout 选项、PageHeap、workflow 导入或生产变更。常规 CI 不重复这项已完成的 hosted 观察；另行授权的诊断仍可使用保留的 wrapper。它检查的是 typed-module 加载组合路径，不能单独归因转换器、缓存或非法写入者。
 
 ## Alternatives considered
 

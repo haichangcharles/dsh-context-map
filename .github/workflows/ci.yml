@@ -637,13 +637,6 @@ jobs:
         env:
           DSH_EPHEMERAL_NATIVE_CAPTURE: ${{ runner.environment == 'github-hosted' && '1' || '0' }}
         run: ./scripts/run-windows-native.ps1 -CaptureCrash:($env:DSH_EPHEMERAL_NATIVE_CAPTURE -eq '1')
-      - name: Diagnose registered typed module settlement
-        if: failure() && runner.environment == 'github-hosted' && steps.native-check.outcome == 'failure'
-        timeout-minutes: 4
-        shell: pwsh
-        env:
-          DSH_EPHEMERAL_NATIVE_CAPTURE: '1'
-        run: ./scripts/run-windows-worker-reduction.ps1 -Arm dual-tsx-typescript
       - name: Retain Windows native failure reports
         if: failure()
         uses: actions/upload-artifact@v4
