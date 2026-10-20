@@ -21,7 +21,7 @@ it('keeps crash capture hosted-only and all model credentials empty', () => {
 it('retains the original single invocation and propagates its failure', () => {
   const wrapper = read('scripts/run-windows-native.ps1')
   const command = wrapper.match(/& pnpm exec vitest run([\s\S]*?)\| Out-Host/)?.[1]?.replace(/`/g, '').trim().split(/\s+/)
-  expect(command).toEqual(['--no-file-parallelism', '--testTimeout', '90000',
+  expect(command).toEqual(['--no-file-parallelism', '--testTimeout', '90000', '--reporter=default', '--reporter=json', '"--outputFile.json=$nativeReport"',
     'packages/shell/tool-pwsh/tests/loader.spec.ts',
     'packages/workflow/workflow-worker-thread/tests/workflow-worker-thread.spec.ts',
     'packages/workflow/tool-ralph/tests/integration.spec.ts',
@@ -59,4 +59,51 @@ it('records owned OS exit metadata without instrumenting or retrying the origina
   expect(observer).not.toMatch(/CommandLine|EnvironmentVariables|Start-Sleep|NODE_OPTIONS|Invoke-Expression/)
   const workflow = read('.github/workflows/ci.yml')
   expect(workflow).toContain('./scripts/windows-process-exit-evidence.ps1 -SelfTest')
+})
+
+
+it('retains failure-only Windows partition reports without retrying the coverage command', () => {
+  const workflow = yaml.load(read('.github/workflows/ci.yml')) as {
+    jobs: Record<string, { steps: { name?: string; if?: string; uses?: string; with?: Record<string, unknown> }[] }>
+  }
+  const step = workflow.jobs['windows-coverage']!.steps.find(s => s.name === 'Retain Windows coverage failure reports')
+  expect(step?.if).toBe('failure()')
+  expect(step?.uses).toBe('actions/upload-artifact@v4')
+  expect(step?.with?.['retention-days']).toBe(3)
+  expect(step?.with?.['include-hidden-files']).toBe(true)
+  expect(step?.with?.path).toBe([
+    'coverage/.partitioned/partition-*.report.json',
+    '${{ runner.temp }}/required-coverage-crash.log',
+  ].join('\n') + '\n')
+})
+
+
+it('retains failure-only native test state when a fork cannot report every case', () => {
+  const workflow = yaml.load(read('.github/workflows/ci.yml')) as {
+    jobs: Record<string, { steps: { name?: string; if?: string; uses?: string; with?: Record<string, unknown> }[] }>
+  }
+  const step = workflow.jobs['windows-native-tests']!.steps.find(s => s.name === 'Retain Windows native failure reports')
+  expect(step?.if).toBe('failure()')
+  expect(step?.uses).toBe('actions/upload-artifact@v4')
+  expect(step?.with?.['retention-days']).toBe(3)
+  expect(step?.with?.path).toBe([
+    '${{ runner.temp }}/required-native-report.json',
+    '${{ runner.temp }}/required-native-crash.log',
+  ].join('\n') + '\n')
+  expect(read('scripts/run-windows-native.ps1')).toContain("$nativeReport = Join-Path $env:RUNNER_TEMP 'required-native-report.json'")
+})
+
+
+it('starts the native inventory under CDB and preserves the original result independently', () => {
+  const live = read('scripts/native-live-debugger.ps1')
+  expect(live).toContain("'-o', '-g', '-G'")
+  expect(live).toContain('DSH_FIRST_CHANCE_AV')
+  expect(live).toContain('-c2')
+  expect(live).toContain('.exr -1;.ecxr;kv 32')
+  expect(live).toContain('gn')
+  expect(live).toContain('Missing original native check result')
+  expect(live).toContain('return [int] $result.exitCode')
+  expect(live).not.toContain('.jdinfo')
+  expect(read('scripts/run-windows-native.ps1')).toContain('Invoke-NativeLiveDebugger')
+  expect(read('.github/workflows/ci.yml')).toContain('./scripts/native-live-debugger.ps1 -SelfTest')
 })

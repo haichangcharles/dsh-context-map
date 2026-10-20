@@ -554,6 +554,17 @@ jobs:
         env:
           DSH_EPHEMERAL_NATIVE_CAPTURE: ${{ runner.environment == 'github-hosted' && '1' || '0' }}
         run: ./scripts/run-windows-native.ps1 -Lane coverage -CaptureCrash:($env:DSH_EPHEMERAL_NATIVE_CAPTURE -ceq '1')
+      - name: Retain Windows coverage failure reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-coverage-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            coverage/.partitioned/partition-*.report.json
+            ${{ runner.temp }}/required-coverage-crash.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 3
       - name: Save coverage duration history
         # Coverage flakes must not prevent the cache from building; the
         # measured durations remain useful even when a partition failed. The
@@ -615,11 +626,25 @@ jobs:
         run: |
           ./scripts/native-postmortem-registry.ps1 -SelfTest
           ./scripts/windows-process-exit-evidence.ps1 -SelfTest
+      - name: Verify live debugger verdicts
+        if: runner.environment == 'github-hosted'
+        shell: pwsh
+        run: ./scripts/native-live-debugger.ps1 -SelfTest
       - name: Run Windows-specific native tests
         shell: pwsh
         env:
           DSH_EPHEMERAL_NATIVE_CAPTURE: ${{ runner.environment == 'github-hosted' && '1' || '0' }}
         run: ./scripts/run-windows-native.ps1 -CaptureCrash:($env:DSH_EPHEMERAL_NATIVE_CAPTURE -eq '1')
+      - name: Retain Windows native failure reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-native-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/required-native-report.json
+            ${{ runner.temp }}/required-native-crash.log
+          if-no-files-found: warn
+          retention-days: 3
 
   windows-observational:
     if: github.event_name == 'pull_request'

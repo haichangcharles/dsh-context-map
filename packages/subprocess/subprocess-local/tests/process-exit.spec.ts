@@ -7,7 +7,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { resolveExampleLaunch } from '@deepseek-ai/dsh-loader-smoke'
 import { createProcessInspector } from '../src/process-inspector.ts'
 import type { ProcessIdentity, ProcessInspector } from '../src/process-inspector.ts'
-import { taskkillProcessTree } from '../src/spawn.ts'
+import * as spawnModule from '../src/spawn.ts'
+import { createWindowsProcessInspector } from '../src/windows-inspector.ts'
 
 type ExitTrigger = 'direct' | 'uncaught-exception' | 'unhandled-rejection' | 'dispose'
 type ManagedKind = 'ordinary' | 'terminal'
@@ -17,16 +18,6 @@ const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url))
 const hostScript = fileURLToPath(new URL('./fixtures/process-exit-host.ts', import.meta.url))
 const scenarioTimeoutMs = process.platform === 'win32' ? 60_000 : 30_000
 const testTimeoutMs = scenarioTimeoutMs + 15_000
-
-function processExists(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (error: unknown) {
-    if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false
-    throw error
-  }
-}
 
 async function readTree(path: string): Promise<TreeState> {
   return vi.waitFor(async () => {
@@ -49,40 +40,19 @@ async function captureIdentities(inspector: ProcessInspector, state: TreeState):
   }, { interval: 10, timeout: scenarioTimeoutMs })
 }
 
-async function waitForGone(state: TreeState): Promise<void> {
-  await Promise.all([state.root, state.descendant].map(pid => vi.waitFor(() => {
-    if (processExists(pid)) throw new Error(`managed pid ${pid} is still alive`)
+async function waitForGone(inspector: ProcessInspector, identities: readonly ProcessIdentity[]): Promise<void> {
+  await Promise.all(identities.map(identity => vi.waitFor(() => {
+    if (inspector.isAlive(identity)) throw new Error(`managed pid ${identity.pid} is still alive`)
   }, { interval: 25, timeout: 10_000 })))
 }
 
-function cleanupTree(state: TreeState | undefined, identities: ProcessIdentity[]): void {
+function cleanupTree(state: TreeState | undefined, identities: ProcessIdentity[], inspector: ProcessInspector): void {
   if (state === undefined) return
-  if (process.platform === 'win32') {
-    taskkillProcessTree(state.root)
-    for (const pid of [state.descendant, state.root]) {
-      try {
-        process.kill(pid, 'SIGKILL')
-      } catch (_alreadyGone) {
-        // The exact recorded process already exited.
-      }
-    }
-    return
-  }
-  const inspector = createProcessInspector()
   for (const identity of identities) {
     try {
       inspector.signalProcess(identity, 'SIGKILL')
-    } catch (_alreadyGone) {
-      // Exact start identity prevents PID-reuse cleanup from reaching another process.
-    }
-  }
-  if (identities.length === 0) {
-    for (const pid of [state.descendant, state.root]) {
-      try {
-        process.kill(pid, 'SIGKILL')
-      } catch (_alreadyGone) {
-        // The scenario failed before process identities became observable.
-      }
+    } catch (_cleanupSignalFailed) {
+      // Best-effort cleanup never substitutes an unfenced PID after signal failure.
     }
   }
 }
@@ -95,6 +65,7 @@ async function runScenario(kind: ManagedKind, trigger: ExitTrigger) {
     tsconfigPath: join(repoRoot, 'tsconfig.json'),
     configArgs: [kind, trigger, root],
   })
+  const inspector = createProcessInspector()
   const child = execa(launch.command, launch.args, {
     cwd: repoRoot,
     env: launch.env,
@@ -110,11 +81,11 @@ async function runScenario(kind: ManagedKind, trigger: ExitTrigger) {
     // The host validates tree.json before waiting for proceed, so observing it
     // is sufficient readiness; a second marker only adds a redundant Windows poll.
     state = await readTree(join(root, 'tree.json'))
-    if (process.platform !== 'win32') identities = await captureIdentities(createProcessInspector(), state)
+    identities = await captureIdentities(inspector, state)
     await writeFile(join(root, 'proceed'), 'proceed')
     const outcome = await child
     settled = true
-    await waitForGone(state)
+    await waitForGone(inspector, identities)
     treeGone = true
     const disposeCounts = trigger === 'dispose'
       ? JSON.parse(await readFile(join(root, 'dispose.json'), 'utf8')) as {
@@ -130,8 +101,8 @@ async function runScenario(kind: ManagedKind, trigger: ExitTrigger) {
       await child.catch(() => {})
     }
     if (!treeGone) {
-      cleanupTree(state, identities)
-      if (state !== undefined) await waitForGone(state).catch(() => {})
+      cleanupTree(state, identities, inspector)
+      if (state !== undefined) await waitForGone(inspector, identities).catch(() => {})
     }
     await rm(root, { recursive: true, force: true })
   }
@@ -168,5 +139,34 @@ describe('synchronous cleanup on host exit', () => {
     expect(outcome.exitCode).toBe(0)
     expect(disposeCounts?.listenersAfterLoad).toBe((disposeCounts?.listenersBefore ?? 0) + 1)
     expect(disposeCounts?.listenersAfterDispose).toBe(disposeCounts?.listenersBefore)
+  })
+})
+
+describe('failed-scenario cleanup ownership', () => {
+  it('never signals a recycled Windows PID or falls back to bare PID cleanup', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(process, 'platform')!
+    const rawKill = vi.spyOn(process, 'kill').mockReturnValue(true)
+    const treeKill = vi.spyOn(spawnModule, 'taskkillProcessTree').mockImplementation(() => {})
+    const kills: number[] = []
+    const inspector = createWindowsProcessInspector({ snapshot: () => [],
+      processState: pid => ({ active: true, started: pid === 123 ? 'recycled' : 'original-child' }),
+      taskkill: (pid) => { kills.push(pid) } })
+    try {
+      Object.defineProperty(process, 'platform', { ...descriptor, value: 'win32' })
+      cleanupTree({ root: 123, descendant: 456 }, [
+        { pid: 456, started: 'original-child' }, { pid: 123, started: 'original-root' },
+      ], inspector)
+      expect(kills).toEqual([456])
+      expect(treeKill).not.toHaveBeenCalled()
+      expect(rawKill).not.toHaveBeenCalled()
+      cleanupTree({ root: 123, descendant: 456 }, [], inspector)
+      expect(kills).toEqual([456])
+      expect(treeKill).not.toHaveBeenCalled()
+      expect(rawKill).not.toHaveBeenCalled()
+    } finally {
+      Object.defineProperty(process, 'platform', descriptor)
+      rawKill.mockRestore()
+      treeKill.mockRestore()
+    }
   })
 })
