@@ -1,4 +1,4 @@
-# Failure-only diagnostic: separate normal source, artifact and plain Worker processes.
+# Failure-only diagnostic: isolate tsx registration from the workflow runtime.
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 if ($env:DSH_EPHEMERAL_NATIVE_CAPTURE -cne '1') { throw 'Worker reduction requires a disposable hosted runner' }
@@ -11,10 +11,7 @@ try {
   $driver = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../packages/workflow/workflow-worker-thread/tests/fixtures/worker-lifecycle-probe.mjs'))
   $node = (Get-Command node.exe -ErrorAction Stop).Source
   $tsconfig = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../tsconfig.base.json'))
-  # The matched artifact control uses the normal Host build, never a rewritten worker.
-  & pnpm run build:lib:host | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'worker-reduction-build.log') | Out-Host
-  if ($LASTEXITCODE -ne 0) { throw "Cannot build the native worker control: $LASTEXITCODE" }
-  foreach ($arm in @('source', 'built', 'plain')) {
+  foreach ($arm in @('dual-tsx-vm', 'dual-tsx-message', 'esm-tsx-vm')) {
     $wrapper = Join-Path $owned.FullName "$arm.ps1"
     $events = Join-Path $env:RUNNER_TEMP "worker-reduction-$arm-events.log"
     $template = @'
@@ -80,7 +77,7 @@ finally { $writer.Dispose() }
     }
   }
 } finally {
-  foreach ($arm in @('source', 'built', 'plain')) {
+  foreach ($arm in @('dual-tsx-vm', 'dual-tsx-message', 'esm-tsx-vm')) {
     if (@($rows | Where-Object { $_.arm -eq $arm }).Count -eq 0) { $rows.Add(@{ arm = $arm; status = 'blocked' }) }
   }
   try {

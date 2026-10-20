@@ -12,7 +12,7 @@ const environment = Object.fromEntries(Object.entries(process.env).filter(([key]
   !['DEEPSEEK_API_KEY', 'SILICONFLOW_API_KEY', 'TYPESAFE_API_KEY', 'OPENAI_API_KEY', 'JEV_API_KEY', 'OPENAI_BASE_URL'].includes(key)))
 environment.TSX_TSCONFIG_PATH = resolve(root, 'tsconfig.base.json')
 
-it.each(['source', 'plain'])('reduces normal worker settlement in an independent %s process', async (arm) => {
+it.each(['dual-tsx-vm', 'dual-tsx-message', 'esm-tsx-vm'])('reduces normal worker settlement in an independent %s process', async (arm) => {
   expect(existsSync(driver)).toBe(true)
   const args = [...(arm === 'source' ? ['--import', 'tsx/esm'] : []), driver, arm]
   const { stdout } = await execute(process.execPath, args, { cwd: root, env: environment, timeout: 120_000 })

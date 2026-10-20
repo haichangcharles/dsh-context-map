@@ -18,12 +18,4 @@ Status: implemented
 
 Hosted 包装脚本还使用[操作系统进程退出通知](../../../../scripts/windows-process-exit-evidence.ps1)，在没有未处理异常堆栈时记录后代进程的数值退出状态。私有 CIM 订阅缓冲[进程启动](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/krnlprov/win32-processstarttrace)与[退出](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/krnlprov/win32-processstoptrace)事件；按系统时间排序，从包装进程PID确定归属并撤去复用PID的归属。日志只包含进程名、ID、时间和退出状态，不含参数、环境或内存转储。汇总明确属于尽力观察：延迟或缺失通知会漏记，最多解码50000条通知、保留32条非零退出详情，并记录省略数。测试中预期的非零子进程不会使成功命令失败。初始化或采集失败只警告，原回调仍只执行一次；所有路径均清理私有订阅和事件。纯替身检查归属、排序、PID复用、上限，以及部分初始化失败后回调的返回/抛错传播；实际CIM通知交付由Windows CI观察，替身不证明该行为。
 
-原始必需原生步骤在一次性 hosted runner 上失败后，另一个[有界归约](../../../../scripts/run-windows-worker-reduction.ps1)先正常构建 Host 产物，再在独立进程中运行源码引擎、构建引擎和纯 Node worker／VM 对照。每组固定四次 return42、获取结果及清理，记录 worker 身份和生命周期边界，不启动子 Agent 或调用模型。源码组保留实际双 tsx 引导，构建组使用现有 worker.cjs，两组都保留原生清理。每个调试器进程最多150秒。超时后尝试终止自有进程树，并有限等待根进程退出，但仍无法证明后代静默，因此阻断后续组；已独立关闭的失败组继续记失败。归约结果绝不替代原始失败，日志及显式 blocked 组与原报告保留三天。它只在失败时用于定位，不是产品运行时或修复。
-
-## Alternatives considered
-
-反复重试直到通过，或未抓到栈就改变 Node/JIT/终止方式，会掩盖原因。附加调试器会改变时序，但原生通道的实时捕获能记录覆盖率事后路径可能漏掉的线程退出堆证据。SDK／符号可用性和失败时的产物构建增加了诊断成本；小型归约为阴性，也不能排除原始多用例或编译／清理的交互。
-
-## Consequences
-
-这是可观测性，不声称已修复运行时。原失败继续保留。包装脚本的原生执行必须由必需 CI 自身验证；替身和独立诊断通过不能替代。它不授予模型 API、训练或付费工作流授权。
+原始必需原生步骤在一次性 hosted runner 上失败后，另一个[有界归约](../../../../scripts/run-windows-worker-reduction.ps1)在不导入 workflow 引擎的情况下隔离加载器注册。三个独立进程分别比较双 tsx 注册配合 VM、双 tsx 注册直接发消息、仅 ESM tsx 注册配合 VM。每组固定四次 return42、获取结果及终止，记录 worker 身份和生命周期边界，不启动子 Agent 或调用模型。对照执行已安装的 tsx API，使用源码 worker 的临时目录与 tsconfig 环境并清空 execArgv；它们测试注册，不测试 TypeScript 转换。每个调试器进程最多150秒。超时后尝试终止自有进程树，并有限等待根进程退出，但仍无法证明后代静默，因此阻断后续组；已独立关闭的失败组继续记失败。归约结果绝不替代原始失败，日志及显式 blocked 组与原报告保留三天。此前源码、构建产物、纯 worker 三组归约保留在已提交版本中，当前诊断不重复这些组。它只在失败时用于定位，不是产品运行时或修复。

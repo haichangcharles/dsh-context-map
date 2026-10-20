@@ -1,8 +1,9 @@
 /** Diagnostic control only: actual engine source/artifact or plain VM; zero providers. */
 import { Worker } from 'node:worker_threads'
+import { tmpdir } from 'node:os'
 
 const arm = process.argv[2]
-if (!['source', 'built', 'plain'].includes(arm)) throw new Error('Unknown reduction arm')
+if (!['source', 'built', 'plain', 'dual-tsx-vm', 'dual-tsx-message', 'esm-tsx-vm'].includes(arm)) throw new Error('Unknown reduction arm')
 const forbidden = new Set(['DEEPSEEK_API_KEY', 'SILICONFLOW_API_KEY', 'TYPESAFE_API_KEY', 'OPENAI_API_KEY', 'JEV_API_KEY', 'OPENAI_BASE_URL'])
 for (const key of Object.keys(process.env)) if (forbidden.has(key.toUpperCase())) delete process.env[key]
 globalThis.fetch = async () => { throw new Error('Worker reduction forbids network inference') }
@@ -19,12 +20,26 @@ function observe(worker, cycle) {
 }
 
 async function plain(cycle) {
-  const body = `import { parentPort } from 'node:worker_threads';
+  const usesLoader = arm !== 'plain'
+  const prefix = []
+  if (usesLoader) {
+    prefix.push(`import { register as registerEsm } from ${JSON.stringify(import.meta.resolve('tsx/esm/api'))}`)
+    if (arm !== 'esm-tsx-vm') {
+      prefix.push(`import { register as registerCjs } from ${JSON.stringify(import.meta.resolve('tsx/cjs/api'))}`)
+      prefix.push('registerCjs()')
+    }
+    prefix.push('registerEsm()')
+  }
+  const computation = arm === 'dual-tsx-message' ? '42'
+    : "await new vm.Script('(async () => { return 42 })()').runInContext(vm.createContext({}))"
+  const env = usesLoader && process.platform === 'win32' ? { TMP: tmpdir(), TEMP: tmpdir() } : {}
+  if (usesLoader && process.env.TSX_TSCONFIG_PATH !== undefined) env.TSX_TSCONFIG_PATH = process.env.TSX_TSCONFIG_PATH
+  const body = prefix.join('\n') + '\n' + `import { parentPort } from 'node:worker_threads';
 import vm from 'node:vm';
 parentPort.on('message', () => {});
-const result = await new vm.Script('(async () => { return 42 })()').runInContext(vm.createContext({}));
+const result = ${computation};
 parentPort.postMessage(result);`
-  const worker = new Worker(new URL(`data:text/javascript,${encodeURIComponent(body)}`), { execArgv: [], env: {} })
+  const worker = new Worker(new URL(`data:text/javascript,${encodeURIComponent(body)}`), { execArgv: [], env })
   const { report, exited } = observe(worker, cycle)
   try {
     const value = await new Promise((resolve, reject) => { worker.once('message', resolve); worker.once('error', reject) })
@@ -73,6 +88,6 @@ async function engine() {
 }
 
 try {
-  if (arm === 'plain') for (let cycle = 0; cycle < 4; cycle++) await plain(cycle)
+  if (arm !== 'source' && arm !== 'built') for (let cycle = 0; cycle < 4; cycle++) await plain(cycle)
   else await engine()
 } finally { clearTimeout(timer) }
