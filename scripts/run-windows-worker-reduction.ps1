@@ -1,4 +1,4 @@
-# Failure-only diagnostic: isolate tsx registration from the workflow runtime.
+# Failure-only diagnostic: full PageHeap on an exclusive source-worker image.
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 if ($env:DSH_EPHEMERAL_NATIVE_CAPTURE -cne '1') { throw 'Worker reduction requires a disposable hosted runner' }
@@ -8,10 +8,16 @@ try {
   $owned = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP ('dsh-worker-reduction-' + [guid]::NewGuid().ToString('N')))
   $tools = & "$PSScriptRoot/prepare-native-debugger.ps1"
   . "$PSScriptRoot/native-live-debugger.ps1"
+  . "$PSScriptRoot/native-pageheap-image.ps1"
   $driver = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../packages/workflow/workflow-worker-thread/tests/fixtures/worker-lifecycle-probe.mjs'))
   $node = (Get-Command node.exe -ErrorAction Stop).Source
   $tsconfig = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../tsconfig.base.json'))
-  foreach ($arm in @('dual-tsx-vm', 'dual-tsx-message', 'esm-tsx-vm')) {
+  $imageName = 'dsh-worker-probe-' + [guid]::NewGuid().ToString('N') + '.exe'
+  $probeNode = Join-Path $owned.FullName $imageName
+  Copy-Item -LiteralPath $node -Destination $probeNode
+  $gflags = Join-Path (Split-Path -Parent $tools.Debugger) 'gflags.exe'
+  if (-not (Test-Path -LiteralPath $gflags)) { throw 'Microsoft GFlags is unavailable' }
+  foreach ($arm in @('source')) {
     $wrapper = Join-Path $owned.FullName "$arm.ps1"
     $events = Join-Path $env:RUNNER_TEMP "worker-reduction-$arm-events.log"
     $template = @'
@@ -32,7 +38,7 @@ $writer = [System.IO.StreamWriter]::new($file)
 try { $writer.Write((ConvertTo-Json -InputObject @{ exitCode = $code } -Compress)) }
 finally { $writer.Dispose() }
 '@
-    $template = $template.Replace('__ARM__', $arm).Replace('__DRIVER__', $driver.Replace("'", "''")).Replace('__NODE__', $node.Replace("'", "''")).Replace('__TSCONFIG__', $tsconfig.Replace("'", "''")).Replace('__EVENTS__', $events.Replace("'", "''"))
+    $template = $template.Replace('__ARM__', $arm).Replace('__DRIVER__', $driver.Replace("'", "''")).Replace('__NODE__', $probeNode.Replace("'", "''")).Replace('__TSCONFIG__', $tsconfig.Replace("'", "''")).Replace('__EVENTS__', $events.Replace("'", "''"))
     Set-Content -LiteralPath $wrapper -Value $template
     $log = Join-Path $env:RUNNER_TEMP "worker-reduction-$arm-crash.log"
     Set-Content -LiteralPath $log -Value ''
@@ -68,7 +74,26 @@ finally { $writer.Dispose() }
         }
     }.GetNewClosure()
     try {
-      $code = Invoke-NativeLiveDebugger $tools $wrapper (Join-Path $PSHOME 'pwsh.exe') $log $owned.FullName $runner
+      $configure = {
+        param($enable)
+        if ($enable) {
+          & $gflags '/p' '/enable' $imageName '/full' | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot enable diagnostic full PageHeap' }
+          $listed = & $gflags '/p'
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect diagnostic PageHeap settings' }
+          $verified = @($listed | Where-Object { $_ -match ([regex]::Escape($imageName) + '.*full traces') })
+          if ($verified.Count -ne 1) { throw 'Full PageHeap was not confirmed for the owned image' }
+          $verified | Set-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'worker-reduction-pageheap-flags.log')
+          $verified | Out-Host
+          Write-Host 'DSH_OWNED_FULL_PAGEHEAP_READY'
+        } else {
+          & $gflags '/p' '/disable' $imageName | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot disable diagnostic full PageHeap' }
+        }
+      }.GetNewClosure()
+      $code = Invoke-WithOwnedPageHeap ([Microsoft.Win32.Registry]::LocalMachine) 'SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options' $imageName $configure {
+        Invoke-NativeLiveDebugger $tools $wrapper (Join-Path $PSHOME 'pwsh.exe') $log $owned.FullName $runner
+      }
       if ($code -ne 0) { throw "Original diagnostic result: $code" }
       $rows.Add(@{ arm = $arm; status = 'passed'; meaning = 'No fault observed in this fixed reduction, not a runtime repair' })
     } catch {
@@ -77,7 +102,7 @@ finally { $writer.Dispose() }
     }
   }
 } finally {
-  foreach ($arm in @('dual-tsx-vm', 'dual-tsx-message', 'esm-tsx-vm')) {
+  foreach ($arm in @('source')) {
     if (@($rows | Where-Object { $_.arm -eq $arm }).Count -eq 0) { $rows.Add(@{ arm = $arm; status = 'blocked' }) }
   }
   try {

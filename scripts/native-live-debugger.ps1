@@ -27,6 +27,9 @@ function Invoke-NativeLiveDebugger {
     if ($evidence -match 'HEAP: Free Heap block[^\r\n]*modified[^\r\n]*after it was freed') {
       throw 'Required native lane detected heap corruption'
     }
+    if ($evidence -match '(?m)^\s*VERIFIER STOP [0-9a-f]+\s*:') {
+      throw 'Required native lane captured a verifier stop'
+    }
     if ($evidence -match '(?m)^\s*DSH_UNHANDLED_NATIVE_EXCEPTION\s*$') {
       throw 'Required native lane captured an unhandled native fault'
     }
@@ -41,7 +44,7 @@ if ($SelfTest) {
   $root = Join-Path ([System.IO.Path]::GetTempPath()) ('dsh-live-debugger-fixture-' + [guid]::NewGuid().ToString('N'))
   $null = New-Item -ItemType Directory -Path $root
   try {
-    foreach ($case in @('zero', 'nonzero', 'first', 'second', 'heap', 'missing', 'malformed', 'debugger')) {
+    foreach ($case in @('zero', 'nonzero', 'first', 'second', 'heap', 'verifier', 'missing', 'malformed', 'debugger')) {
       $script:liveFixtureCase = $case
       $script:liveFixtureCalls = 0
       $log = Join-Path $root 'fixture.log'
@@ -60,6 +63,7 @@ if ($SelfTest) {
           if ($script:liveFixtureCase -eq 'missing') { return 0 }
           if ($script:liveFixtureCase -eq 'first') { Set-Content -LiteralPath $log -Value 'DSH_FIRST_CHANCE_AV' }
           if ($script:liveFixtureCase -eq 'heap') { Set-Content -LiteralPath $log -Value 'HEAP[node.exe]: HEAP: Free Heap block 0x10 modified at 0x20 after it was freed' }
+          if ($script:liveFixtureCase -eq 'verifier') { Set-Content -LiteralPath $log -Value 'VERIFIER STOP 00000008: pid 0xAA0: corrupted suffix pattern' }
           if ($script:liveFixtureCase -eq 'second') { Set-Content -LiteralPath $log -Value 'DSH_UNHANDLED_NATIVE_EXCEPTION' }
           $body = if ($script:liveFixtureCase -eq 'malformed') { '{"exitCode":"0"}' }
             elseif ($script:liveFixtureCase -eq 'nonzero') { '{"exitCode":23}' } else { '{"exitCode":0}' }
@@ -71,7 +75,7 @@ if ($SelfTest) {
         if ($case -notin 'zero','nonzero','first' -or $result -ne $expected) { throw 'Fixture verdict mismatch' }
       } catch {
         $expectedError = switch ($case) {
-          'heap' { 'detected heap corruption' }; 'second' { 'unhandled native fault' }; 'missing' { 'Missing original' }
+          'heap' { 'detected heap corruption' }; 'verifier' { 'captured a verifier stop' }; 'second' { 'unhandled native fault' }; 'missing' { 'Missing original' }
           'malformed' { 'Malformed original' }; 'debugger' { 'Native debugger failed' }
           default { '__UNEXPECTED_FIXTURE_ERROR__' }
         }

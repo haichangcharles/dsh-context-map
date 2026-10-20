@@ -625,6 +625,7 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/native-postmortem-registry.ps1 -SelfTest
+          ./scripts/native-pageheap-image.ps1 -SelfTest
           ./scripts/windows-process-exit-evidence.ps1 -SelfTest
       - name: Verify live debugger verdicts
         if: runner.environment == 'github-hosted'
