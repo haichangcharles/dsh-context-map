@@ -20,6 +20,8 @@ Status: implemented
 
 既有 Profile 检查器通过可选的 `ContextStewardProfile.scopePolicyExamples` 提供同一有界投影。面板显示历史模式、任务和事件引用，不增加 RPC 或原始消息读取。关闭复用不等于删除可查看的历史；Undo/Redo 和重置会同步更新两处视图。
 
+原生 Session 导出保留原始确认、Plan 修订和重置水位，而不只保留有界样例投影。因此，所选轨迹能在 Undo/Redo 或重置后复现证据适用性，不会把已停用证据误当作不存在的历史。[管理记录指南](../../../../docs/user/guide/context-steward.zh.md#keep-a-management-record)说明选择与分享限制。
+
 ## 考虑过的替代方案
 
 **从局部选材集合推断策略。** 不采用，因为例外、相同来源集和手动约束会使解释无法识别。

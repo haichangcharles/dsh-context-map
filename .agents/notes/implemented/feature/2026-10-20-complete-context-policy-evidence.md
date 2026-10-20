@@ -20,6 +20,8 @@ Enabled Host action/goal packets and inspectable decision snapshots carry at mos
 
 The existing Profile inspector exposes this same bounded projection through optional `ContextStewardProfile.scopePolicyExamples`. Its panel shows historical modes, objectives and event references without another RPC or raw-message lookup. Disabled reuse does not erase inspectable history; Undo/Redo and reset update both views.
 
+Canonical Session exports retain the original approval, Plan revisions and reset watermarks rather than only the bounded example projection. This lets a selected trace reproduce eligibility after Undo/Redo or reset without treating inactive evidence as absent history. The [management-record guide](../../../../docs/user/guide/context-steward.md#keep-a-management-record) defines selection and sharing limits.
+
 ## Alternatives considered
 
 **Infer policies from partial masks.** Rejected because exceptions, equal source sets and manual constraints make the interpretation non-identifiable.

@@ -12,6 +12,7 @@ Context Steward 让规划、查证、写作和头脑风暴保留在同一个可�
 - [选择上下文与目标分支](#choose-context-and-a-destination)
 - [审核 Agent 建议](#review-agent-advice)
 - [管理任务与偏好](#manage-work-and-preferences)
+- [保留管理记录](#keep-a-management-record)
 - [无需 API 的验证](#verify-without-an-api)
 
 <a id="start-a-workspace"></a>
@@ -65,6 +66,21 @@ Preferences 视图汇总同一 Profile 内不同原生 Session 家族中反复�
 任务、保留要求或必需的祖先信息不明确时，不调用 Jev，也不生成组合式自动建议；手动选择仍然可用。任务目标或新建／已有选择存在冲突时同样如此。没有要求保留范围的草稿仍可使用相关性审核。草稿检查使用一次聊天模型及至多一次 Jev 调用；非草稿 Fast 检查只使用 Jev。Host 在首次调用前检查凭据，组合检查限时 45 秒。此模式为可选项，不代表已证明准确率提升。
 
 打开 **Context 偏好 → 已确认的完整策略样例**，查看历史模式、任务及原始事件引用。这些选择可供已启用的个性化审核参考，不授权当前更改。Context Undo/Redo 后请刷新；重置已学习的偏好会刷新列表并保留 Context Plan。
+
+<a id="keep-a-management-record"></a>
+## 保留管理记录
+
+暂停操作，选择对话家族中已知的最上级 Session，再使用顶部菜单的 **Download session log** 或 `/export`。[既有日志导出器](../../../packages/session-query/session-log-export/README.zh.md)会包含该 Session 及其已知后代。只导出子分支会遗漏祖先和兄弟分支。各 Session 依次读取，因此归档不是整个家族的原子快照。
+
+归档包含原始对话、已记录的请求、管理选择、工作区路径及引用附件，并未匿名化。请留在本地检查后再分享。Undo 与重置学习保留旧选择的原始记录，同时改变它们能否用于后续建议。若重置记录在其他家族，完整恢复 Profile 还需要那个家族的日志。各 Session 的序号和明确来源引用保留顺序；仅靠时间戳不能确定所有分支的全局先后。Client 声明的显示或确认不证明真人身份或注意力，导出也不包含每项临时审核细节。
+
+使用同一导出读取器、官方解码器和原生 Context 编译器验证所选 fixture 日志：
+
+```sh
+pnpm exec vitest run scripts/context-steward-export.spec.ts --maxWorkers=1
+```
+
+这项隔离工程检查在恢复后保留确认事件引用，并检查 Undo、Redo 和 Reset。它不会读取你已保存的对话，也不评估模型质量或真实用户偏好。
 
 <a id="verify-without-an-api"></a>
 ## 无需 API 的验证

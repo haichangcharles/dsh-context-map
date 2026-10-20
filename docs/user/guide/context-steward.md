@@ -12,6 +12,7 @@ Context Steward helps you keep planning, research, writing and brainstorming in 
 - [Choose context and a destination](#choose-context-and-a-destination)
 - [Review Agent advice](#review-agent-advice)
 - [Manage work and preferences](#manage-work-and-preferences)
+- [Keep a management record](#keep-a-management-record)
 - [Verify without an API](#verify-without-an-api)
 
 <a id="start-a-workspace"></a>
@@ -65,6 +66,21 @@ When the review displays **Only this task** or **This task and its parent tasks*
 An uncertain task, retention request or required ancestry skips Jev and suppresses the combined automatic recommendation; manual choices remain available. A conflicting task destination or new/existing choice also suppresses it. Relevance review remains available for drafts without a preservation request. A draft uses one chat-model call and at most one Jev call; a non-draft Fast review uses Jev alone. The Host checks credentials before the first call and bounds the composite review to 45 seconds. This mode is optional, not a demonstrated accuracy guarantee.
 
 Open **Context preferences → Confirmed complete-policy examples** to inspect historical modes, tasks and original event references. These choices are examples for enabled personalized review, not permission for a current change. Refresh after Context Undo/Redo; Reset learned preferences refreshes the list and keeps the Context Plan.
+
+<a id="keep-a-management-record"></a>
+## Keep a management record
+
+Pause activity, select the highest known Session in the conversation family, then use **Download session log** in its header menu or `/export`. The [existing log exporter](../../../packages/session-query/session-log-export/README.md) includes that Session and its known descendants. Exporting a child alone omits its ancestors and siblings. Sessions are read sequentially, so the archive is not an atomic snapshot of the whole family.
+
+The archive contains original conversation text, logged requests, management choices, workspace paths and referenced attachments; it is not anonymized. Keep it local and inspect it before sharing. Undo and Reset learning preserve earlier raw choices while changing their eligibility for later recommendations. A reset recorded in another family requires that family's log for complete Profile reconstruction. Per-Session sequence numbers and explicit source references retain ordering; timestamps alone do not establish a total order across branches. Client-declared presentation or approval is not proof of a person's identity or attention, and an export does not contain every ephemeral review detail.
+
+To verify selected fixture logs through the same export reader, official decoder and native Context compiler, run:
+
+```sh
+pnpm exec vitest run scripts/context-steward-export.spec.ts --maxWorkers=1
+```
+
+This isolated engineering check preserves approval references and checks Undo, Redo and Reset after restoration. It neither reads your saved conversations nor evaluates model quality or real user preferences.
 
 <a id="verify-without-an-api"></a>
 ## Verify without an API
