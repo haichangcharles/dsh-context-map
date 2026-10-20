@@ -20,7 +20,7 @@ Hosted 包装脚本还使用[操作系统进程退出通知](../../../../scripts
 
 常规 CI 保留原始必需捕获，不自动重复已完成的归约实验。在一次性 hosted runner 上另行限定范围的诊断可调用[有界归约](../../../../scripts/run-windows-worker-reduction.ps1)，通过实际源码 workflow 引擎，在微软 [Full PageHeap](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/gflags-and-pageheap) 下固定执行四次 return42、获取结果及清理。它把已安装的 Node 复制到私有临时目录，使用唯一诊断映像名，要求对应注册表项原本不存在，验证 full traces，并在 finally 中恢复不存在的状态。绝不对通用 node.exe 或本机开启 PageHeap。[注册表工程夹具](../../../../scripts/native-pageheap-image.ps1)无需目标进程或机器设置，检查成功、设置／运行／关闭失败及碰撞。探针保留源码 worker 引导和原生清理，记录身份及生命周期阶段，不启动子 Agent 或调用模型。每个调试器进程最多150秒，目标 watchdog120秒，JS 旧空间512MiB，另有 PageHeap 内存开销。超时后尝试终止自有进程树并有限等待根进程退出，但后代静默仍未确认，因此阻断进一步目标运行。原始原生判定绝不被替代，日志及 blocked 状态保留三天。此前源码／构建／纯 worker 与加载器注册对照保留在已提交版本中，不重复执行。即使回执为0，原始堆损坏警告、VERIFIER STOP 或未处理原生故障仍独立判失败。诊断成功不等于修复运行时。
 
-hosted 失败路径中的超时对照在同一包装器中选择 `dual-tsx-vm-timeout`。它使用已安装的 Node 映像，不开启 PageHeap 或修改注册表，注册已安装的 tsx ESM/CJS 钩子，并用 `runInContext` timeout5000 执行相同的立即返回 async42 程序。四轮 worker／结果／终止只观察同步超时监护的建立与清理，不触发超时，也不验证异步中断。每次获准的代码变更诊断只运行一次；步骤跳过不能算阴性结果。原始必需失败仍有权威性，已完成的对照在后续无关推送中停用。
+hosted 失败路径中的超时对照在同一包装器中选择 `dual-tsx-vm-timeout`。它使用已安装的 Node 映像，不开启 PageHeap 或修改注册表，注册已安装的 tsx ESM/CJS 钩子，并用 `runInContext` timeout5000 执行相同的立即返回 async42 程序。四轮 worker／结果／终止只观察同步超时监护的建立与清理，不触发超时，也不验证异步中断。常规 CI 不重复这一已完成对照；另行获准的诊断使用保留的包装器。步骤跳过不能算阴性结果。原始必需失败仍有权威性，已完成的对照在后续无关推送中停用。
 
 ## Alternatives considered
 

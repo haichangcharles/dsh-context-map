@@ -159,14 +159,12 @@ it('limits full PageHeap to an exclusively owned private image and verifies rest
 })
 
 
-it('runs only the new timeout control after a hosted native failure without PageHeap', () => {
+it('retains the completed timeout control without automatically repeating it', () => {
   const workflow = yaml.load(read('.github/workflows/ci.yml')) as {
     jobs: Record<string, { steps: { name?: string; if?: string; run?: string; 'timeout-minutes'?: number }[] }>
   }
   const step = workflow.jobs['windows-native-tests']!.steps.find(item => item.name === 'Diagnose registered VM timeout settlement')
-  expect(step?.if).toBe("failure() && runner.environment == 'github-hosted' && steps.native-check.outcome == 'failure'")
-  expect(step?.run).toBe('./scripts/run-windows-worker-reduction.ps1 -Arm dual-tsx-vm-timeout')
-  expect(step?.['timeout-minutes']).toBe(4)
+  expect(step).toBeUndefined()
   const wrapper = read('scripts/run-windows-worker-reduction.ps1')
   expect(wrapper).toContain("[ValidateSet('source', 'dual-tsx-vm-timeout')]")
   expect(wrapper).toContain('foreach ($arm in @($Arm))')
