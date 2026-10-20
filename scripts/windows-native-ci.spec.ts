@@ -96,7 +96,12 @@ it('retains failure-only native test state when a fork cannot report every case'
 
 it('starts the native inventory under CDB and preserves the original result independently', () => {
   const live = read('scripts/native-live-debugger.ps1')
-  expect(live).toContain("'-o', '-g', '-G'")
+  expect(live).toContain("'-o', '-G'")
+  expect(live).not.toContain("'-o', '-g', '-G'")
+  expect(live).toContain('sxi ibp')
+  expect(live).toContain('DSH_NATIVE_BREAKPOINT')
+  expect(live).toContain('DSH_NATIVE_FILTERS_READY')
+  expect(live).toContain('detected heap corruption')
   expect(live).toContain('DSH_FIRST_CHANCE_AV')
   expect(live).toContain('-c2')
   expect(live).toContain('.exr -1;.ecxr;kv 32')

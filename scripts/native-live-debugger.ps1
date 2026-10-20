@@ -11,8 +11,9 @@ function Invoke-NativeLiveDebugger {
     $commands = Join-Path $owned 'commands.txt'
     $first = '.echo DSH_FIRST_CHANCE_AV;.lastevent;.exr -1;.ecxr;kv 32;gn'
     $second = '.echo DSH_UNHANDLED_NATIVE_EXCEPTION;.lastevent;.exr -1;.ecxr;kv 32;lm;gn'
-    Set-Content -LiteralPath $commands -Value ('sxd -c "{0}" -c2 "{1}" av;g' -f $first, $second)
-    $arguments = @('-o', '-g', '-G', '-nosqm', '-noshell', '-y', $Tools.Symbols,
+    $breakpoint = '.echo DSH_NATIVE_BREAKPOINT;.lastevent;kv 32;lm;g'
+    Set-Content -LiteralPath $commands -Value ('sxi ibp;sxe -c "{2}" bpe;sxd -c "{0}" -c2 "{1}" av;.echo DSH_NATIVE_FILTERS_READY;g' -f $first, $second, $breakpoint)
+    $arguments = @('-o', '-G', '-nosqm', '-noshell', '-y', $Tools.Symbols,
       '-logo', $LogPath, '-cf', $commands, $ShellPath, '-NoLogo', '-NoProfile', '-NonInteractive',
       '-File', $WrapperPath, '-Lane', 'native', '-ResultPath', $receipt)
     $debuggerExit = & $Runner $Tools.Debugger $arguments $receipt
@@ -22,7 +23,11 @@ function Invoke-NativeLiveDebugger {
       ($result.exitCode -isnot [int] -and $result.exitCode -isnot [long])) { throw 'Malformed original native check result' }
     if ($result.exitCode -lt [int]::MinValue -or $result.exitCode -gt [int]::MaxValue) { throw 'Original native result is outside int32' }
     if ($debuggerExit -ne 0) { throw "Native debugger failed: $debuggerExit; original native check result: $($result.exitCode)" }
-    if ((Get-Content -LiteralPath $LogPath -Raw) -match '(?m)^\s*DSH_UNHANDLED_NATIVE_EXCEPTION\s*$') {
+    $evidence = Get-Content -LiteralPath $LogPath -Raw
+    if ($evidence -match 'HEAP: Free Heap block[^\r\n]*modified[^\r\n]*after it was freed') {
+      throw 'Required native lane detected heap corruption'
+    }
+    if ($evidence -match '(?m)^\s*DSH_UNHANDLED_NATIVE_EXCEPTION\s*$') {
       throw 'Required native lane captured an unhandled native fault'
     }
     return [int] $result.exitCode
@@ -36,7 +41,7 @@ if ($SelfTest) {
   $root = Join-Path ([System.IO.Path]::GetTempPath()) ('dsh-live-debugger-fixture-' + [guid]::NewGuid().ToString('N'))
   $null = New-Item -ItemType Directory -Path $root
   try {
-    foreach ($case in @('zero', 'nonzero', 'first', 'second', 'missing', 'malformed', 'debugger')) {
+    foreach ($case in @('zero', 'nonzero', 'first', 'second', 'heap', 'missing', 'malformed', 'debugger')) {
       $script:liveFixtureCase = $case
       $script:liveFixtureCalls = 0
       $log = Join-Path $root 'fixture.log'
@@ -48,8 +53,13 @@ if ($SelfTest) {
           $script:liveFixtureCalls++
           if ($executable -cne 'fixture.exe' -or $arguments[0] -cne '-o' -or
             $arguments[-1] -cne $receipt -or ($arguments -join ' ') -notmatch '-Lane native -ResultPath') { throw 'Bad debugger invocation' }
+          $commandIndex = [array]::IndexOf($arguments, '-cf')
+          $scriptText = Get-Content -LiteralPath $arguments[$commandIndex + 1] -Raw
+          if ($arguments -contains '-g' -or $scriptText -notmatch 'sxi ibp;sxe' -or
+            $scriptText -notmatch 'bpe;sxd' -or $scriptText -notmatch 'av;\.echo DSH_NATIVE_FILTERS_READY;g') { throw 'Missing initial exception filters' }
           if ($script:liveFixtureCase -eq 'missing') { return 0 }
           if ($script:liveFixtureCase -eq 'first') { Set-Content -LiteralPath $log -Value 'DSH_FIRST_CHANCE_AV' }
+          if ($script:liveFixtureCase -eq 'heap') { Set-Content -LiteralPath $log -Value 'HEAP[node.exe]: HEAP: Free Heap block 0x10 modified at 0x20 after it was freed' }
           if ($script:liveFixtureCase -eq 'second') { Set-Content -LiteralPath $log -Value 'DSH_UNHANDLED_NATIVE_EXCEPTION' }
           $body = if ($script:liveFixtureCase -eq 'malformed') { '{"exitCode":"0"}' }
             elseif ($script:liveFixtureCase -eq 'nonzero') { '{"exitCode":23}' } else { '{"exitCode":0}' }
@@ -61,7 +71,7 @@ if ($SelfTest) {
         if ($case -notin 'zero','nonzero','first' -or $result -ne $expected) { throw 'Fixture verdict mismatch' }
       } catch {
         $expectedError = switch ($case) {
-          'second' { 'unhandled native fault' }; 'missing' { 'Missing original' }
+          'heap' { 'detected heap corruption' }; 'second' { 'unhandled native fault' }; 'missing' { 'Missing original' }
           'malformed' { 'Malformed original' }; 'debugger' { 'Native debugger failed' }
           default { '__UNEXPECTED_FIXTURE_ERROR__' }
         }
