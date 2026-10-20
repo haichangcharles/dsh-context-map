@@ -1,7 +1,7 @@
 /** Package-local source-plane characterization; no CI latency threshold or model requests. */
 import { performance } from 'node:perf_hooks'
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { expect, it, vi } from 'vitest'
 import { SessionId, type Session } from '@deepseek-ai/dsh-session'
@@ -86,7 +86,7 @@ it('characterizes fixed native Profile reads and existing pure components before
         preparedMs, samples, warmMedian: { fullMs, policyMs, graphMs },
         standaloneRatios: { policy: policyMs / fullMs, graph: graphMs / fullMs }, heapUsedBytes: process.memoryUsage().heapUsed }
       all.push(row)
-      console.log('CONTEXT_PROFILE_SHAPE ' + JSON.stringify(row))
+      writeSync(1, 'CONTEXT_PROFILE_SHAPE ' + JSON.stringify(row) + '\n')
     } finally {
       restoreSpies()
       await b.close()
@@ -101,7 +101,7 @@ it('characterizes fixed native Profile reads and existing pure components before
     path: `packages/context/contextify/src/${file}`,
     sha256: createHash('sha256').update(readFileSync(new URL(`../src/${file}`, import.meta.url))).digest('hex'),
   }))
-  console.log('CONTEXT_PROFILE_RESULT ' + JSON.stringify({ kind: 'engineering-source-profile-characterization-v1',
+  writeSync(1, 'CONTEXT_PROFILE_RESULT ' + JSON.stringify({ kind: 'engineering-source-profile-characterization-v1',
     node: process.version, vitest: vitestPackage.version, plane: 'Vitest source; not built-product latency',
     firstRead: 'first Profile cache read, not cold OS/JIT/deployment',
     samplingOrder: 'each fresh shape in declared order; full Profile, pure policy/reset, pure current-family graph; first plus five warm',
@@ -110,5 +110,5 @@ it('characterizes fixed native Profile reads and existing pure components before
     counters: 'persistence list/open invocations; not bytes read or in-memory history access counts',
     standaloneRatios: 'approximate screening ratios, not exclusive CPU attribution',
     samplesPerSurface: all.reduce((sum, row) => sum + row.samples.length, 0),
-    externalModelRequests: 0, sources, shapes: all, material, candidate: material ? candidate : null }))
+    externalModelRequests: 0, sources, shapes: all, material, candidate: material ? candidate : null }) + '\n')
 }, 120_000)
