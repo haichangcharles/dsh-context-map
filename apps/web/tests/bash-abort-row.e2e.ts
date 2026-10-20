@@ -18,6 +18,7 @@ const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/bash-abort-ro
 const UI_EXPECTED = join(SNAPSHOT_DIR, 'ui.expected.md')
 const MODE = webSnapshotMode()
 const SEED_ID = 'bash-abort-row-web-e2e'
+const FIXTURE_TIME = Date.UTC(2026, 9, 20, 4)
 const PROMPT = 'Run two shell commands: wait for cancellation, then write skipped.txt.'
 
 describe.skipIf(MODE === 'record')('web e2e: cancelled Bash row disclosure', () => {
@@ -30,9 +31,10 @@ describe.skipIf(MODE === 'record')('web e2e: cancelled Bash row disclosure', () 
     const fixture = await readFile(FIXTURE, 'utf8')
     expect(fixtureUserPrompts(fixture)).toEqual([PROMPT])
     scaffold = await launchWebScaffold({})
-    await seedSession(scaffold, fixture, SEED_ID)
+    await seedSession(scaffold, fixture, SEED_ID, undefined, { createdAt: FIXTURE_TIME })
     browser = await chromium.launch()
     page = await newEnglishPage(browser)
+    await page.clock.setFixedTime(FIXTURE_TIME + 60_000)
     tripwire = watchConsole(page)
     await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
@@ -68,9 +70,6 @@ describe.skipIf(MODE === 'record')('web e2e: cancelled Bash row disclosure', () 
 
     await restoreFullWidthChat(page)
     const snapshot = (await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd))
-      // The borrowed fixture's UTC date is still the previous day in PDT;
-      // the disclosure golden must not depend on the runner timezone.
-      .replace(/\b\d{1,2}\/\d{1,2}(?= \{\{clock\}\})/g, '{{date}}')
       .split(SEED_ID).join('{{seededId}}')
     await compareOrRefreshGolden(UI_EXPECTED, snapshot, MODE)
     expect(tripwire.pageErrors).toEqual([])
