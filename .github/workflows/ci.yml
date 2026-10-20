@@ -631,10 +631,20 @@ jobs:
         shell: pwsh
         run: ./scripts/native-live-debugger.ps1 -SelfTest
       - name: Run Windows-specific native tests
+        id: native-check
         shell: pwsh
         env:
           DSH_EPHEMERAL_NATIVE_CAPTURE: ${{ runner.environment == 'github-hosted' && '1' || '0' }}
         run: ./scripts/run-windows-native.ps1 -CaptureCrash:($env:DSH_EPHEMERAL_NATIVE_CAPTURE -eq '1')
+      - name: Reduce the failing native worker lifecycle
+        if: failure() && runner.environment == 'github-hosted' && steps.native-check.outcome == 'failure'
+        timeout-minutes: 12
+        shell: pwsh
+        env:
+          DSH_EPHEMERAL_NATIVE_CAPTURE: '1'
+          RAYON_NUM_THREADS: '2'
+          TOKIO_WORKER_THREADS: '2'
+        run: ./scripts/run-windows-worker-reduction.ps1
       - name: Retain Windows native failure reports
         if: failure()
         uses: actions/upload-artifact@v4
@@ -643,6 +653,7 @@ jobs:
           path: |
             ${{ runner.temp }}/required-native-report.json
             ${{ runner.temp }}/required-native-crash.log
+            ${{ runner.temp }}/worker-reduction-*
           if-no-files-found: warn
           retention-days: 3
 

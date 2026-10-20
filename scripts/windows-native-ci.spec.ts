@@ -89,6 +89,7 @@ it('retains failure-only native test state when a fork cannot report every case'
   expect(step?.with?.path).toBe([
     '${{ runner.temp }}/required-native-report.json',
     '${{ runner.temp }}/required-native-crash.log',
+    '${{ runner.temp }}/worker-reduction-*',
   ].join('\n') + '\n')
   expect(read('scripts/run-windows-native.ps1')).toContain("$nativeReport = Join-Path $env:RUNNER_TEMP 'required-native-report.json'")
 })
@@ -112,4 +113,29 @@ it('starts the native inventory under CDB and preserves the original result inde
   expect(live).not.toContain('.jdinfo')
   expect(read('scripts/run-windows-native.ps1')).toContain('Invoke-NativeLiveDebugger')
   expect(read('.github/workflows/ci.yml')).toContain('./scripts/native-live-debugger.ps1 -SelfTest')
+})
+
+it('runs a bounded worker reduction only after an actual required native failure', () => {
+  const workflow = yaml.load(read('.github/workflows/ci.yml')) as {
+    jobs: Record<string, { steps: { name?: string; id?: string; if?: string; run?: string; 'timeout-minutes'?: number; with?: { path?: string } }[] }>
+  }
+  const steps = workflow.jobs['windows-native-tests']!.steps
+  expect(steps.find(step => step.name === 'Run Windows-specific native tests')?.id).toBe('native-check')
+  const probe = steps.find(step => step.name === 'Reduce the failing native worker lifecycle')
+  expect(probe?.if).toBe("failure() && runner.environment == 'github-hosted' && steps.native-check.outcome == 'failure'")
+  expect(probe?.run).toBe('./scripts/run-windows-worker-reduction.ps1')
+  expect(probe?.['timeout-minutes']).toBe(12)
+  const wrapper = read('scripts/run-windows-worker-reduction.ps1')
+  expect(wrapper).toContain("@('source', 'built', 'plain')")
+  expect(wrapper).toContain('Invoke-NativeLiveDebugger')
+  expect(wrapper).toContain('WaitForExit(150000)')
+  expect(wrapper).toContain('Unclosed native diagnostic process: timeout')
+  expect(wrapper).toContain('if ($ownership.unconfirmed)')
+  expect(wrapper).toContain('.GetNewClosure()')
+  expect(wrapper).toContain('.Kill($true)')
+  expect(wrapper).toContain('[System.IO.FileMode]::CreateNew')
+  expect(wrapper).toContain('pnpm run build:lib:host')
+  expect(wrapper.indexOf('$rows =')).toBeLessThan(wrapper.indexOf('$tools ='))
+  expect(wrapper.indexOf('try {')).toBeLessThan(wrapper.indexOf('$tools ='))
+  expect(steps.find(step => step.name === 'Retain Windows native failure reports')?.with?.path).toContain('worker-reduction-*')
 })
