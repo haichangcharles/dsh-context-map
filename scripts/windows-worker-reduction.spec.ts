@@ -24,6 +24,7 @@ it.each(['dual-tsx-vm', 'dual-tsx-message', 'esm-tsx-vm'])('reduces normal worke
 
 it('rejects an unknown arm without starting a worker', async () => {
   expect(existsSync(driver)).toBe(true)
+  const stderr: unknown = expect.stringContaining('Unknown reduction arm')
   await expect(execute(process.execPath, [driver, 'unknown'], { cwd: root, env: environment, timeout: 10_000 }))
-    .rejects.toMatchObject({ code: 1, stdout: '', stderr: expect.stringContaining('Unknown reduction arm') })
+    .rejects.toMatchObject({ code: 1, stdout: '', stderr })
 })
