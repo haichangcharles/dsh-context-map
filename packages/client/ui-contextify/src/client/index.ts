@@ -101,7 +101,7 @@ export function apply(ctx: ClientContext): void {
       setNodeModes: async (ref, mutations, expectedGraphRevision, reviewedDeclinedNodeIds, displayedPolicyKey) => valueOf(
         await remote.setNodeModes(
           sessionId, ref, mutations, expectedGraphRevision, 'contextify-client', reviewedDeclinedNodeIds,
-          ...(displayedPolicyKey === undefined ? [] : [displayedPolicyKey] as const),
+          displayedPolicyKey,
         )),
       reset: async ref => valueOf(await remote.reset(sessionId, ref)),
       undo: async ref => valueOf(await remote.undo(sessionId, ref)),
@@ -241,7 +241,7 @@ export function apply(ctx: ClientContext): void {
               || ctx.conversation.input.for(sourceScope).state.getSnapshot().draft.trim() !== route.objective) {
               throw new Error(t('error.changedDraftReview'))
             }
-            valueOf(await remote.reviewRoute(sessionId, route, 'reject', undefined, 'contextify-client'))
+            valueOf(await remote.reviewRoute(sessionId, route, 'reject', undefined, 'contextify-client', undefined, undefined))
           },
           acceptRoute: async (route: ContextRouteAdvice, carryContext?: boolean, displayedPolicyKey?: string) => {
             if (route.base.activeSessionId !== sessionId) throw new Error(t('error.staleRoute'))
@@ -284,10 +284,8 @@ export function apply(ctx: ClientContext): void {
             const transferred = targetScope === undefined ? undefined
               : ctx.conversation.input.for(targetScope).state.getSnapshot()
             try {
-              valueOf(await (carryContext === true && displayedPolicyKey !== undefined
-                ? remote.reviewRoute(sessionId, route, 'accept', targetId, 'contextify-client', true, displayedPolicyKey)
-                : remote.reviewRoute(sessionId, route, 'accept', targetId, 'contextify-client',
-                  ...(carryContext === true ? [true] as const : []))))
+              valueOf(await remote.reviewRoute(sessionId, route, 'accept', targetId, 'contextify-client',
+                carryContext, carryContext === true ? displayedPolicyKey : undefined))
             } catch (cause) {
               const restored = transferred !== undefined && ctx.conversation.moveDraft(targetId, sessionId,
                 { draft: transferred.draft, draftRev: transferred.draftRev })

@@ -318,7 +318,7 @@ describe('ui-contextify browser plugin', () => {
       b.draftState.draft = ` ${route.objective} `
       await b.panel.mapActions.rejectRoute(route)
       expect(b.calls.filter(call => call.method === 'reviewRoute')).toEqual([{
-        method: 'reviewRoute', args: [source, route, 'reject', undefined, 'contextify-client'],
+        method: 'reviewRoute', args: [source, route, 'reject', undefined, 'contextify-client', undefined, undefined],
       }])
     } finally { await b.fiber.dispose() }
   })
@@ -373,7 +373,7 @@ describe('ui-contextify browser plugin', () => {
       await b.panel.mapActions.acceptRoute(route, true)
       expect(b.fork).toHaveBeenCalledWith({ sessionId: child, atSeq: 9, increaseTitle: true })
       expect(b.calls.filter(call => call.method === 'reviewRoute')).toEqual([{
-        method: 'reviewRoute', args: [source, route, 'accept', child, 'contextify-client', true],
+        method: 'reviewRoute', args: [source, route, 'accept', child, 'contextify-client', true, undefined],
       }])
     } finally { await b.fiber.dispose() }
   })
@@ -568,7 +568,7 @@ describe('ui-contextify browser plugin', () => {
     })
     expect(b.open).toHaveBeenCalledWith(child)
     expect(b.calls.filter(call => call.method === 'reviewRoute')).toMatchObject([{
-      args: [source, expect.objectContaining({ action: 'navigate' }), 'accept', child, 'contextify-client'],
+      args: [source, expect.objectContaining({ action: 'navigate' }), 'accept', child, 'contextify-client', undefined, undefined],
     }])
   })
 
@@ -580,7 +580,7 @@ describe('ui-contextify browser plugin', () => {
       objective: 'Continue writing', targetSessionId: child, reason: 'Resume writing' }
     await b.panel.mapActions.acceptRoute(route, true)
     expect(b.calls.filter(call => call.method === 'reviewRoute')).toEqual([{
-      method: 'reviewRoute', args: [source, route, 'accept', child, 'contextify-client', true],
+      method: 'reviewRoute', args: [source, route, 'accept', child, 'contextify-client', true, undefined],
     }])
     expect(b.open).toHaveBeenCalledWith(child)
   })
@@ -654,7 +654,7 @@ describe('ui-contextify browser plugin', () => {
     expect(b.calls.filter(call => call.method === 'setNodeModes')).toEqual([{
       method: 'setNodeModes',
       args: [source, { revision: 4 }, [{ node: b.record.owner, mode: 'exclude' }], 'family-7',
-        'contextify-client', []],
+        'contextify-client', [], undefined],
     }])
     expect(controller.getSnapshot().recommendation).toMatchObject({ phase: 'idle' })
   })
@@ -690,4 +690,24 @@ describe('ui-contextify browser plugin', () => {
       args: [source, { revision: 4 }, b.record.owner, candidate.reason, 'family-7'],
     }])
   })
+})
+
+it('forwards an explicit policy display key through complete Apply and Carry without synthesizing it', async () => {
+  const b = await bench()
+  try {
+    const key = 'opaque-server-display-key'
+    await b.panel.mapActions.recommend()
+    await b.panel.mapActions.applyRecommendations([], key)
+    expect(b.calls.findLast(call => call.method === 'setNodeModes')?.args).toEqual([
+      source, { revision: 4 }, [{ node: b.record.owner, mode: 'exclude' }], 'family-7', 'contextify-client', [], key,
+    ])
+    b.draftState.draft = 'Continue writing'
+    const route = { action: 'navigate' as const,
+      base: { planRevision: 4, graphRevision: 'family-7', activeSessionId: source },
+      objective: 'Continue writing', targetSessionId: child, reason: 'Resume writing' }
+    await b.panel.mapActions.acceptRoute(route, true, key)
+    expect(b.calls.findLast(call => call.method === 'reviewRoute')?.args).toEqual([
+      source, route, 'accept', child, 'contextify-client', true, key,
+    ])
+  } finally { await b.fiber.dispose() }
 })

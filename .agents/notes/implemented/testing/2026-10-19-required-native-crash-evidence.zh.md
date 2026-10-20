@@ -26,10 +26,12 @@ hosted 失败路径中的超时对照在同一包装器中选择 `dual-tsx-vm-ti
 
 另行限定的完整工作负载模式，以唯一且受 PageHeap 保护的已安装 Node 副本启动实际 Vitest CLI，运行相同四个必需文件和参数；原必需命令不变。私有文件启动 witness 仅记录进程身份和内部匹配的 CLI／worker 角色，不输出 stdout、参数或环境值，并尊重 workflow 的环境隔离。只有实际 Vitest worker PID 与 CDB 受保护映像及 flags 证据对应，才可解释阴性结果。新模式单独允许自有调试器450秒、根进程 join5秒和 hosted step9分钟；普通对照保持150秒。它在捕获清理前保留原始独占退出回执，明确记录缺失／复制失败，并将原生故障证据与工作负载或回执是否完整分别保留。回执完成不等于69项齐全或 worker 已受保护；超时、内存不足、缺项和保护未知均不予认证，绝不替代原始失败。没有生产或模型操作。
 
+获准的完整工作负载观察在 Node24.21.0 捕获到受保护 Vitest worker 的写异常，位置为 `cppgc::internal::FinalizerTrait<node::contextify::ContextifyScript>::Finalize`。官方可执行文件 SHA 与匹配的 PDB GUID/age 绑定该地址；对应指令在 isolate 清理过程中的延迟回收中写入 Realm 清理标志。[上游 Realm 生命周期修复](https://github.com/nodejs/node/commit/83b3431c25)在 Realm 释放前解除已回收 wrapper 的关联，并包含于 [Node24.22.0](https://nodejs.org/en/blog/release/v24.22.0)。主要 CI 选择该精确版本。原有四文件必需通道及崩溃判定保持不变；已消费的完整工作负载自动步骤退役。这确定了受保护写入及适用的上游修复，但不能确定此前每条堆损坏警告的写入者。新运行时的 Windows 验收仍是独立 CI 观察。
+
 ## Alternatives considered
 
 反复重试直到通过，或未抓到栈就改变 Node/JIT/终止方式，会掩盖原因。附加调试器会改变时序，但原生通道的实时捕获能记录覆盖率事后路径可能漏掉的线程退出堆证据。SDK／符号可用性与 Full PageHeap 内存开销增加了诊断成本；小型归约为阴性，也不能排除原始多用例或编译／清理的交互。
 
 ## Consequences
 
-这是可观测性，不声称已修复运行时。原失败继续保留。包装脚本的原生执行必须由必需 CI 自身验证；替身和独立诊断通过不能替代。它不授予模型 API、训练或付费工作流授权。
+捕获保留原失败；采用源码匹配的上游修复不能替代必需 Windows 验收。包装脚本的原生执行必须由必需 CI 自身验证；替身和独立诊断通过不能替代。它不授予模型 API、训练或付费工作流授权。

@@ -189,15 +189,13 @@ it('retains the completed typed-module control without automatically repeating i
   expect(read('scripts/run-windows-worker-reduction.ps1')).toContain("[ValidateSet('source', 'dual-tsx-vm-timeout', 'dual-tsx-typescript', 'required-source-pageheap')]")
 })
 
-it('admits one protected full required workload without replacing the original lane', () => {
+it('retires the completed protected workload while retaining the original required lane', () => {
   const workflow = yaml.load(read('.github/workflows/ci.yml')) as {
     jobs: Record<string, { steps: { name?: string; if?: string; run?: string; 'timeout-minutes'?: number }[] }>
   }
   const steps = workflow.jobs['windows-native-tests']!.steps
   const step = steps.find(item => item.name === 'Diagnose actual required workload with owned PageHeap')
-  expect(step?.if).toBe("failure() && runner.environment == 'github-hosted' && steps.native-check.outcome == 'failure'")
-  expect(step?.run).toBe('./scripts/run-windows-worker-reduction.ps1 -Arm required-source-pageheap')
-  expect(step?.['timeout-minutes']).toBe(9)
+  expect(step).toBeUndefined()
   expect(steps.find(item => item.name === 'Run Windows-specific native tests')?.run)
     .toBe('./scripts/run-windows-native.ps1 -CaptureCrash:($env:DSH_EPHEMERAL_NATIVE_CAPTURE -eq \'1\')')
   const wrapper = read('scripts/run-windows-worker-reduction.ps1')
@@ -218,4 +216,9 @@ it('admits one protected full required workload without replacing the original l
     expect(original).toContain(flag)
     expect(wrapper).toContain(flag)
   }
+})
+
+it('selects the release containing the captured ContextifyScript Realm lifetime fix', () => {
+  const workflow = yaml.load(read('.github/workflows/ci.yml')) as { env: { PRIMARY_NODE_VERSION: string } }
+  expect(workflow.env.PRIMARY_NODE_VERSION).toBe('24.22.0')
 })

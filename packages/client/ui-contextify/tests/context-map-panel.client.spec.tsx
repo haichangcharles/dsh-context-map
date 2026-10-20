@@ -1672,3 +1672,31 @@ describe('Context Map recovery and explicit evidence boundaries', () => {
   })
 
 })
+
+it('echoes the displayed policy key from the actual panel only for complete Context approval', async () => {
+  for (const carry of [false, true]) {
+    const current = fixture(), sibling = sid('sibling-writing')
+    const graph = { ...current.graph!, sessions: [...current.graph!.sessions,
+      { id: sibling, parentSessionId: root, seedLength: 5, depth: 1, tipNodeId: 'sibling:12' }],
+    nodes: [...current.graph!.nodes, node('sibling:12', 12, 'user', 'Separate writing task', sibling)] }
+    const base = { planRevision: 3, graphRevision: 'family-20', activeSessionId: child }
+    const route = { action: 'navigate' as const, base, objective: 'Resume separate writing',
+      targetSessionId: sibling, contextNodeIds: ['sibling:12'], reason: 'Resume that writing task' }
+    const scopePolicy = { reviewId: 'fixture-panel-publication', key: 'e'.repeat(64), mode: 'task-owned' as const,
+      assignment: 'existing' as const, sessionId: sibling, sourceCount: 1 }
+    const proposal = { mode: 'fast' as const, base, currentNodeIds: ['root:1', 'root:2', 'child:8'],
+      proposedNodeIds: ['sibling:12'], addedNodeIds: ['sibling:12'], removedNodeIds: ['root:1', 'root:2', 'child:8'],
+      selection: [{ nodeId: 'sibling:12', action: 'include' as const, reason: 'Selected task', confidence: 'high' as const },
+        ...['root:1', 'root:2', 'child:8'].map(nodeId => ({ nodeId, action: 'exclude' as const,
+          reason: 'Different task', confidence: 'high' as const }))], archive: [], scopePolicy, route }
+    const h = mount({ ...current, graph, recommendation: { phase: 'ready', proposal } })
+    try {
+      expect(screen.getByText('Only this task')).toBeTruthy()
+      fireEvent.click(screen.getByRole('button', { name: carry ? 'Move draft with proposed Context' : 'Apply proposed context' }))
+      await waitFor(() => {
+        if (carry) expect(h.mapActions.acceptRoute).toHaveBeenCalledWith(route, true, scopePolicy.key)
+        else expect(h.mapActions.applyRecommendations).toHaveBeenCalledWith([], scopePolicy.key)
+      })
+    } finally { h.view.unmount() }
+  }
+})

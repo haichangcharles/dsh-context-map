@@ -71,6 +71,8 @@ it('reviews an exact source correction in the composer before changing the next 
     expect(after).not.toContain('https://research.test/obsolete')
     expect(agent.session.snapshotEvents().some(event => event.type === 'contextify/recommendation-reviewed'
       && event.data.uiOrigin === 'contextify-client')).toBe(true)
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'contextify/recommendation-reviewed')
+      .every(event => event.data.scopePolicy === undefined)).toBe(true)
   } finally {
     try { await browser?.close() } finally { await scaffold.close() }
   }
