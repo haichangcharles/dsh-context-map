@@ -126,7 +126,7 @@ it('retains the bounded diagnostic without automatically repeating completed con
   const probe = steps.find(step => step.name === 'Reduce the failing native worker lifecycle')
   expect(probe).toBeUndefined()
   const wrapper = read('scripts/run-windows-worker-reduction.ps1')
-  expect(wrapper).toContain("@('source')")
+  expect(wrapper).toContain("$Arm = 'source'")
   expect(wrapper).toContain('Invoke-NativeLiveDebugger')
   expect(wrapper).toContain('WaitForExit(150000)')
   expect(wrapper).toContain('Unclosed native diagnostic process: timeout')
@@ -156,4 +156,23 @@ it('limits full PageHeap to an exclusively owned private image and verifies rest
   expect(helper).toContain('DeleteSubKeyTree($path, $false)')
   expect(helper).toContain('Owned PageHeap image key was not removed')
   expect(read('.github/workflows/ci.yml')).toContain('./scripts/native-pageheap-image.ps1 -SelfTest')
+})
+
+
+it('runs only the new timeout control after a hosted native failure without PageHeap', () => {
+  const workflow = yaml.load(read('.github/workflows/ci.yml')) as {
+    jobs: Record<string, { steps: { name?: string; if?: string; run?: string; 'timeout-minutes'?: number }[] }>
+  }
+  const step = workflow.jobs['windows-native-tests']!.steps.find(item => item.name === 'Diagnose registered VM timeout settlement')
+  expect(step?.if).toBe("failure() && runner.environment == 'github-hosted' && steps.native-check.outcome == 'failure'")
+  expect(step?.run).toBe('./scripts/run-windows-worker-reduction.ps1 -Arm dual-tsx-vm-timeout')
+  expect(step?.['timeout-minutes']).toBe(4)
+  const wrapper = read('scripts/run-windows-worker-reduction.ps1')
+  expect(wrapper).toContain("[ValidateSet('source', 'dual-tsx-vm-timeout')]")
+  expect(wrapper).toContain('foreach ($arm in @($Arm))')
+  expect(wrapper).toContain("if ($Arm -eq 'source')")
+  expect(wrapper).toContain('$probeNode = $node')
+  expect(wrapper).toContain("if ($arm -eq 'source') {\n        $code = Invoke-WithOwnedPageHeap")
+  expect(wrapper).toContain('} else {\n        $code = Invoke-NativeLiveDebugger')
+  expect(wrapper).toContain('Original diagnostic result: $code')
 })

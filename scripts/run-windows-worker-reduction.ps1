@@ -1,4 +1,5 @@
-# Failure-only diagnostic: full PageHeap on an exclusive source-worker image.
+# Failure-only diagnostic: one selected bounded worker control.
+param([ValidateSet('source', 'dual-tsx-vm-timeout')] [string] $Arm = 'source')
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 if ($env:DSH_EPHEMERAL_NATIVE_CAPTURE -cne '1') { throw 'Worker reduction requires a disposable hosted runner' }
@@ -12,12 +13,15 @@ try {
   $driver = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../packages/workflow/workflow-worker-thread/tests/fixtures/worker-lifecycle-probe.mjs'))
   $node = (Get-Command node.exe -ErrorAction Stop).Source
   $tsconfig = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../tsconfig.base.json'))
-  $imageName = 'dsh-worker-probe-' + [guid]::NewGuid().ToString('N') + '.exe'
-  $probeNode = Join-Path $owned.FullName $imageName
-  Copy-Item -LiteralPath $node -Destination $probeNode
-  $gflags = Join-Path (Split-Path -Parent $tools.Debugger) 'gflags.exe'
-  if (-not (Test-Path -LiteralPath $gflags)) { throw 'Microsoft GFlags is unavailable' }
-  foreach ($arm in @('source')) {
+  $probeNode = $node
+  if ($Arm -eq 'source') {
+    $imageName = 'dsh-worker-probe-' + [guid]::NewGuid().ToString('N') + '.exe'
+    $probeNode = Join-Path $owned.FullName $imageName
+    Copy-Item -LiteralPath $node -Destination $probeNode
+    $gflags = Join-Path (Split-Path -Parent $tools.Debugger) 'gflags.exe'
+    if (-not (Test-Path -LiteralPath $gflags)) { throw 'Microsoft GFlags is unavailable' }
+  }
+  foreach ($arm in @($Arm)) {
     $wrapper = Join-Path $owned.FullName "$arm.ps1"
     $events = Join-Path $env:RUNNER_TEMP "worker-reduction-$arm-events.log"
     $template = @'
@@ -91,8 +95,12 @@ finally { $writer.Dispose() }
           if ($LASTEXITCODE -ne 0) { throw 'Cannot disable diagnostic full PageHeap' }
         }
       }.GetNewClosure()
-      $code = Invoke-WithOwnedPageHeap ([Microsoft.Win32.Registry]::LocalMachine) 'SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options' $imageName $configure {
-        Invoke-NativeLiveDebugger $tools $wrapper (Join-Path $PSHOME 'pwsh.exe') $log $owned.FullName $runner
+      if ($arm -eq 'source') {
+        $code = Invoke-WithOwnedPageHeap ([Microsoft.Win32.Registry]::LocalMachine) 'SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options' $imageName $configure {
+          Invoke-NativeLiveDebugger $tools $wrapper (Join-Path $PSHOME 'pwsh.exe') $log $owned.FullName $runner
+        }
+      } else {
+        $code = Invoke-NativeLiveDebugger $tools $wrapper (Join-Path $PSHOME 'pwsh.exe') $log $owned.FullName $runner
       }
       if ($code -ne 0) { throw "Original diagnostic result: $code" }
       $rows.Add(@{ arm = $arm; status = 'passed'; meaning = 'No fault observed in this fixed reduction, not a runtime repair' })
@@ -102,7 +110,7 @@ finally { $writer.Dispose() }
     }
   }
 } finally {
-  foreach ($arm in @('source')) {
+  foreach ($arm in @($Arm)) {
     if (@($rows | Where-Object { $_.arm -eq $arm }).Count -eq 0) { $rows.Add(@{ arm = $arm; status = 'blocked' }) }
   }
   try {

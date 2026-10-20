@@ -3,7 +3,7 @@ import { Worker } from 'node:worker_threads'
 import { tmpdir } from 'node:os'
 
 const arm = process.argv[2]
-if (!['source', 'built', 'plain', 'dual-tsx-vm', 'dual-tsx-message', 'esm-tsx-vm'].includes(arm)) throw new Error('Unknown reduction arm')
+if (!['source', 'built', 'plain', 'dual-tsx-vm', 'dual-tsx-message', 'esm-tsx-vm', 'dual-tsx-vm-timeout'].includes(arm)) throw new Error('Unknown reduction arm')
 const forbidden = new Set(['DEEPSEEK_API_KEY', 'SILICONFLOW_API_KEY', 'TYPESAFE_API_KEY', 'OPENAI_API_KEY', 'JEV_API_KEY', 'OPENAI_BASE_URL'])
 for (const key of Object.keys(process.env)) if (forbidden.has(key.toUpperCase())) delete process.env[key]
 globalThis.fetch = async () => { throw new Error('Worker reduction forbids network inference') }
@@ -30,8 +30,9 @@ async function plain(cycle) {
     }
     prefix.push('registerEsm()')
   }
+  const vmOptions = arm === 'dual-tsx-vm-timeout' ? ', { timeout: 5000 }' : ''
   const computation = arm === 'dual-tsx-message' ? '42'
-    : "await new vm.Script('(async () => { return 42 })()').runInContext(vm.createContext({}))"
+    : `await new vm.Script('(async () => { return 42 })()').runInContext(vm.createContext({})${vmOptions})`
   const env = usesLoader && process.platform === 'win32' ? { TMP: tmpdir(), TEMP: tmpdir() } : {}
   if (usesLoader && process.env.TSX_TSCONFIG_PATH !== undefined) env.TSX_TSCONFIG_PATH = process.env.TSX_TSCONFIG_PATH
   const body = prefix.join('\n') + '\n' + `import { parentPort } from 'node:worker_threads';
@@ -44,7 +45,7 @@ parentPort.postMessage(result);`
   try {
     const value = await new Promise((resolve, reject) => { worker.once('message', resolve); worker.once('error', reject) })
     if (value !== 42) throw new Error('Unexpected plain result')
-    report('result')
+    report('result', arm === 'dual-tsx-vm-timeout' ? { syncTimeoutMs: 5000 } : {})
   } finally {
     report('terminate-start')
     await worker.terminate()

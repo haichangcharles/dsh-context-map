@@ -22,6 +22,19 @@ it.each(['dual-tsx-vm', 'dual-tsx-message', 'esm-tsx-vm'])('reduces normal worke
     .toEqual(['spawn', 'online', 'result', 'terminate-start', 'exit', 'terminate-resolve'])
 }, 150_000)
 
+it('observes four registered VM timeout settlements without workflow imports', async () => {
+  const arm = 'dual-tsx-vm-timeout'
+  const { stdout } = await execute(process.execPath, [driver, arm], { cwd: root, env: environment, timeout: 120_000 })
+  const rows = stdout.trim().split('\n').map(line => JSON.parse(line) as { arm: string; cycle: number; stage: string; threadId: number; syncTimeoutMs?: number })
+  expect(rows).toHaveLength(24)
+  expect(rows.every(row => row.arm === arm && Number.isInteger(row.threadId))).toBe(true)
+  for (let cycle = 0; cycle < 4; cycle++) {
+    expect(rows.filter(row => row.cycle === cycle).map(row => row.stage))
+      .toEqual(['spawn', 'online', 'result', 'terminate-start', 'exit', 'terminate-resolve'])
+    expect(rows.find(row => row.cycle === cycle && row.stage === 'result')?.syncTimeoutMs).toBe(5000)
+  }
+}, 150_000)
+
 it('rejects an unknown arm without starting a worker', async () => {
   expect(existsSync(driver)).toBe(true)
   const stderr: unknown = expect.stringContaining('Unknown reduction arm')
