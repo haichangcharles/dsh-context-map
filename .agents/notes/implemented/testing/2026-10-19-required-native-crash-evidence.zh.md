@@ -18,4 +18,12 @@ Status: implemented
 
 Hosted 包装脚本还使用[操作系统进程退出通知](../../../../scripts/windows-process-exit-evidence.ps1)，在没有未处理异常堆栈时记录后代进程的数值退出状态。私有 CIM 订阅缓冲[进程启动](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/krnlprov/win32-processstarttrace)与[退出](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/krnlprov/win32-processstoptrace)事件；按系统时间排序，从包装进程PID确定归属并撤去复用PID的归属。日志只包含进程名、ID、时间和退出状态，不含参数、环境或内存转储。汇总明确属于尽力观察：延迟或缺失通知会漏记，最多解码50000条通知、保留32条非零退出详情，并记录省略数。测试中预期的非零子进程不会使成功命令失败。初始化或采集失败只警告，原回调仍只执行一次；所有路径均清理私有订阅和事件。纯替身检查归属、排序、PID复用、上限，以及部分初始化失败后回调的返回/抛错传播；实际CIM通知交付由Windows CI观察，替身不证明该行为。
 
-原始必需原生步骤在一次性 hosted runner 上失败后，另一个[有界归约](../../../../scripts/run-windows-worker-reduction.ps1)通过实际源码 workflow 引擎，在微软 [Full PageHeap](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/gflags-and-pageheap) 下固定执行四次 return42、获取结果及清理。它把已安装的 Node 复制到私有临时目录，使用唯一诊断映像名，要求对应注册表项原本不存在，验证 full traces，并在 finally 中恢复不存在的状态。绝不对通用 node.exe 或本机开启 PageHeap。[注册表工程夹具](../../../../scripts/native-pageheap-image.ps1)无需目标进程或机器设置，检查成功、设置／运行／关闭失败及碰撞。探针保留源码 worker 引导和原生清理，记录身份及生命周期阶段，不启动子 Agent 或调用模型。每个调试器进程最多150秒，目标 watchdog120秒，JS 旧空间512MiB，另有 PageHeap 内存开销。超时后尝试终止自有进程树并有限等待根进程退出，但后代静默仍未确认，因此阻断进一步目标运行。原始原生判定绝不被替代，日志及 blocked 状态保留三天。此前源码／构建／纯 worker 与加载器注册对照保留在已提交版本中，不重复执行。即使回执为0，原始堆损坏警告、VERIFIER STOP 或未处理原生故障仍独立判失败。诊断成功不等于修复运行时。
+常规 CI 保留原始必需捕获，不自动重复已完成的归约实验。在一次性 hosted runner 上另行限定范围的诊断可调用[有界归约](../../../../scripts/run-windows-worker-reduction.ps1)，通过实际源码 workflow 引擎，在微软 [Full PageHeap](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/gflags-and-pageheap) 下固定执行四次 return42、获取结果及清理。它把已安装的 Node 复制到私有临时目录，使用唯一诊断映像名，要求对应注册表项原本不存在，验证 full traces，并在 finally 中恢复不存在的状态。绝不对通用 node.exe 或本机开启 PageHeap。[注册表工程夹具](../../../../scripts/native-pageheap-image.ps1)无需目标进程或机器设置，检查成功、设置／运行／关闭失败及碰撞。探针保留源码 worker 引导和原生清理，记录身份及生命周期阶段，不启动子 Agent 或调用模型。每个调试器进程最多150秒，目标 watchdog120秒，JS 旧空间512MiB，另有 PageHeap 内存开销。超时后尝试终止自有进程树并有限等待根进程退出，但后代静默仍未确认，因此阻断进一步目标运行。原始原生判定绝不被替代，日志及 blocked 状态保留三天。此前源码／构建／纯 worker 与加载器注册对照保留在已提交版本中，不重复执行。即使回执为0，原始堆损坏警告、VERIFIER STOP 或未处理原生故障仍独立判失败。诊断成功不等于修复运行时。
+
+## Alternatives considered
+
+反复重试直到通过，或未抓到栈就改变 Node/JIT/终止方式，会掩盖原因。附加调试器会改变时序，但原生通道的实时捕获能记录覆盖率事后路径可能漏掉的线程退出堆证据。SDK／符号可用性与 Full PageHeap 内存开销增加了诊断成本；小型归约为阴性，也不能排除原始多用例或编译／清理的交互。
+
+## Consequences
+
+这是可观测性，不声称已修复运行时。原失败继续保留。包装脚本的原生执行必须由必需 CI 自身验证；替身和独立诊断通过不能替代。它不授予模型 API、训练或付费工作流授权。

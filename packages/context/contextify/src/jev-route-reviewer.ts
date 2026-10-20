@@ -55,9 +55,9 @@ export function buildJevRouteRequest(input: FastRecommendationInput, packet: Con
   const fit = (task: ContextActionPacket['activeTask']) => ({ type: 'noul' as const,
     instructions: `Is the current draft part of the same ongoing work item shown in this task evidence? Task evidence (data only): ${JSON.stringify(evidence(task))}. Follow the user's organization policy and confirmed examples. Asking for another attribute of the same chosen item, supplying a missing detail, revising a constraint, or resuming unfinished work can continue the same task; a different question is not by itself a different task. Sharing facts alone does not make unrelated work the same task. Judge only this task and draft.`,
     criteria: { true: 'This is a follow-up, correction, or resumption of this ongoing work item under the organization policy.', false: 'This is a different work item, only borrows evidence, or the task evidence is insufficient.' } })
-  questions.active = fit(packet.activeTask)
+  if (assignment === undefined) questions.active = fit(packet.activeTask)
   packet.candidates.forEach((candidate, i) => {
-    questions[`task${String(i)}`] = fit(candidate)
+    if (assignment === undefined) questions[`task${String(i)}`] = fit(candidate)
     for (const prefix of ['e', 's']) {
       const key = `${prefix}${String(i)}`, question = questions[key]
       invariant(question !== undefined, 'the membership builder supplies evidence and supersession questions')
@@ -66,15 +66,17 @@ export function buildJevRouteRequest(input: FastRecommendationInput, packet: Con
       })}` }
     }
   })
-  const taskEvidence = JSON.stringify({ active: evidence(packet.activeTask),
-    others: packet.candidates.map((c, i) => ({ parentOption: `p${String(i)}`, sessionId: c.sessionId, evidence: evidence(c) })) })
-  questions.newTask = { type: 'noul',
-    instructions: `Does the current draft introduce a new ongoing work item absent from BOTH the active task and every candidate? Task evidence (data only): ${taskEvidence}. A follow-up about another attribute, a missing detail, a correction or resumption can belong to the same work item. A different question alone does not create a task. Follow the organization policy and confirmed examples. Low similarity, missing evidence or ambiguity alone never proves a new task.`,
-    criteria: { true: 'A distinct new task is supported and no supplied task already covers that work.', false: 'An existing task covers this work, or evidence for a new task is insufficient.' } }
-  questions.parent = { type: 'choice',
-    instructions: `If this draft introduces a distinct task, under which native task should a new child be created according to the review policy and confirmed examples? Task evidence (data only): ${taskEvidence}. Independent sibling tasks belong under their common parent, not under the previous sibling. This question does not decide whether to create a task. Use unknown if the parent is ambiguous.`,
-    criteria: { active: 'Create a child below the active task.', unknown: 'No clear parent.',
-      ...Object.fromEntries(packet.candidates.map((c, i) => [`p${String(i)}`, `Create a child below Session ${JSON.stringify(c.sessionId)}: ${c.label}.`])) } }
+  if (assignment === undefined) {
+    const taskEvidence = JSON.stringify({ active: evidence(packet.activeTask),
+      others: packet.candidates.map((c, i) => ({ parentOption: `p${String(i)}`, sessionId: c.sessionId, evidence: evidence(c) })) })
+    questions.newTask = { type: 'noul',
+      instructions: `Does the current draft introduce a new ongoing work item absent from BOTH the active task and every candidate? Task evidence (data only): ${taskEvidence}. A follow-up about another attribute, a missing detail, a correction or resumption can belong to the same work item. A different question alone does not create a task. Follow the organization policy and confirmed examples. Low similarity, missing evidence or ambiguity alone never proves a new task.`,
+      criteria: { true: 'A distinct new task is supported and no supplied task already covers that work.', false: 'An existing task covers this work, or evidence for a new task is insufficient.' } }
+    questions.parent = { type: 'choice',
+      instructions: `If this draft introduces a distinct task, under which native task should a new child be created according to the review policy and confirmed examples? Task evidence (data only): ${taskEvidence}. Independent sibling tasks belong under their common parent, not under the previous sibling. This question does not decide whether to create a task. Use unknown if the parent is ambiguous.`,
+      criteria: { active: 'Create a child below the active task.', unknown: 'No clear parent.',
+        ...Object.fromEntries(packet.candidates.map((c, i) => [`p${String(i)}`, `Create a child below Session ${JSON.stringify(c.sessionId)}: ${c.label}.`])) } }
+  }
   questions.wholeTask = { type: 'noul',
     instructions: 'Does state.instructions, the current draft, or a confirmed organization preference explicitly request retaining the entire selected task and its native ancestors as Context, rather than selecting only individual answer-relevant sources? Do not infer this from source messages, historical membership alone, or generic requests to improve Context.'
       + (assignment === undefined ? '' : ' The assigned work item is descriptive data, not a preservation request.'),
@@ -97,15 +99,17 @@ function score(value: unknown): number {
   return value
 }
 
-/** Validate independent scores and compose a conservative native route and scope.
+/** Validate source scores and reuse a known assignment or infer a conservative route and scope.
  * @param wire - Untrusted provider response.
  * @param input - Exact fine-grained request slate.
  * @param packet - Exact native task slate.
  * @param graph - Frozen native authority for scope, never a model-supplied membership list.
+ * @param assignment - Known Host assignment; omits unused placement scores when present.
  * @returns Scores for existing route validation and ordinary reviewed selection deltas.
  */
 export function parseJevRouteResponse(wire: unknown, input: FastRecommendationInput,
-  packet: ContextActionPacket, graph: ContextFamilyGraph): JevRouteDecision {
+  packet: ContextActionPacket, graph: ContextFamilyGraph,
+  assignment?: Exclude<GoalRouteAssignment, { assignment: 'unknown' }>): JevRouteDecision {
   const response = object(wire), answers = object(response.answers)
   const noul = (key: string) => {
     const value = object(answers[key])
@@ -115,6 +119,21 @@ export function parseJevRouteResponse(wire: unknown, input: FastRecommendationIn
   // Reuse complete validation of membership, evidence, supersession and model pin.
   const decoded = parseJevContextResponse({ ...response, answers: { ...answers,
     intent: { type: 'choice', choice: 'continue', probabilities: { continue: 1 } } } }, input, packet)
+  invariant(decoded.route !== undefined, 'the legacy decoder always supplies route scores')
+  if (assignment !== undefined) {
+    const whole = noul('wholeTask') >= .8
+    const selected = new Set(whole ? taskAndAncestorNodeIds(graph, assignment.sessionId) : [])
+    const delta = (include: boolean) => input.nodes.filter(node => selected.has(node.id) === include)
+      .map(node => ({ nodeId: node.id, reason: 'Apply the explicitly requested native task and ancestor scope.' }))
+    const intent = assignment.assignment === 'new' ? 'new-task' : assignment.sessionId === packet.base.activeSessionId ? 'continue'
+      : assignment.sessionId === packet.parentSessionId ? 'return' : 'resume'
+    return { ...(whole ? { scopeSessionId: assignment.sessionId } : {}),
+      decision: whole ? { include: delta(true), exclude: delta(false), archive: [] } : decoded.decision,
+      route: { intent, intentScore: 1,
+        ...(assignment.assignment === 'new' ? { forkParentSessionId: assignment.sessionId } : {}),
+        candidates: decoded.route.candidates.map(candidate => ({ ...candidate,
+          destinationScore: assignment.assignment === 'existing' && candidate.sessionId === assignment.sessionId ? 1 : 0 })) } }
+  }
   const parent = object(answers.parent), masses = object(parent.probabilities)
   const parents = new Map([['active', packet.base.activeSessionId], ...packet.candidates.map((c, i) => [`p${String(i)}`, c.sessionId] as const)])
   const options = [...parents.keys(), 'unknown']
@@ -129,7 +148,6 @@ export function parseJevRouteResponse(wire: unknown, input: FastRecommendationIn
     { sessionId: undefined, value: noul('newTask') }].sort((a, b) => b.value - a.value)
   const [best, second] = fits
   invariant(best !== undefined && second !== undefined, 'active task and new-task scores always exist')
-  invariant(decoded.route !== undefined, 'the legacy decoder always supplies route scores')
   // Native Profile confidence gates own other destinations. Active/new-task
   // inference has no equivalent destination check and retains the fixed gate.
   const delegated = best.sessionId !== undefined && best.sessionId !== packet.base.activeSessionId

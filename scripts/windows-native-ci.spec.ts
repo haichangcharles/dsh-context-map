@@ -117,16 +117,14 @@ it('starts the native inventory under CDB and preserves the original result inde
   expect(read('.github/workflows/ci.yml')).toContain('./scripts/native-live-debugger.ps1 -SelfTest')
 })
 
-it('runs a bounded worker reduction only after an actual required native failure', () => {
+it('retains the bounded diagnostic without automatically repeating completed controls', () => {
   const workflow = yaml.load(read('.github/workflows/ci.yml')) as {
     jobs: Record<string, { steps: { name?: string; id?: string; if?: string; run?: string; 'timeout-minutes'?: number; with?: { path?: string } }[] }>
   }
   const steps = workflow.jobs['windows-native-tests']!.steps
   expect(steps.find(step => step.name === 'Run Windows-specific native tests')?.id).toBe('native-check')
   const probe = steps.find(step => step.name === 'Reduce the failing native worker lifecycle')
-  expect(probe?.if).toBe("failure() && runner.environment == 'github-hosted' && steps.native-check.outcome == 'failure'")
-  expect(probe?.run).toBe('./scripts/run-windows-worker-reduction.ps1')
-  expect(probe?.['timeout-minutes']).toBe(12)
+  expect(probe).toBeUndefined()
   const wrapper = read('scripts/run-windows-worker-reduction.ps1')
   expect(wrapper).toContain("@('source')")
   expect(wrapper).toContain('Invoke-NativeLiveDebugger')

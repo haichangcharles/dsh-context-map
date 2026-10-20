@@ -173,6 +173,8 @@ it('projects confirmed management workflows through the real Loader and removes 
         state: { contextActions: Record<string, unknown> }
         questions: Record<string, { type: string; criteria?: Record<string, string> }>
       }
+      expect(Object.keys(body.questions).some(key => ['active', 'newTask', 'parent'].includes(key) || /^task\d+$/.test(key))).toBe(false)
+      expect(body.questions.wholeTask?.type).toBe('noul')
       jevInputs.push(body.state.contextActions)
       return Response.json({ model: 'jev-1.13.0', answers: Object.fromEntries(Object.entries(body.questions).map(([key, q]) => {
         if (q.type === 'noul') return [key, { type: 'noul', noul: key === 'wholeTask' ? 1 : .05 }]

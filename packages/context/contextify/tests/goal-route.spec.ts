@@ -104,3 +104,19 @@ it('bounds complete proposal input including Unicode evidence and policy', () =>
   const partial = buildGoalRouteInput(withoutActive, 'Review available evidence.')
   expect((JSON.parse(partial.userText) as { tasks: unknown[] }).tasks).toHaveLength(1)
 })
+
+
+it('composes a known goal without requiring discarded placement scores', () => {
+  const minimal = wire()
+  for (const key of ['active', 'task0', 'newTask', 'parent']) Reflect.deleteProperty(minimal.answers, key)
+  const result = composeGoalContextReview(parseGoalRouteText(JSON.stringify(assignment), packet), minimal, input, packet, graph)
+  expect(result.route?.intent).toBe('new-task')
+  expect(result.route?.forkParentSessionId).toBe('main')
+  expect(result.decision.include.map(item => item.nodeId)).toEqual(['main:1'])
+  for (const key of ['n0', 'e0', 's0', 'wholeTask']) {
+    const malformed = structuredClone(minimal)
+    Reflect.set(malformed.answers, key, { type: 'noul', noul: 2 })
+    expect(() => composeGoalContextReview(
+      parseGoalRouteText(JSON.stringify(assignment), packet), malformed, input, packet, graph)).toThrow()
+  }
+})

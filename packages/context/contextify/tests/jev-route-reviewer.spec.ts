@@ -146,3 +146,11 @@ it('counts native provenance in the complete request byte limit', () => {
   expect(new TextEncoder().encode(JSON.stringify(buildJevRouteRequest(input, route, policy, assigned))).byteLength).toBe(131_072)
   expect(() => buildJevRouteRequest(input, route, policy, assigned, graph)).toThrow('byte limit')
 })
+
+
+it('asks a known goal only about sources, evidence, supersession and explicit preservation', () => {
+  const assigned = { goal: 'Resume planning', assignment: 'existing' as const, sessionId: SessionId('main') }
+  const known = buildJevRouteRequest(input, route, 'policy', assigned, graph)
+  expect(Object.keys(known.questions).sort()).toEqual(['e0', 'n0', 'n1', 's0', 'wholeTask'])
+  expect(Object.keys(buildJevRouteRequest(input, route, 'policy').questions)).toHaveLength(9)
+})

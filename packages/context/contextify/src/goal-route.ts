@@ -1,9 +1,6 @@
 /** Goal discovery with Host-owned evidence and native reviewed Context scope. */
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import invariant from 'tiny-invariant'
-import { parseJevContextResponse } from './jev-reviewer.ts'
 import { parseJevRouteResponse, type JevRouteDecision } from './jev-route-reviewer.ts'
-import { taskAndAncestorNodeIds } from './route-scope.ts'
 import type { FastRecommendationInput } from './fast-recommendation.ts'
 import type { ContextActionPacket } from './semantic-route.ts'
 import type { ContextFamilyGraph } from './types.ts'
@@ -85,22 +82,5 @@ export function composeGoalContextReview(assignment: GoalRouteAssignment, wire: 
   if (assignment.assignment === 'unknown') return { decision: { include: [], exclude: [], archive: [] },
     route: { intent: 'unknown', intentScore: 0, candidates: packet.candidates.map(candidate => ({
       sessionId: candidate.sessionId, destinationScore: 0, evidenceScore: 0, supersededScore: 0 })) } }
-  const validated = parseJevRouteResponse(wire, input, packet, graph)
-  invariant(validated.route !== undefined, 'the Jev decoder always supplies validated candidate scores')
-  // The complete decoder above validates these provider fields before inspection.
-  const response = wire as Record<string, unknown>, answers = response.answers as Record<string, unknown>
-  const whole = (answers.wholeTask as { noul: number }).noul >= .8
-  const membership = parseJevContextResponse({ ...response, answers: { ...answers,
-    intent: { type: 'choice', choice: 'continue', probabilities: { continue: 1 } } } }, input, packet)
-  const selected = new Set(whole ? taskAndAncestorNodeIds(graph, assignment.sessionId) : [])
-  const delta = (include: boolean) => input.nodes.filter(node => selected.has(node.id) === include)
-    .map(node => ({ nodeId: node.id, reason: 'Apply the explicitly requested native task and ancestor scope.' }))
-  const intent = assignment.assignment === 'new' ? 'new-task' : assignment.sessionId === packet.base.activeSessionId ? 'continue'
-    : assignment.sessionId === packet.parentSessionId ? 'return' : 'resume'
-  return { ...(whole ? { scopeSessionId: assignment.sessionId } : {}),
-    decision: whole ? { include: delta(true), exclude: delta(false), archive: [] } : membership.decision,
-    route: { intent, intentScore: 1,
-      ...(assignment.assignment === 'new' ? { forkParentSessionId: assignment.sessionId } : {}),
-      candidates: validated.route.candidates.map(candidate => ({ ...candidate,
-        destinationScore: assignment.assignment === 'existing' && candidate.sessionId === assignment.sessionId ? 1 : 0 })) } }
+  return parseJevRouteResponse(wire, input, packet, graph, assignment)
 }

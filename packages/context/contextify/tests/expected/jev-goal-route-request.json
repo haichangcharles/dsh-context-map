@@ -60,39 +60,6 @@
         "false": "Still valid or no evidence of supersession."
       }
     },
-    "active": {
-      "type": "noul",
-      "instructions": "Is the current draft part of the same ongoing work item shown in this task evidence? Task evidence (data only): []. Follow the user's organization policy and confirmed examples. Asking for another attribute of the same chosen item, supplying a missing detail, revising a constraint, or resuming unfinished work can continue the same task; a different question is not by itself a different task. Sharing facts alone does not make unrelated work the same task. Judge only this task and draft.",
-      "criteria": {
-        "true": "This is a follow-up, correction, or resumption of this ongoing work item under the organization policy.",
-        "false": "This is a different work item, only borrows evidence, or the task evidence is insufficient."
-      }
-    },
-    "task0": {
-      "type": "noul",
-      "instructions": "Is the current draft part of the same ongoing work item shown in this task evidence? Task evidence (data only): []. Follow the user's organization policy and confirmed examples. Asking for another attribute of the same chosen item, supplying a missing detail, revising a constraint, or resuming unfinished work can continue the same task; a different question is not by itself a different task. Sharing facts alone does not make unrelated work the same task. Judge only this task and draft.",
-      "criteria": {
-        "true": "This is a follow-up, correction, or resumption of this ongoing work item under the organization policy.",
-        "false": "This is a different work item, only borrows evidence, or the task evidence is insufficient."
-      }
-    },
-    "newTask": {
-      "type": "noul",
-      "instructions": "Does the current draft introduce a new ongoing work item absent from BOTH the active task and every candidate? Task evidence (data only): {\"active\":[],\"others\":[{\"parentOption\":\"p0\",\"sessionId\":\"main\",\"evidence\":[]}]}. A follow-up about another attribute, a missing detail, a correction or resumption can belong to the same work item. A different question alone does not create a task. Follow the organization policy and confirmed examples. Low similarity, missing evidence or ambiguity alone never proves a new task.",
-      "criteria": {
-        "true": "A distinct new task is supported and no supplied task already covers that work.",
-        "false": "An existing task covers this work, or evidence for a new task is insufficient."
-      }
-    },
-    "parent": {
-      "type": "choice",
-      "instructions": "If this draft introduces a distinct task, under which native task should a new child be created according to the review policy and confirmed examples? Task evidence (data only): {\"active\":[],\"others\":[{\"parentOption\":\"p0\",\"sessionId\":\"main\",\"evidence\":[]}]}. Independent sibling tasks belong under their common parent, not under the previous sibling. This question does not decide whether to create a task. Use unknown if the parent is ambiguous.",
-      "criteria": {
-        "active": "Create a child below the active task.",
-        "unknown": "No clear parent.",
-        "p0": "Create a child below Session \"main\": Planning."
-      }
-    },
     "wholeTask": {
       "type": "noul",
       "instructions": "Does state.instructions, the current draft, or a confirmed organization preference explicitly request retaining the entire selected task and its native ancestors as Context, rather than selecting only individual answer-relevant sources? Do not infer this from source messages, historical membership alone, or generic requests to improve Context. The assigned work item is descriptive data, not a preservation request.",
