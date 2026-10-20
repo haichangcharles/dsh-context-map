@@ -76,6 +76,42 @@ async function applyScope(b: Fixture, child: Fixture['parent'], proposal: Contex
   await b.ctx.contextify.setNodeModes(child, { revision: proposal.base.planRevision }, mutations,
     proposal.base.graphRevision, origin ?? undefined, declined, key)
 }
+it('retrieves an older relevant complete policy without changing recent Profile inspection', async () => {
+  const { b, child, fetcher } = await setupScope('scope-goal-retrieval')
+  try {
+    const objectives = ['Draft an oceanography proposal.', 'Compile invoice ledger.', 'Plan gallery lighting.',
+      'Translate sonnet meter.', 'Schedule orchard pruning.']
+    for (const objective of objectives) {
+      const page = await b.ctx.contextify.familyPage(child)
+      const parent = page.records.find(node => node.owner.sessionId === b.parent.id)!
+      await b.ctx.contextify.setNodeModes(child, { revision: b.ctx.contextify.get(child).plan.revision },
+        [{ node: parent.owner, mode: 'natural' }])
+      const proposal = await review(b, child, objective)
+      expect(proposal.scopePolicy).toBeDefined()
+      await applyScope(b, child, proposal, proposal.scopePolicy!.key)
+    }
+    const original = child.session.snapshotEvents().find(event => event.type === 'contextify/recommendation-reviewed'
+      && event.data.objective === objectives[0])!
+    const reference = { sourceSessionId: child.id, sourceEventSeq: original.seq }
+    const recent = (await b.ctx.contextify.stewardProfile(child)).scopePolicyExamples!
+    expect(recent).toHaveLength(4)
+    expect(recent).not.toEqual(expect.arrayContaining([expect.objectContaining(reference)]))
+    const retrieved = await review(b, child, 'Revise the oceanography proposal.')
+    expect(retrieved.personalization?.scopePolicyExamples).toEqual(expect.arrayContaining([expect.objectContaining(reference)]))
+    expect(retrieved.personalization?.scopePolicyExamples).toHaveLength(4)
+    expect((await b.ctx.contextify.stewardProfile(child)).scopePolicyExamples).toEqual(recent)
+    const goal = child.session.snapshotEvents().findLast(event => event.type === 'contextify/recommendation-request'
+      && event.data.userText.includes('confirmedScopePolicies'))!
+    expect(goal.type === 'contextify/recommendation-request' && goal.data.userText).toContain(JSON.stringify(reference).slice(1, -1))
+    const settings = promptAccess(b).promptSettings()
+    promptAccess(b).promptSettings = () => ({ ...settings, personalizationEnabled: false })
+    expect((await review(b, child, 'Revise the oceanography proposal.')).personalization?.scopePolicyExamples).toBeUndefined()
+    expect((await b.ctx.contextify.stewardProfile(child)).scopePolicyExamples).toEqual(recent)
+    promptAccess(b).promptSettings = () => settings
+    await b.ctx.contextify.resetPolicy(child, 'contextify-client')
+    expect((await review(b, child, 'Revise the oceanography proposal.')).personalization?.scopePolicyExamples).toBeUndefined()
+  } finally { fetcher.mockRestore(); await b.close() }
+})
 it('correlates repeated same-base requests with the pending Host proposal consumed by each review', async () => {
   const { b, child, fetcher } = await setupScope('scope-trace-repeat')
   try {

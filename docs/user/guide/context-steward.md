@@ -65,7 +65,7 @@ When the review displays **Only this task** or **This task and its parent tasks*
 
 An uncertain task, retention request or required ancestry skips Jev and suppresses the combined automatic recommendation; manual choices remain available. A conflicting task destination or new/existing choice also suppresses it. Relevance review remains available for drafts without a preservation request. A draft uses one chat-model call and at most one Jev call; a non-draft Fast review uses Jev alone. The Host checks credentials before the first call and bounds the composite review to 45 seconds. This mode is optional, not a demonstrated accuracy guarantee.
 
-Open **Context preferences → Confirmed complete-policy examples** to inspect historical modes, tasks and original event references. These choices are examples for enabled personalized review, not permission for a current change. Refresh after Context Undo/Redo; Reset learned preferences refreshes the list and keeps the Context Plan.
+Open **Context preferences → Confirmed complete-policy examples** to inspect the latest four active historical modes, tasks and original event references. A review may instead include older relevant cases, so its recorded examples can differ from this recent-history list. These choices are examples for enabled personalized review, not permission for a current change. Refresh after Context Undo/Redo; Reset learned preferences refreshes the list and keeps the Context Plan.
 
 <a id="keep-a-management-record"></a>
 ## Keep a management record

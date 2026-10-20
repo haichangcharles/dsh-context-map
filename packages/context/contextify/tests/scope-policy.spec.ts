@@ -9,13 +9,13 @@ import { createInitialContextPlan, nextPlan, undoPlan, redoPlan, currentContextP
 import { buildScopePolicyReview, approvedScopePolicy, scopePolicyExamplesFromInspections } from '../src/scope-policy.ts'
 import type { ContextFamilyInspection, ContextRecommendationProposal } from '../src/types.ts'
 
-async function fixture(borrow = false) {
+async function fixture(borrow = false, suffix = '', objective = '😀'.repeat(201)) {
   const ctx = new Context(); await ctx.plugin(SessionStore)
-  const root = ctx.sessions.create(SessionId('scope-pure-root'))
+  const root = ctx.sessions.create(SessionId('scope-pure-root' + suffix))
   const add = (session: typeof root) => session.append('user/message', createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Engineering source' }] }), { surfaceOp: 'append' })
-  add(root); const child = ctx.sessions.fork(root, undefined, SessionId('scope-pure-child')); add(child)
-  const sibling = ctx.sessions.fork(root, undefined, SessionId('scope:pure-sibling')); add(sibling)
-  const alias = ctx.sessions.fork(sibling, undefined, SessionId('legal:inherited-alias'))
+  add(root); const child = ctx.sessions.fork(root, undefined, SessionId('scope-pure-child' + suffix)); add(child)
+  const sibling = ctx.sessions.fork(root, undefined, SessionId('scope:pure-sibling' + suffix)); add(sibling)
+  const alias = ctx.sessions.fork(sibling, undefined, SessionId('legal:inherited-alias' + suffix))
   const inspect = (session: typeof root): ContextFamilyInspection => ({ meta: session.header,
     events: session.snapshotEvents(), inheritedEventCount: session.inheritedEventCount })
   const inspections = new Map([root, child, sibling, alias].map(s => [s.id, inspect(s)]))
@@ -47,9 +47,51 @@ async function fixture(borrow = false) {
   child.append('contextify/node-choice', { origin: 'recommendation', changed: true, uiOrigin: 'contextify-client', beforePlanRevision: 1, afterPlanRevision: 2,
     graphRevision: base.graphRevision, mutations: [...excluded.map(node => ({ nodeId: node.id, mode: 'exclude' as const })),
       ...(borrow ? [{ nodeId: foreign.id, mode: 'include' as const }] : [])], proposal: { currentNodeIds: proposal.currentNodeIds, proposedNodeIds: proposal.proposedNodeIds, selection } })
-  child.append('contextify/recommendation-reviewed', { mode: 'fast', base, objective: '😀'.repeat(201), selection, acceptedNodeIds: selection.map(item => item.nodeId), declinedNodeIds: [], uiOrigin: 'contextify-client', scopePolicy: policy })
+  child.append('contextify/recommendation-reviewed', { mode: 'fast', base, objective, selection, acceptedNodeIds: selection.map(item => item.nodeId), declinedNodeIds: [], uiOrigin: 'contextify-client', scopePolicy: policy })
   return { ctx, root, child, inspect, input, policy, proposal }
 }
+
+it('selects two relevant complete policies and recent history only after native proof filtering', async () => {
+  const opened: Awaited<ReturnType<typeof fixture>>[] = []
+  try {
+    const objectives = ['ocean proposal', 'ocean proposal', 'ocean proposal', 'invoice ledger',
+      'gallery lighting', 'sonnet meter', 'orchard pruning']
+    const inspections: ContextFamilyInspection[] = []
+    for (const [i, objective] of objectives.entries()) {
+      const f = await fixture(false, '-' + String(i), objective); opened.push(f)
+      const inspection = f.inspect(f.child)
+      inspections.push({ ...inspection, events: inspection.events.map(event => event.type === 'contextify/recommendation-reviewed'
+        ? { ...event, time: 100 + i } : event) })
+    }
+    const before = JSON.stringify(inspections)
+    const project = (objective?: string, watermarks = new Map<SessionId, number>()) =>
+      scopePolicyExamplesFromInspections(inspections, watermarks, objective)
+    const ids = (rows: ReturnType<typeof project>) => rows.map(row => row.sourceSessionId)
+    expect(ids(project())).toEqual(opened.slice(-4).map(f => f.child.id))
+    for (const goal of ['', 'zzzzunrelated', '😀']) expect(project(goal)).toEqual(project())
+    expect(ids(project('ocean proposal'))).toEqual([opened[1]!.child.id, opened[2]!.child.id, opened[5]!.child.id, opened[6]!.child.id])
+    const reset = new Map(opened.slice(0, 3).map(f => [f.child.id, f.child.seq]))
+    expect(project('ocean proposal', reset)).toEqual(project())
+    expect(JSON.stringify(inspections)).toBe(before)
+    opened[2]!.child.append('contextify/plan', undoPlan(opened[2]!.child, currentContextPlan(opened[2]!.child))!)
+    inspections[2] = opened[2]!.inspect(opened[2]!.child)
+    expect(ids(project('ocean proposal'))).not.toContain(opened[2]!.child.id)
+    expect(Object.isFrozen(project('ocean proposal'))).toBe(true)
+  } finally { for (const f of opened) await f.ctx.fiber.dispose() }
+})
+
+it('uses the existing multilingual lexical comparison for complete policy retrieval', async () => {
+  const opened: Awaited<ReturnType<typeof fixture>>[] = []
+  try {
+    for (const [i, objective] of ['海洋计划', 'invoice ledger', 'gallery lighting', 'sonnet meter', 'orchard pruning'].entries()) {
+      opened.push(await fixture(false, '-cjk-' + String(i), objective))
+    }
+    const inspections = opened.map((f, i) => ({ ...f.inspect(f.child), events: f.inspect(f.child).events.map(event =>
+      event.type === 'contextify/recommendation-reviewed' ? { ...event, time: 100 + i } : event) }))
+    expect(scopePolicyExamplesFromInspections(inspections, new Map(), '海洋计划修订')[0]!.sourceSessionId).toBe(opened[0]!.child.id)
+    expect(scopePolicyExamplesFromInspections([], new Map(), '海洋计划')).toEqual([])
+  } finally { for (const f of opened) await f.ctx.fiber.dispose() }
+})
 
 function changedInspection(original: ContextFamilyInspection) {
   return (change: (events: Array<typeof original.events[number]>) => void) => {

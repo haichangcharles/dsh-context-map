@@ -5,6 +5,7 @@ import type { ContextFamilyGraph, ContextFamilyInspection, ContextRecommendation
   ContextRecommendationProposal, ContextScopePolicyExample, ContextScopePolicyReview } from './types.ts'
 import { resolveGoalPreservationScope, type GoalPreservationScope } from './goal-retention.ts'
 import { contextPlanFeedbackStates, nextPlan, normalizeContextPlanSnapshot } from './plan.ts'
+import { jaccardOverlap } from './lexical-tokens.ts'
 
 function sameSet(a: readonly string[], b: readonly string[]): boolean {
   return a.length === new Set(a).size && b.length === new Set(b).size
@@ -129,10 +130,12 @@ function appliedReviewMatches(events: readonly SessionEvent[], index: number,
 /** Project at most four complete approvals from owned, still-active native Plan history.
  * @param inspections - Actual family logs; inherited copies are excluded.
  * @param watermarks - Existing Profile reset cursors; raw logs are unchanged.
+ * @param objective - Current goal selects up to two relevant cases before recent fill; omission returns recent history.
  * @returns Event-referenced choices corroborated by their historical Plan; never current destination authority.
  */
 export function scopePolicyExamplesFromInspections(
   inspections: readonly ContextFamilyInspection[], watermarks: ReadonlyMap<SessionId, number>,
+  objective?: string,
 ): readonly ContextScopePolicyExample[] {
   const result: ContextScopePolicyExample[] = []
   for (const inspection of inspections) {
@@ -159,6 +162,12 @@ export function scopePolicyExamplesFromInspections(
         at: event.time, objective, mode: p.mode, assignment: p.assignment }))
     }
   }
-  return Object.freeze([...new Map(result.map(row => [`${row.sourceSessionId}:${String(row.sourceEventSeq)}`, row])).values()].sort((a, b) => a.at - b.at || a.sourceSessionId.localeCompare(b.sourceSessionId)
-    || a.sourceEventSeq - b.sourceEventSeq).slice(-4))
+  const ordered = [...new Map(result.map(row => [`${row.sourceSessionId}:${String(row.sourceEventSeq)}`, row])).values()]
+    .sort((a, b) => a.at - b.at || a.sourceSessionId.localeCompare(b.sourceSessionId) || a.sourceEventSeq - b.sourceEventSeq)
+  if (objective === undefined) return Object.freeze(ordered.slice(-4))
+  const relevant = ordered.map((row, index) => ({ row, index, score: jaccardOverlap(objective, row.objective) }))
+    .filter(item => item.score > 0)
+    .sort((a, b) => b.score - a.score || b.index - a.index).slice(0, 2).map(item => item.row)
+  const selected = [...new Set([...relevant, ...ordered.toReversed()])].slice(0, 4)
+  return Object.freeze(ordered.filter(row => selected.includes(row)))
 }

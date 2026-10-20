@@ -739,7 +739,7 @@ export class ContextifyService extends TypertRemoteService {
         : 'Improve the next response context.'))
 
       const profileEvidence = recommendationMode !== 'deep'
-        ? await this.loadProfilePolicyEvidence(family) : undefined
+        ? await this.loadProfilePolicyEvidence(family, goal) : undefined
       const personal = promptSettings.personalizationEnabled
       const contextEdits = personal ? profileEvidence?.edits ?? [] : []
       const policyInspections = currentPolicyInspections(family.inspections, profileEvidence?.watermarks ?? new Map())
@@ -2251,7 +2251,7 @@ export class ContextifyService extends TypertRemoteService {
   }
 
   /** Rebuild only changed native families; Session logs remain the source of truth. */
-  private async loadProfilePolicyEvidence(currentFamily: LoadedFamily): Promise<{
+  private async loadProfilePolicyEvidence(currentFamily: LoadedFamily, objective?: string): Promise<{
     readonly observations: readonly ContextPolicyObservation[]
     readonly edits: readonly PersonalContextEdit[]
     readonly planExamples: readonly PersonalContextPlanExample[]
@@ -2364,7 +2364,7 @@ export class ContextifyService extends TypertRemoteService {
     const current = (id: SessionId, seq: number): boolean => seq > (watermarks.get(id) ?? -1)
     return Object.freeze({
       watermarks,
-      scopePolicyExamples: scopePolicyExamplesFromInspections(allInspections, watermarks),
+      scopePolicyExamples: scopePolicyExamplesFromInspections(allInspections, watermarks, objective),
       planExamples: Object.freeze(allPlans.filter((item): item is PersonalContextPlanExample & { readonly at: number } => {
         invariant(item.sourceSessionId !== undefined && item.sourceEventSeq !== undefined && item.at !== undefined,
           'projected multi-node examples must have owned event provenance')

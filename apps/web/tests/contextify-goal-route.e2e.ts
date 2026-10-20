@@ -339,13 +339,36 @@ it.each([false, true])('acknowledges the displayed complete policy through the s
     expect(next.personalization?.scopePolicyExamples).toHaveLength(1)
     expect(inputs).toHaveLength(2)
     if (!carry) {
+      const originalExample = next.personalization!.scopePolicyExamples![0]!
+      for (const objective of ['Compile invoice ledger.', 'Plan gallery lighting.', 'Translate sonnet meter.', 'Schedule orchard pruning.']) {
+        const history = await scaffold.ctx.contextify.familyPage(child)
+        await scaffold.ctx.contextify.setNodeModes(child, { revision: scaffold.ctx.contextify.get(child).plan.revision },
+          history.records.filter(node => node.owner.sessionId === root.id).map(node => ({ node: node.owner, mode: 'natural' })))
+        const current = await scaffold.ctx.contextify.familyPage(child)
+        const proposal = await scaffold.ctx.contextify.recommend(child, { activeSessionId: child.id, graphRevision: current.revision,
+          planRevision: scaffold.ctx.contextify.get(child).plan.revision }, objective, 'fast', true)
+        await scaffold.ctx.contextify.presentRecommendation(child, proposal, 'contextify-client')
+        await scaffold.ctx.contextify.setNodeModes(child, { revision: proposal.base.planRevision }, proposal.selection.map(item => ({
+          node: current.records.find(node => node.id === item.nodeId)!.owner,
+          mode: item.action === 'exclude' ? 'exclude' as const : 'natural' as const,
+        })), proposal.base.graphRevision, 'contextify-client', [], proposal.scopePolicy!.key)
+      }
+      const queryFamily = await scaffold.ctx.contextify.familyPage(child)
+      const retrieved = await scaffold.ctx.contextify.recommend(child, { activeSessionId: child.id, graphRevision: queryFamily.revision,
+        planRevision: scaffold.ctx.contextify.get(child).plan.revision }, 'Continue own writing with only this task.', 'fast', true)
+      expect(retrieved.personalization?.scopePolicyExamples).toContainEqual(originalExample)
+      const recent = (await scaffold.ctx.contextify.stewardProfile(child)).scopePolicyExamples!
+      expect(recent).toHaveLength(4); expect(recent).not.toContainEqual(originalExample)
+      expect(inputs.at(-1)?.confirmedScopePolicies).toEqual(retrieved.personalization?.scopePolicyExamples)
+      expect(retrieved.personalization?.scopePolicyExamples?.map(({ objective, mode, assignment }) =>
+        ({ objective, mode, assignment }))).toMatchSnapshot('goal-conditioned confirmed scope policies')
       const map = page.getByRole('region', { name: 'Context Map', exact: true })
       await map.getByRole('button', { name: 'Context preferences', exact: true }).click()
       const preferences = map.getByRole('region', { name: 'Learned Context preferences', exact: true })
       const examples = preferences.getByText('Confirmed complete-policy examples', { exact: true }).locator('..')
       await examples.locator('summary').click()
-      await examples.getByText('Task at the time: Continue own writing with only this task.', { exact: true }).waitFor()
-      const example = next.personalization!.scopePolicyExamples![0]!
+      await examples.getByText('Task at the time: Schedule orchard pruning.', { exact: true }).waitFor()
+      const example = recent.at(-1)!
       await examples.getByText(`Record source: ${example.sourceSessionId}:${String(example.sourceEventSeq)}`, { exact: true }).waitFor()
       const planRevision = scaffold.ctx.contextify.get(child).plan.revision
       await preferences.getByRole('button', { name: 'Reset learned preferences', exact: true }).click()

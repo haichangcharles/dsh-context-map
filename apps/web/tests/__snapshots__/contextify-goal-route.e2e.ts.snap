@@ -1,5 +1,30 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`acknowledges the displayed complete policy through the shipped Client and next goal review (carry=false) > goal-conditioned confirmed scope policies 1`] = `
+[
+  {
+    "assignment": "existing",
+    "mode": "task-owned",
+    "objective": "Continue own writing with only this task.",
+  },
+  {
+    "assignment": "existing",
+    "mode": "task-owned",
+    "objective": "Plan gallery lighting.",
+  },
+  {
+    "assignment": "existing",
+    "mode": "task-owned",
+    "objective": "Translate sonnet meter.",
+  },
+  {
+    "assignment": "existing",
+    "mode": "task-owned",
+    "objective": "Schedule orchard pruning.",
+  },
+]
+`;
+
 exports[`projects confirmed management workflows through the real Loader and removes them on disable and reset > confirmed management memory from native events 1`] = `
 {
   "rules": [
