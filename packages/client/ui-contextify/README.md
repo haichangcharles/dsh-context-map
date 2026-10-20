@@ -60,6 +60,8 @@ For existing destinations, “Move draft with proposed Context” explicitly app
 
 The optional goal-model-plus-Jev reviewer makes one chat-model request and at most one Jev request for a draft. Its settings explain the additional cost; uncertainty skips Jev and inferred Context edits. No request occurs merely by selecting the reviewer.
 
+Context preferences shows confirmed complete-policy examples with their historical mode, objective and Session/event reference. Refresh reads the same event projection as Host input; use it after Context Undo/Redo. Reset learning refreshes the list. Displaying a historical choice does not mean it influenced the current request or authorizes an action.
+
 <a id="model-experience"></a>
 ## Model Experience
 

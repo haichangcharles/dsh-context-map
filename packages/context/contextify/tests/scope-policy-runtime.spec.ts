@@ -89,9 +89,16 @@ it('learns only an acknowledged complete changed scope while old Clients still a
       expect(compiled).toContain('Own writing task.'); expect(compiled).not.toContain('Parent brainstorming constraints.')
       const next = await review(b, child, 'Continue the next writing section.')
       expect(next.personalization?.scopePolicyExamples?.length ?? 0).toBe(acknowledged ? 1 : 0)
+      expect((await b.ctx.contextify.stewardProfile(child)).scopePolicyExamples).toEqual(next.personalization?.scopePolicyExamples ?? [])
       const goalRequests = child.session.snapshotEvents().filter(e => e.type === 'contextify/recommendation-request' && e.data.userText.includes('confirmedScopePolicies'))
       if (acknowledged) expect(JSON.stringify(goalRequests)).toContain('task-owned')
       else expect(goalRequests).toHaveLength(0)
+      if (acknowledged) {
+        const settings = promptAccess(b).promptSettings()
+        promptAccess(b).promptSettings = () => ({ ...settings, personalizationEnabled: false })
+        expect((await b.ctx.contextify.stewardProfile(child)).scopePolicyExamples).toEqual(next.personalization?.scopePolicyExamples)
+        expect((await review(b, child)).personalization?.scopePolicyExamples).toBeUndefined()
+      }
     } finally { fetcher.mockRestore(); await b.close() }
   }
 })
@@ -104,10 +111,12 @@ it('removes complete policy examples on Undo/reset and suppresses disabled, part
     expect((await review(b, child)).personalization?.scopePolicyExamples).toHaveLength(1)
     b.ctx.contextify.undo(child, { revision: b.ctx.contextify.get(child).plan.revision })
     expect((await review(b, child)).personalization?.scopePolicyExamples).toBeUndefined()
+    expect((await b.ctx.contextify.stewardProfile(child)).scopePolicyExamples).toEqual([])
     b.ctx.contextify.redo(child, { revision: b.ctx.contextify.get(child).plan.revision })
     expect((await review(b, child)).personalization?.scopePolicyExamples).toHaveLength(1)
     await b.ctx.contextify.resetPolicy(child, 'contextify-client')
     expect((await review(b, child)).personalization?.scopePolicyExamples).toBeUndefined()
+    expect((await b.ctx.contextify.stewardProfile(child)).scopePolicyExamples).toEqual([])
   } finally { fetcher.mockRestore(); await b.close() }
   for (const condition of ['wrong-key', 'partial', 'disabled', 'worker']) {
     const { b, child, fetcher } = await setupScope('scope-negative-' + condition)
@@ -244,6 +253,7 @@ it('restores the same confirmed policy from JSONL after cold resume and preserve
     expect(body()).toContain('PERSISTED_CHILD_ONLY')
     expect(body()).not.toContain('PERSISTED_PARENT_ONLY')
     expect((await review(second, resumed)).personalization?.scopePolicyExamples).toEqual(beforeExamples)
+    expect((await second.ctx.contextify.stewardProfile(resumed)).scopePolicyExamples).toEqual(beforeExamples)
     const request = resumed.session.snapshotEvents().findLast(e => e.type === 'contextify/recommendation-request'
       && e.data.userText.includes('confirmedScopePolicies'))
     expect(request?.type === 'contextify/recommendation-request' && request.data.userText).toContain('task-owned')
@@ -251,6 +261,7 @@ it('restores the same confirmed policy from JSONL after cold resume and preserve
     expect((await review(second, resumed)).personalization?.scopePolicyExamples).toBeUndefined()
     second.ctx.contextify.redo(resumed, { revision: second.ctx.contextify.get(resumed).plan.revision })
     expect((await review(second, resumed)).personalization?.scopePolicyExamples).toEqual(beforeExamples)
+    expect((await second.ctx.contextify.stewardProfile(resumed)).scopePolicyExamples).toEqual(beforeExamples)
     await second.ctx.contextify.resetPolicy(resumed, 'contextify-client')
     await second.ctx.sessions.flush(resumed.session)
     await second.close()
@@ -261,6 +272,7 @@ it('restores the same confirmed policy from JSONL after cold resume and preserve
     const afterReset = (await third.ctx.agents.resume({ resumeSessionId: childId })).agent
     configure(third, JSON.stringify({ goal: 'Continue writing', retention: 'task-owned', assignment: 'existing', sessionId: childId }))
     expect((await review(third, afterReset)).personalization?.scopePolicyExamples).toBeUndefined()
+    expect((await third.ctx.contextify.stewardProfile(afterReset)).scopePolicyExamples).toEqual([])
   } finally {
     fetcher.mockRestore()
     try { for (const b of opened.reverse()) await b.close() }

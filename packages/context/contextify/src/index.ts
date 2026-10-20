@@ -532,23 +532,23 @@ export class ContextifyService extends TypertRemoteService {
 
   /**
    * Project confirmed Context-management choices across this DSH Profile's Sessions.
-   * The returned policy changes proposal thresholds only; it cannot authorize mutation.
+   * The returned estimates change proposal thresholds only; historical complete-policy examples cannot authorize mutation.
    * @param agent - Live Agent selecting the native Session family.
-   * @returns A compact, inspectable policy with support counts per action.
+   * @returns Action support estimates and at most four undo/reset-aware complete-policy examples.
    */
   @Remote('stewardProfile')
   async stewardProfile(agent: Agent): Promise<ContextStewardProfile> {
     this.assertLive(agent)
     const family = await this.loadFamily(agent.session)
-    const { observations } = await this.loadProfilePolicyEvidence(family)
+    const { observations, scopePolicyExamples } = await this.loadProfilePolicyEvidence(family)
     const branchDepth = family.graph.sessions.find(session => session.id === agent.id)?.depth
     invariant(branchDepth !== undefined, 'the active Session must belong to its projected family graph')
     const latest = agent.session.snapshotEvents().findLast(event =>
       event.type === 'user/message' && event.data.source.kind === 'user')
     const activity = latest?.type === 'user/message'
       ? contextActivityFromObjective(recommendationText(latest.data)) : undefined
-    return deriveContextStewardProfile(observations, { branchDepth,
-      ...(activity === undefined ? {} : { activity }) })
+    return Object.freeze({ ...deriveContextStewardProfile(observations, { branchDepth,
+      ...(activity === undefined ? {} : { activity }) }), scopePolicyExamples })
   }
 
   /** Inspect recent explicit policy evidence without mutating the Profile.

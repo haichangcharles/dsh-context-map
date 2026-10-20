@@ -18,6 +18,8 @@ After existing revision, manual and source checks, the Host compares the actuall
 
 Enabled Host action/goal packets and inspectable decision snapshots carry at most four complete-policy examples, each with its owning Session/event, time, mode, assignment and objective bounded to 200 Unicode code points. Current explicit retention instructions take precedence. Only clearly applicable prior objectives may support complete preservation; conflicting or unidentifiable applicability requires abstention, and one acceptance is not a general preference. Missing or empty example lists preserve the ordinary goal request. Historical assignments do not authorize current destinations or enter answer Context. Existing ranker bonuses, thresholds, routing defaults and inference counts remain unchanged.
 
+The existing Profile inspector exposes this same bounded projection through optional `ContextStewardProfile.scopePolicyExamples`. Its panel shows historical modes, objectives and event references without another RPC or raw-message lookup. Disabled reuse does not erase inspectable history; Undo/Redo and reset update both views.
+
 ## Alternatives considered
 
 **Infer policies from partial masks.** Rejected because exceptions, equal source sets and manual constraints make the interpretation non-identifiable.

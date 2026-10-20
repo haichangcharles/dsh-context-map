@@ -188,6 +188,7 @@ export function ContextMapPanel({
       + policyState.profile.branch.support + policyState.profile.return.support + policyState.profile.release.support,
     policyState.evidence.filter(item => item.undone !== true)
       .reduce((sum, item) => sum + (item.weight ?? 1), 0))
+  const scopePolicyExamples = policyState.phase === 'ready' ? policyState.profile.scopePolicyExamples ?? [] : []
   const loadPolicy = (): void => {
     const request = ++policyRequest.current
     setPolicyState({ phase: 'loading' })
@@ -508,6 +509,17 @@ export function ContextMapPanel({
             </li>)}</ul>}
           {policyState.profile.destination.support + policyState.profile.branch.support
             + policyState.profile.return.support === 0 && <p>{t('copy.noConfirmedRouteChoicesYet')}</p>}
+          <details>
+            <summary>{t('scopePolicy.examples')}</summary>
+            <p>{t('policy.scopeHistoryHint')}</p>
+            {scopePolicyExamples.length === 0 ? <p>{t('policy.emptyScopeHistory')}</p> : <ul>
+              {scopePolicyExamples.map(item => <li key={`${item.sourceSessionId}:${String(item.sourceEventSeq)}`}>
+                <strong>{t(item.mode === 'task-owned' ? 'scopePolicy.owned' : 'scopePolicy.lineage')}</strong>
+                <span>{t('policy.objective')}: {item.objective}</span>
+                <span>{t('policy.source')}: {item.sourceSessionId}:{item.sourceEventSeq}</span>
+              </li>)}
+            </ul>}
+          </details>
           <details>
             <summary>{t('policy.evidence')}</summary>
             {policyState.evidence.length === 0 ? <p>{t('policy.emptyEvidence')}</p> : <ul>

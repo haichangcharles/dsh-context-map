@@ -98,6 +98,8 @@ Explicitly carrying Context with Navigate or Return rebases the complete approve
 
 `personalizationEnabled` defaults to true. Disabling it removes historical examples, personal calibration and learned route thresholds from new reviews while retaining manual Context choices. Task-specific chat edits from other families transfer as bounded examples rather than unconditional style rules; deterministic calibration uses current-family edits and recorded Web source habits. Each proposal separates model-visible choices from calibration and threshold source references. Historical case text stays in the management decision and does not enter answer Context. Settings changes and policy reset cancel in-flight reviews that could retain older evidence.
 
+`stewardProfile` also exposes the same at-most-four active complete-policy examples as the Host goal packet, with bounded historical objectives and original event references. Inspection remains available when personalization is disabled; Undo/Redo and reset change this projection without changing its authority.
+
 <a id="model-experience"></a>
 ## Model Experience
 

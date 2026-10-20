@@ -784,9 +784,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: '@Remote(\'stewardProfile\') async stewardProfile(agent: Agent): Promise<ContextStewardProfile>',
-        description: 'Project confirmed Context-management choices across this DSH Profile\'s Sessions. The returned policy changes proposal thresholds only; it cannot authorize mutation.',
+        description: 'Project confirmed Context-management choices across this DSH Profile\'s Sessions. The returned estimates change proposal thresholds only; historical complete-policy examples cannot authorize mutation.',
         parameters: [{ name: 'agent', description: 'Live Agent selecting the native Session family.' }],
-        returns: 'A compact, inspectable policy with support counts per action.',
+        returns: 'Action support estimates and at most four undo/reset-aware complete-policy examples.',
       },
       {
         signature: '@Remote(\'policyEvidence\') async policyEvidence(agent: Agent): Promise<readonly ContextPolicyObservation[]>',
@@ -4288,7 +4288,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContextStewardProfile',
-    declaration: 'export interface ContextStewardProfile {\n    readonly evidence: ContextPolicyEstimate;\n    readonly destination: ContextPolicyEstimate;\n    readonly branch: ContextPolicyEstimate;\n    readonly return: ContextPolicyEstimate;\n    readonly release: ContextPolicyEstimate;\n    readonly thresholds: {\n        readonly evidence: number;\n        readonly destination: number;\n    };\n    readonly rules: readonly ContextPolicyRule[];\n}',
+    declaration: 'export interface ContextStewardProfile {\n    readonly scopePolicyExamples?: readonly ContextScopePolicyExample[];\n    readonly evidence: ContextPolicyEstimate;\n    readonly destination: ContextPolicyEstimate;\n    readonly branch: ContextPolicyEstimate;\n    readonly return: ContextPolicyEstimate;\n    readonly release: ContextPolicyEstimate;\n    readonly thresholds: {\n        readonly evidence: number;\n        readonly destination: number;\n    };\n    readonly rules: readonly ContextPolicyRule[];\n}',
   },
   {
     name: 'ContextWorkStateAdvice',

@@ -999,9 +999,9 @@ Durable Context Plan mutations and native Session-family graph reads.
 
 /**
  * Project confirmed Context-management choices across this DSH Profile's Sessions.
- * The returned policy changes proposal thresholds only; it cannot authorize mutation.
+ * The returned estimates change proposal thresholds only; historical complete-policy examples cannot authorize mutation.
  * @param agent - Live Agent selecting the native Session family.
- * @returns A compact, inspectable policy with support counts per action.
+ * @returns Action support estimates and at most four undo/reset-aware complete-policy examples.
  */
 @Remote('stewardProfile') async stewardProfile(agent: Agent): Promise<ContextStewardProfile>
 

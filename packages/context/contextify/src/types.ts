@@ -117,6 +117,8 @@ export interface ContextManagementMemory {
 
 /** Inspectable policy memory for review thresholds and repeated choice rules. */
 export interface ContextStewardProfile {
+  /** Up to four still-active complete approvals; historical examples, not current authority. */
+  readonly scopePolicyExamples?: readonly ContextScopePolicyExample[]
   readonly evidence: ContextPolicyEstimate
   readonly destination: ContextPolicyEstimate
   readonly branch: ContextPolicyEstimate

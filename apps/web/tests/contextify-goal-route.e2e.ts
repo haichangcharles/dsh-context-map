@@ -332,6 +332,26 @@ it.each([false, true])('acknowledges the displayed complete policy through the s
     expect(inputs[1]?.confirmedScopePolicies).toEqual([expect.objectContaining({ mode: 'task-owned', sourceSessionId: child.id })])
     expect(next.personalization?.scopePolicyExamples).toHaveLength(1)
     expect(inputs).toHaveLength(2)
+    if (!carry) {
+      const map = page.getByRole('region', { name: 'Context Map', exact: true })
+      await map.getByRole('button', { name: 'Context preferences', exact: true }).click()
+      const preferences = map.getByRole('region', { name: 'Learned Context preferences', exact: true })
+      const examples = preferences.getByText('Confirmed complete-policy examples', { exact: true }).locator('..')
+      await examples.locator('summary').click()
+      await examples.getByText('Task at the time: Continue own writing with only this task.', { exact: true }).waitFor()
+      const example = next.personalization!.scopePolicyExamples![0]!
+      await examples.getByText(`Record source: ${example.sourceSessionId}:${String(example.sourceEventSeq)}`, { exact: true }).waitFor()
+      const planRevision = scaffold.ctx.contextify.get(child).plan.revision
+      await preferences.getByRole('button', { name: 'Reset learned preferences', exact: true }).click()
+      const emptyExamples = examples.getByText('No active complete-scope approvals yet.', { exact: true })
+      await emptyExamples.waitFor({ state: 'attached' })
+      await examples.locator('summary').click()
+      await emptyExamples.waitFor()
+      expect((await scaffold.ctx.contextify.stewardProfile(child)).scopePolicyExamples).toEqual([])
+      expect(scaffold.ctx.contextify.get(child).plan.revision).toBe(planRevision)
+      const afterReset = scaffold.ctx.contextCompiler.compile({ session: child.session, turn: child.session.seq + 1, step: 1 })
+      expect(JSON.stringify(afterReset.messages)).toBe(JSON.stringify(compiled.messages))
+    }
   } finally {
     try { await browser?.close() } finally {
       restoreFetch?.(); restoreCredential?.()

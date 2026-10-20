@@ -279,6 +279,26 @@ describe('ContextMapPanel', () => {
     expect(mapActions.setNodeModes).not.toHaveBeenCalled()
   })
 
+  it.each(['en', 'zh'] as const)('inspects confirmed complete policies and refreshes them after reset (%s)', async (language) => {
+    const h = mount(fixture(), {}, [], language)
+    const profile = await h.mapActions.inspectPolicy()
+    vi.mocked(h.mapActions.inspectPolicy).mockResolvedValueOnce({ ...profile, scopePolicyExamples: [
+      { sourceSessionId: root, sourceEventSeq: 81, at: 1, objective: 'Writing scope fixture', mode: 'task-owned', assignment: 'existing' },
+      { sourceSessionId: child, sourceEventSeq: 82, at: 2, objective: 'Planning scope fixture', mode: 'task-lineage', assignment: 'new' },
+    ] }).mockResolvedValue({ ...profile, scopePolicyExamples: [] })
+    fireEvent.click(screen.getByRole('button', { name: language === 'en' ? 'Context preferences' : 'Context 偏好' }))
+    expect(await screen.findByText(language === 'en' ? 'Only this task' : '仅保留本任务')).toBeTruthy()
+    expect(screen.getByText(language === 'en' ? 'This task and its parent tasks' : '保留本任务及父级任务')).toBeTruthy()
+    expect(screen.getByText(language === 'en' ? 'Task at the time: Writing scope fixture' : '当时的任务: Writing scope fixture')).toBeTruthy()
+    expect(screen.getByText(language === 'en' ? 'Record source: root-session:81' : '记录来源: root-session:81')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: language === 'en' ? 'Reset learned preferences' : '重置已学习的偏好' }))
+    await waitFor(() => { expect(screen.queryByText(/Writing scope fixture/)).toBeNull() })
+    expect(screen.getByText(language === 'en' ? 'No active complete-scope approvals yet.' : '尚无可用的完整范围确认样例。')).toBeTruthy()
+    expect(h.mapActions.resetPolicy).toHaveBeenCalledOnce()
+    expect(h.mapActions.reset).not.toHaveBeenCalled()
+    expect(h.mapActions.setNodeModes).not.toHaveBeenCalled()
+  })
+
   it('reviews a proposed lifecycle state independently from context selection', async () => {
     const base = fixture()
     const proposal = { mode: 'local' as const,
