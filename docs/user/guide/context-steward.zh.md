@@ -67,7 +67,21 @@ Preferences 视图汇总同一 Profile 内不同原生 Session 家族中反复�
 <a id="verify-without-an-api"></a>
 ## 无需 API 的验证
 
-在仓库根目录使用受支持的 Node.js，并安装依赖后，导出构造的 30 轮 fixture（测试前置数据）与分离的预期结果：
+按[源码安装](../../../README.zh.md#run-from-source)完成 `pnpm run build` 后，在仓库根目录运行以下原生工作流检查；无需配置模型或打开浏览器：
+
+```sh
+pnpm exec vitest run packages/context/contextify/tests/route-scope.spec.ts packages/context/contextify/tests/scope-policy-runtime.spec.ts --maxWorkers=2
+```
+
+两组测试在隔离临时目录中调用实际 Session、Contextify 和 Context Plan 服务，模型及 Jev 响应由工程 fixture（测试前置数据）提供。它们检查：
+
+1. 在指定父级下 Branch，Return 时不携带子任务 Context，之后导航回该任务并重新激活其 Context。
+2. 完整确认实际改变的 Context、原事件引用，以及下一次 Host 目标输入中的对应样例。范围未变时不产生完整策略样例。
+3. 在新服务实例中从 JSONL 恢复，Undo／Redo，以及再次冷启动后仍然生效的重置学习。
+
+两个测试文件都应通过。这些是隔离工程场景，不是同一段连续用户会话或语义准确率评测；它们不会修改你保存的对话。
+
+要检查构造的 30 轮 fixture 与分离的预期结果，可以导出仅含当前前缀的数据包：
 
 ```sh
 node --import tsx/esm scripts/context-steward-replay.ts /tmp/context-steward-replay

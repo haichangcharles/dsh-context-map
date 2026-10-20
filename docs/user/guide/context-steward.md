@@ -67,7 +67,21 @@ An uncertain task, retention request or required ancestry skips Jev and suppress
 <a id="verify-without-an-api"></a>
 ## Verify without an API
 
-From the repository root with supported Node.js and installed dependencies, export the constructed 30-turn fixture and its separate expectations:
+After the [source installation](../../../README.md#run-from-source) through `pnpm run build`, run these native workflow checks from the repository root. They need no model configuration or browser:
+
+```sh
+pnpm exec vitest run packages/context/contextify/tests/route-scope.spec.ts packages/context/contextify/tests/scope-policy-runtime.spec.ts --maxWorkers=2
+```
+
+The two suites use the actual Session, Contextify and Context Plan services in isolated temporary directories, with model and Jev responses supplied by engineering fixtures. They check:
+
+1. Branch under a selected parent, Return without carrying the child’s Context, and later navigation that reactivates that Context.
+2. Complete changed Context approval, its original event reference and its example in the next Host goal input. An unchanged scope supplies no complete-policy example.
+3. JSONL restoration in a new service instance, Undo/Redo, and Reset learning that remains effective after another cold resume.
+
+Both test files must pass. These are isolated engineering scenarios, not one continuous user session or a semantic-accuracy evaluation; they do not modify your saved conversations.
+
+To inspect the constructed 30-turn fixture and its separate expectations, export its prefix-only packets:
 
 ```sh
 node --import tsx/esm scripts/context-steward-replay.ts /tmp/context-steward-replay

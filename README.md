@@ -37,7 +37,7 @@ For example, a planning branch may hold a supplier's six-week lead time. While e
 
 The Context Steward preview is on `codex/personal-context-jev` ([PR #26](https://github.com/haichangcharles/dsh-context-map/pull/26)). The commands below check out that branch.
 
-Install Node.js 22.19 or newer in the 22.x line, or Node.js 24 or newer, and pnpm 11.7.0 (the version pinned in `package.json`), then run:
+Use Node.js 22.19 or newer in the 22.x line, or Node.js 24.22 or newer in the 24.x line, and pnpm 11.7.0 (the version pinned in `package.json`), then run:
 
 On macOS and Linux, the source build also needs a C11 compiler available as `cc` and a Node installation that includes development headers.
 

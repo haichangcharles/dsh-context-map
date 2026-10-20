@@ -37,7 +37,7 @@ Context Map 为每个成功 Turn 保存一个最初用户输入节点和一个�
 
 Context Steward 预览版位于 `codex/personal-context-jev`（[PR #26](https://github.com/haichangcharles/dsh-context-map/pull/26)）。下面的命令会检出这一分支。
 
-安装 Node.js 22.x（至少 22.19）或 Node.js 24 及以上版本，以及 `package.json` 固定的 pnpm 11.7.0，然后运行：
+使用 Node.js 22.x（至少 22.19）或 Node.js 24.x（至少 24.22），以及 `package.json` 固定的 pnpm 11.7.0，然后运行：
 
 在 macOS 和 Linux 上，源码构建还需要可作为 `cc` 调用的 C11 编译器，以及包含开发头文件的 Node 安装。
 
