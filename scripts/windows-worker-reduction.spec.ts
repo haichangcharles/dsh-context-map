@@ -35,6 +35,19 @@ it('observes four registered VM timeout settlements without workflow imports', a
   }
 }, 150_000)
 
+it('observes a typed module import before the matched VM worker settlement', async () => {
+  const arm = 'dual-tsx-typescript'
+  const { stdout } = await execute(process.execPath, [driver, arm], { cwd: root, env: environment, timeout: 120_000 })
+  const rows = stdout.trim().split('\n').map(line => JSON.parse(line) as { arm: string; cycle: number; stage: string; typedModuleValue?: number })
+  expect(rows).toHaveLength(24)
+  expect(rows.every(row => row.arm === arm)).toBe(true)
+  for (let cycle = 0; cycle < 4; cycle++) {
+    expect(rows.filter(row => row.cycle === cycle).map(row => row.stage))
+      .toEqual(['spawn', 'online', 'result', 'terminate-start', 'exit', 'terminate-resolve'])
+    expect(rows.find(row => row.cycle === cycle && row.stage === 'result')?.typedModuleValue).toBe(42)
+  }
+}, 150_000)
+
 it('rejects an unknown arm without starting a worker', async () => {
   expect(existsSync(driver)).toBe(true)
   const stderr: unknown = expect.stringContaining('Unknown reduction arm')

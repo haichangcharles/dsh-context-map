@@ -1,5 +1,5 @@
 # Failure-only diagnostic: one selected bounded worker control.
-param([ValidateSet('source', 'dual-tsx-vm-timeout')] [string] $Arm = 'source')
+param([ValidateSet('source', 'dual-tsx-vm-timeout', 'dual-tsx-typescript')] [string] $Arm = 'source')
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 if ($env:DSH_EPHEMERAL_NATIVE_CAPTURE -cne '1') { throw 'Worker reduction requires a disposable hosted runner' }
