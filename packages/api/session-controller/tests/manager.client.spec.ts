@@ -502,6 +502,30 @@ describe('subagent catalogs', () => {
     expect(api.callsOf('subagents.list')).toHaveLength(1)
   })
 
+  it('queues one fresh catalog read when a menu opens during an older pending read', async () => {
+    const api = new FakeApiClient()
+    const root = 'fk-root' as SessionId
+    const first = deferred<Awaited<ReturnType<FakeApiClient['onSubagentList']>>>()
+    const second = deferred<Awaited<ReturnType<FakeApiClient['onSubagentList']>>>()
+    api.onSubagentList = () => first.promise
+    const manager = new SessionManager(fakeRemote(api))
+    const baseline = manager.refreshSubagents(root)
+    manager.setSubagentCatalogOpen(root, true)
+    manager.setSubagentCatalogOpen(root, true)
+    api.onSubagentList = () => second.promise
+    first.resolve(ok({ entries: [], parentAvailable: true }))
+    await baseline
+    expect(api.callsOf('subagents.list')).toHaveLength(2)
+    expect(manager.getListSnapshot().subagentsByParent[root]?.state).toBe('loading')
+    manager.setSubagentCatalogOpen(root, true)
+    const trailing = manager.refreshSubagents(root)
+    second.resolve(ok({ entries: [{ kind: 'child', id: S2, mode: 'continuable',
+      label: 'fresh child', activity: 'inactive', hasChildren: false }], parentAvailable: true }))
+    await trailing
+    expect(api.callsOf('subagents.list')).toHaveLength(2)
+    expect(manager.getListSnapshot().subagentsByParent[root]).toMatchObject({ state: 'ready', entries: [{ id: S2 }] })
+  })
+
   it('runs one trailing catalog refresh for a membership change coalesced into an in-flight pull', async () => {
     vi.useFakeTimers()
     try {

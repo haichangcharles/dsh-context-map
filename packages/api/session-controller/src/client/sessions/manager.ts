@@ -430,11 +430,15 @@ export class SessionManager {
 
   /**
    * Mark whether a catalog menu is consuming live membership updates.
+   * A newly opened menu queues one fresh read after any older pending read.
    * @param parentSessionId - catalog owner.
    * @param open - current menu state.
    */
   setSubagentCatalogOpen(parentSessionId: SessionId, open: boolean): void {
     if (open) {
+      if (!this.openCatalogs.has(parentSessionId) && this.catalogInflight.has(parentSessionId)) {
+        this.catalogStale.add(parentSessionId)
+      }
       this.openCatalogs.add(parentSessionId)
       void this.refreshSubagents(parentSessionId)
     } else {
