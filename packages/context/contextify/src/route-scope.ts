@@ -34,9 +34,11 @@ export function planRouteScope(input: {
   readonly excludedNodeIds?: readonly string[]
   /** Host-confirmed explicit policy; source IDs still come only from native authority. */
   readonly wholeTask?: boolean
+  /** Complete reviewed preservation set; overrides Natural history as the initial scope. */
+  readonly selectedNodeIds?: readonly string[]
 }): readonly string[] {
-  const selected = new Set(input.wholeTask === true ? taskAndAncestorNodeIds(input.graph, input.parentSessionId)
-    : input.graph.nodes.filter(node => node.sessionIds.includes(input.parentSessionId)).map(node => node.id))
+  const selected = new Set(input.selectedNodeIds ?? (input.wholeTask === true ? taskAndAncestorNodeIds(input.graph, input.parentSessionId)
+    : input.graph.nodes.filter(node => node.sessionIds.includes(input.parentSessionId)).map(node => node.id)))
   for (const item of [...input.parentPlan.excluded, ...input.sourcePlan.excluded]) selected.delete(item.nodeId)
   for (const item of [...input.parentPlan.included, ...input.sourcePlan.included]) selected.add(item.nodeId)
   for (const id of input.affirmedNodeIds ?? []) selected.add(id)

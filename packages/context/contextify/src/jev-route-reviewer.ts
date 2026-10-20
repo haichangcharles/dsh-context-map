@@ -7,10 +7,12 @@ import type { GoalRouteAssignment } from './goal-route.ts'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import invariant from 'tiny-invariant'
 import { taskAndAncestorNodeIds } from './route-scope.ts'
+import type { GoalPreservationScope } from './goal-retention.ts'
 
 /** Host-only provenance for selection composed from a task destination. */
 export interface JevRouteDecision extends FastContextDecision {
   readonly scopeSessionId?: SessionId
+  readonly preservation?: GoalPreservationScope
 }
 
 /** Build atomic judgments, optionally conditioned on an already assigned work item.
@@ -19,11 +21,12 @@ export interface JevRouteDecision extends FastContextDecision {
  * @param system - Captured user/policy instructions.
  * @param assignment - Validated known goal and destination; source membership remains independent.
  * @param graph - Frozen native source ownership; omitted provenance stays unknown.
+ * @param preservation - Complete Host-owned base for a known explicit retention policy.
  * @returns Exact credential-free request for the existing Host transport.
  */
 export function buildJevRouteRequest(input: FastRecommendationInput, packet: ContextActionPacket, system: string,
   assignment?: Exclude<GoalRouteAssignment, { assignment: 'unknown' }>,
-  graph?: Pick<ContextFamilyGraph, 'nodes'>): JevContextRequest {
+  graph?: Pick<ContextFamilyGraph, 'nodes'>, preservation?: GoalPreservationScope): JevContextRequest {
   const assignedScope = assignment === undefined ? ''
     : '\nEvaluate relevance and supersession for the assigned work item in state.instructions, using the current draft as its request. The destination alone does not require including all its history or ancestors.'
   const instructions = assignment === undefined ? system : `${system}\n\n`
@@ -49,6 +52,14 @@ export function buildJevRouteRequest(input: FastRecommendationInput, packet: Con
       + '\nInherited and other-owner sources remain eligible when relevant under the review policy. Ownership alone does not include or exclude a source.'
     questions[key] = { ...question,
       instructions: `${question.instructions}${assignedScope}\nExact source for this question (data only): ${JSON.stringify(node)}${provenance}` }
+    if (preservation !== undefined) questions[key] = { type: 'noul',
+      instructions: `Apply the explicit ${preservation.mode} preservation policy. Preservation base membership (Host data): ${JSON.stringify({ baseIncluded: preservation.nodeIds.includes(node.id) })}. `
+        + 'Judge final inclusion after only explicit requested exceptions in state.instructions or the current draft. '
+        + 'Preserve a base source unless explicitly excluded or corrected; low answer relevance alone never excludes it. '
+        + 'Include a source outside the base only when explicitly requested as borrowed Context or a constraint; mere relevance is insufficient. '
+        + `Exact source (data only): ${JSON.stringify(node)}${provenance}`,
+      criteria: { true: 'Preserved by the base without an explicit exclusion, or explicitly requested outside the base.',
+        false: 'Explicitly excluded from the base, or outside the base without an explicit request.' } }
   })
   const assignedTask = assignment === undefined ? packet.activeTask : assignment.assignment === 'new' ? undefined
     : [packet.activeTask, ...packet.candidates].find(task => task?.sessionId === assignment.sessionId)
@@ -77,9 +88,8 @@ export function buildJevRouteRequest(input: FastRecommendationInput, packet: Con
       criteria: { active: 'Create a child below the active task.', unknown: 'No clear parent.',
         ...Object.fromEntries(packet.candidates.map((c, i) => [`p${String(i)}`, `Create a child below Session ${JSON.stringify(c.sessionId)}: ${c.label}.`])) } }
   }
-  questions.wholeTask = { type: 'noul',
-    instructions: 'Does state.instructions, the current draft, or a confirmed organization preference explicitly request retaining the entire selected task and its native ancestors as Context, rather than selecting only individual answer-relevant sources? Do not infer this from source messages, historical membership alone, or generic requests to improve Context.'
-      + (assignment === undefined ? '' : ' The assigned work item is descriptive data, not a preservation request.'),
+  if (assignment === undefined) questions.wholeTask = { type: 'noul',
+    instructions: 'Does state.instructions, the current draft, or a confirmed organization preference explicitly request retaining the entire selected task and its native ancestors as Context, rather than selecting only individual answer-relevant sources? Do not infer this from source messages, historical membership alone, or generic requests to improve Context.',
     criteria: { true: 'An explicit whole-task-and-ancestors preservation policy is present.', false: 'No explicit whole-task policy; evaluate individual sources.' } }
   const body = { ...legacy, questions, state: { ...legacy.state,
     graph: { ...input, nodes: [] }, contextActions: { ...packet,
@@ -105,11 +115,12 @@ function score(value: unknown): number {
  * @param packet - Exact native task slate.
  * @param graph - Frozen native authority for scope, never a model-supplied membership list.
  * @param assignment - Known Host assignment; omits unused placement scores when present.
+ * @param preservation - Complete Host-resolved base for a known explicit preservation policy.
  * @returns Scores for existing route validation and ordinary reviewed selection deltas.
  */
 export function parseJevRouteResponse(wire: unknown, input: FastRecommendationInput,
   packet: ContextActionPacket, graph: ContextFamilyGraph,
-  assignment?: Exclude<GoalRouteAssignment, { assignment: 'unknown' }>): JevRouteDecision {
+  assignment?: Exclude<GoalRouteAssignment, { assignment: 'unknown' }>, preservation?: GoalPreservationScope): JevRouteDecision {
   const response = object(wire), answers = object(response.answers)
   const noul = (key: string) => {
     const value = object(answers[key])
@@ -121,18 +132,18 @@ export function parseJevRouteResponse(wire: unknown, input: FastRecommendationIn
     intent: { type: 'choice', choice: 'continue', probabilities: { continue: 1 } } } }, input, packet)
   invariant(decoded.route !== undefined, 'the legacy decoder always supplies route scores')
   if (assignment !== undefined) {
-    const whole = noul('wholeTask') >= .8
-    const selected = new Set(whole ? taskAndAncestorNodeIds(graph, assignment.sessionId) : [])
-    const delta = (include: boolean) => input.nodes.filter(node => selected.has(node.id) === include)
-      .map(node => ({ nodeId: node.id, reason: 'Apply the explicitly requested native task and ancestor scope.' }))
+    const selected = new Set(preservation?.nodeIds)
+    for (const item of decoded.decision.include) selected.add(item.nodeId)
+    for (const item of decoded.decision.exclude) selected.delete(item.nodeId)
     const intent = assignment.assignment === 'new' ? 'new-task' : assignment.sessionId === packet.base.activeSessionId ? 'continue'
       : assignment.sessionId === packet.parentSessionId ? 'return' : 'resume'
-    return { ...(whole ? { scopeSessionId: assignment.sessionId } : {}),
-      decision: whole ? { include: delta(true), exclude: delta(false), archive: [] } : decoded.decision,
-      route: { intent, intentScore: 1,
-        ...(assignment.assignment === 'new' ? { forkParentSessionId: assignment.sessionId } : {}),
-        candidates: decoded.route.candidates.map(candidate => ({ ...candidate,
-          destinationScore: assignment.assignment === 'existing' && candidate.sessionId === assignment.sessionId ? 1 : 0 })) } }
+    return { ...(preservation === undefined ? {} : { preservation: { ...preservation,
+      nodeIds: graph.nodes.filter(node => selected.has(node.id)).map(node => node.id) } }),
+    decision: decoded.decision,
+    route: { intent, intentScore: 1,
+      ...(assignment.assignment === 'new' ? { forkParentSessionId: assignment.sessionId } : {}),
+      candidates: decoded.route.candidates.map(candidate => ({ ...candidate,
+        destinationScore: assignment.assignment === 'existing' && candidate.sessionId === assignment.sessionId ? 1 : 0 })) } }
   }
   const parent = object(answers.parent), masses = object(parent.probabilities)
   const parents = new Map([['active', packet.base.activeSessionId], ...packet.candidates.map((c, i) => [`p${String(i)}`, c.sessionId] as const)])

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-18-goal-context-composition.md
-2026-10-18-goal-context-composition.md: 47a559a1698e189ce342df7243775d84c264c14b
-2026-10-18-goal-context-composition.zh.md: 84e91dbf90663d3502883f71aec51dea687309bc
+2026-10-18-goal-context-composition.md: d4e94e8aeaf7b69a51d5e55ee167141850825619
+2026-10-18-goal-context-composition.zh.md: f6c33acc7e177e814df87c73972a0bf885136252

@@ -26,7 +26,10 @@ async function fork(b: Fixture, parent: Fixture['parent'], id: string) {
 }
 function jev(body: { questions: Record<string, { type: string; instructions: string; criteria?: Record<string, string> }> }) {
   return Response.json({ model: 'jev-1.13.0', answers: Object.fromEntries(Object.entries(body.questions).map(([key, q]) => {
-    if (q.type === 'noul') return [key, { type: 'noul', noul: key === 'wholeTask' ? 1 : .05 }]
+    if (q.type === 'noul') {
+      const preserved = key.startsWith('n') && q.instructions.includes('"baseIncluded":true')
+      return [key, { type: 'noul', noul: key === 'wholeTask' || preserved ? 1 : .05 }]
+    }
     const choice = q.criteria?.p0 === undefined ? 'active' : 'p0'
     return [key, { type: 'choice', choice, probabilities: { [choice]: 1 } }]
   })) as Record<string, unknown> })
@@ -56,12 +59,12 @@ it('proposes a parent Branch through native review and compiles only its approve
     append(b.parent.session, 'Find dinner for the trip.')
     const hotel = await fork(b, b.parent, 'goal-runtime-hotel')
     append(hotel.session, 'Find lodging for the trip.')
-    configure(b, JSON.stringify({ goal: 'Arrange transport', assignment: 'new', sessionId: b.parent.id }))
+    configure(b, JSON.stringify({ goal: 'Arrange transport', retention: 'task-lineage', assignment: 'new', sessionId: b.parent.id }))
     fetcher.mockImplementation(async (_url, init) => {
       expect(hotel.session.snapshotEvents().at(-1)?.type).toBe('contextify/recommendation-request')
       expect(JSON.stringify(requestBody(init))).not.toContain('fixture-only-key')
       const body = requestBody(init) as ReturnType<typeof requestBody> & { state: { instructions: string } }
-      expect(body.state.instructions).toContain(JSON.stringify({ goal: 'Arrange transport', assignment: 'new', sessionId: b.parent.id }))
+      expect(body.state.instructions).toContain(JSON.stringify({ goal: 'Arrange transport', retention: 'task-lineage', assignment: 'new', sessionId: b.parent.id }))
       const instructions = Object.values(body.questions).map(question => question.instructions)
       expect(instructions.some(text => text.includes(JSON.stringify({ ownerSessionId: b.parent.id, relation: 'new-parent' })))).toBe(true)
       expect(instructions.some(text => text.includes(JSON.stringify({ ownerSessionId: hotel.id, relation: 'other-owner' })))).toBe(true)
@@ -90,7 +93,7 @@ it('abstains without a Jev request or inferred selection changes', async () => {
   const b = await lineageHarness(), fetcher = vi.spyOn(globalThis, 'fetch')
   try {
     append(b.parent.session, 'Write a plan.')
-    configure(b, '{"goal":"Ambiguous continuation","assignment":"unknown","sessionId":null}')
+    configure(b, '{"goal":"Ambiguous continuation","retention":"task-lineage","assignment":"unknown","sessionId":null}')
     fetcher.mockRejectedValue(new Error('No second call is allowed'))
     const result = await review(b, b.parent, 'Please handle that.')
     expect(result.route).toBeUndefined()
@@ -115,7 +118,7 @@ it('rejects an invented destination before Jev and leaves the Plan unchanged', a
   const b = await lineageHarness(), fetcher = vi.spyOn(globalThis, 'fetch')
   try {
     append(b.parent.session, 'Write a plan.')
-    configure(b, '{"goal":"Invent work","assignment":"existing","sessionId":"outside-family"}')
+    configure(b, '{"goal":"Invent work","retention":"task-lineage","assignment":"existing","sessionId":"outside-family"}')
     await expect(review(b, b.parent)).rejects.toMatchObject({ code: 'CONTEXTIFY_RECOMMENDATION_UNAVAILABLE' })
     expect(b.ctx.contextify.get(b.parent).plan.revision).toBe(1)
     expect(fetcher).not.toHaveBeenCalled()
@@ -129,7 +132,7 @@ it('learns from recorded Branch operations and removes examples when personaliza
     const child = await fork(b, b.parent, 'goal-history-child')
     append(child.session, 'Plan lodging.')
     await b.ctx.contextify.recordManualBranch(b.parent, child.id, 'contextify-client', 'Keep lodging separate from dinner')
-    configure(b, JSON.stringify({ goal: 'Review lodging', assignment: 'existing', sessionId: child.id }))
+    configure(b, JSON.stringify({ goal: 'Review lodging', retention: 'task-lineage', assignment: 'existing', sessionId: child.id }))
     fetcher.mockImplementation(async (_url, init) => {
       const body = requestBody(init)
       expect(Object.values(body.questions).some(question => question.instructions.includes(
@@ -165,7 +168,7 @@ it('logs distinct historical owner relations in the real Jev packet and retracts
     const local = nodes.find(node => node.owner.sessionId === child.id && node.role === 'user')!
     for (const node of [inherited, local]) await b.ctx.contextify.setNodeMode(child,
       { revision: b.ctx.contextify.get(child).plan.revision }, node.owner, 'exclude', 'contextify-client')
-    configure(b, JSON.stringify({ goal: 'Review lodging', assignment: 'existing', sessionId: child.id }))
+    configure(b, JSON.stringify({ goal: 'Review lodging', retention: 'task-lineage', assignment: 'existing', sessionId: child.id }))
     const observed: unknown[][] = []
     fetcher.mockImplementation(async (_url, init) => {
       const body = requestBody(init) as ReturnType<typeof requestBody> & {
@@ -198,7 +201,7 @@ it('returns to the parent and later reactivates the other task with its complete
     append(b.parent.session, 'DINNER_MAINLINE')
     const child = await fork(b, b.parent, 'goal-reactivate-child')
     append(child.session, 'TAXI_TASK_DETAIL')
-    configure(b, JSON.stringify({ goal: 'Continue dinner', assignment: 'existing', sessionId: b.parent.id }))
+    configure(b, JSON.stringify({ goal: 'Continue dinner', retention: 'task-lineage', assignment: 'existing', sessionId: b.parent.id }))
     fetcher.mockImplementation(async (_url, init) => jev(requestBody(init)))
     const returning = await review(b, child, 'Please organize the dinner notes.')
     expect(returning.route?.action).toBe('return')
@@ -207,7 +210,7 @@ it('returns to the parent and later reactivates the other task with its complete
     expect(JSON.stringify(afterReturn.messages)).not.toContain('TAXI_TASK_DETAIL')
     vi.spyOn(b.adapter, 'stream').mockImplementation(async function* (options) {
       b.adapter.requests.push(options)
-      yield* textResponse(JSON.stringify({ goal: 'Continue transport', assignment: 'existing', sessionId: child.id }))
+      yield* textResponse(JSON.stringify({ goal: 'Continue transport', retention: 'task-lineage', assignment: 'existing', sessionId: child.id }))
     })
     const resuming = await review(b, b.parent, 'Please organize the transport notes.')
     expect(resuming.route).toMatchObject({ action: 'navigate', targetSessionId: child.id })
@@ -222,7 +225,7 @@ it('does not continue to Jev when a valid-looking goal was truncated by the mode
   const b = await lineageHarness(), fetcher = vi.spyOn(globalThis, 'fetch')
   try {
     append(b.parent.session, 'Write a plan.')
-    const output = JSON.stringify({ goal: 'Continue planning', assignment: 'existing', sessionId: b.parent.id })
+    const output = JSON.stringify({ goal: 'Continue planning', retention: 'task-lineage', assignment: 'existing', sessionId: b.parent.id })
     configure(b, output)
     vi.spyOn(b.adapter, 'stream').mockImplementation(async function* (options) {
       b.adapter.requests.push(options)
@@ -252,7 +255,7 @@ it('cancels goal generation before a second provider call and releases the revie
     await assertion
     expect(fetcher).not.toHaveBeenCalled()
     vi.spyOn(b.adapter, 'stream').mockImplementation(async function* () {
-      yield* textResponse('{"goal":"Uncertain task","assignment":"unknown","sessionId":null}')
+      yield* textResponse('{"goal":"Uncertain task","retention":"task-lineage","assignment":"unknown","sessionId":null}')
     })
     await expect(review(b, b.parent)).resolves.toMatchObject({ selection: [] })
   } finally { fetcher.mockRestore(); await b.close() }
@@ -268,7 +271,7 @@ it('keeps abstention empty even when matching prior Context choices would add an
     await b.ctx.contextify.setNodeMode(b.parent, { revision: 1 }, firstNode.owner, 'include', 'contextify-client')
     const second = await fork(b, b.parent, 'goal-preference-second')
     append(second.session, 'Dinner restaurant vegetarian budget Cambridge updated')
-    configure(b, '{"goal":"Uncertain scope","assignment":"unknown","sessionId":null}')
+    configure(b, '{"goal":"Uncertain scope","retention":"task-lineage","assignment":"unknown","sessionId":null}')
     const result = await review(b, b.parent, 'Dinner restaurant vegetarian budget Cambridge')
     expect(result.selection).toEqual([])
     expect(fetcher).not.toHaveBeenCalled()
@@ -288,7 +291,7 @@ it('cancels stalled credential preflight without a model call and releases the f
   let finish: ((value: { value: string }) => void) | undefined
   try {
     append(b.parent.session, 'Write a plan.')
-    configure(b, '{"goal":"Uncertain scope","assignment":"unknown","sessionId":null}', false)
+    configure(b, '{"goal":"Uncertain scope","retention":"task-lineage","assignment":"unknown","sessionId":null}', false)
     const resolve = vi.fn(() => new Promise<{ value: string }>((done) => { finish = done }))
     b.ctx.provide('credentials', { resolve } as never)
     const pending = review(b, b.parent)
@@ -346,7 +349,7 @@ it('allows explicitly reviewed borrowed child Context after Return and keeps own
     append(b.parent.session, 'MAINLINE_OVERVIEW')
     const child = await fork(b, b.parent, 'goal-borrowed-child')
     append(child.session, 'BORROWED_TASK_DETAIL')
-    configure(b, JSON.stringify({ goal: 'Continue the main work using borrowed detail', assignment: 'existing', sessionId: b.parent.id }))
+    configure(b, JSON.stringify({ goal: 'Continue the main work using borrowed detail', retention: 'relevance', assignment: 'existing', sessionId: b.parent.id }))
     const settings = promptAccess(b).promptSettings()
     promptAccess(b).promptSettings = () => ({ ...settings,
       context: { additional: 'Select relevant sources. Borrowing across tasks is permitted.', override: '' } })
@@ -355,7 +358,6 @@ it('allows explicitly reviewed borrowed child Context after Return and keeps own
       const body = requestBody(init)
       provenance.push(Object.values(body.questions).map(question => question.instructions))
       const response = await jev(body).json() as { model: string; answers: Record<string, { type: string; noul?: number }> }
-      response.answers.wholeTask = { type: 'noul', noul: 0 }
       for (const [key, question] of Object.entries(body.questions)) {
         if (key.startsWith('n') && key !== 'newTask') {
           response.answers[key] = { type: 'noul', noul: question.instructions.includes('BORROWED_TASK_DETAIL') ? .95 : .05 }
@@ -372,7 +374,7 @@ it('allows explicitly reviewed borrowed child Context after Return and keeps own
     expect(provenance[0]?.some(text => text.includes(JSON.stringify({ ownerSessionId: child.id, relation: 'other-owner' })))).toBe(true)
     vi.spyOn(b.adapter, 'stream').mockImplementation(async function* (options) {
       b.adapter.requests.push(options)
-      yield* textResponse(JSON.stringify({ goal: 'Continue the detail task', assignment: 'existing', sessionId: child.id }))
+      yield* textResponse(JSON.stringify({ goal: 'Continue the detail task', retention: 'relevance', assignment: 'existing', sessionId: child.id }))
     })
     const resuming = await review(b, b.parent, 'Prepare the next detail task step.')
     expect(resuming.route).toMatchObject({ action: 'navigate', targetSessionId: child.id })

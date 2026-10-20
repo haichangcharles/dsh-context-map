@@ -19,7 +19,7 @@ const input = { activeSessionId: packet.base.activeSessionId, objective: packet.
 ], preferenceExamples: [], planExamples: [] } as unknown as FastRecommendationInput
 const graph = { sessions: [{ id: 'main' }, { id: 'hotel', parentSessionId: 'main' }],
   nodes: [{ id: 'main:1', owner: { sessionId: 'main' } }, { id: 'hotel:1', owner: { sessionId: 'hotel' } }] } as unknown as ContextFamilyGraph
-const assignment = { goal: 'Arrange transport', assignment: 'new', sessionId: 'main' } as const
+const assignment = { goal: 'Arrange transport', retention: 'relevance', assignment: 'new', sessionId: 'main' } as const
 function wire() { return { model: 'jev-1.13.0', answers: {
   n0: { type: 'noul', noul: .1 }, n1: { type: 'noul', noul: .9 },
   active: { type: 'noul', noul: .3 }, task0: { type: 'noul', noul: .4 }, newTask: { type: 'noul', noul: .5 },
@@ -56,8 +56,9 @@ it('passes the exact bounded management projection as historical data without ad
 it('accepts only bounded categorical assignments over current native IDs', () => {
   expect(parseGoalRouteText(JSON.stringify(assignment), packet)).toEqual(assignment)
   for (const value of [null, [], {}, { ...assignment, sessionId: 'historical-target' },
-    { ...assignment, assignment: 'archive' }, { ...assignment, goal: '' }, { ...assignment, goal: '字'.repeat(201) },
-    { ...assignment, quotedEvidence: 'invented' }, { ...assignment, sessionId: null }]) {
+    { ...assignment, retention: 'relevance', assignment: 'archive' }, { ...assignment, goal: '' }, { ...assignment, goal: '字'.repeat(201) },
+    { ...assignment, quotedEvidence: 'invented' }, { ...assignment, sessionId: null },
+    { ...assignment, retention: 'infer-persona' }, { ...assignment, retention: undefined }]) {
     expect(() => parseGoalRouteText(JSON.stringify(value), packet)).toThrow()
   }
   expect(() => parseGoalRouteText('x'.repeat(8193), packet)).toThrow('byte')
@@ -71,23 +72,23 @@ it('accepts a short Chinese goal while rejecting a whitespace-only goal', () => 
   expect(() => parseGoalRouteText(JSON.stringify({ ...assignment, goal: '  ' }), packet)).toThrow()
 })
 it('allows an explicit abstention and performs no inferred Context or route operation', () => {
-  const unknown = parseGoalRouteText('{"goal":"Ambiguous work","assignment":"unknown","sessionId":null}', packet)
+  const unknown = parseGoalRouteText('{"goal":"Ambiguous work","retention":"relevance","assignment":"unknown","sessionId":null}', packet)
   expect(composeGoalContextReview(unknown, undefined, input, packet, graph)).toMatchObject({
     decision: { include: [], exclude: [], archive: [] }, route: { intent: 'unknown', intentScore: 0 },
   })
-  expect(() => parseGoalRouteText('{"goal":"Ambiguous work","assignment":"unknown","sessionId":"main"}', packet)).toThrow()
+  expect(() => parseGoalRouteText('{"goal":"Ambiguous work","retention":"relevance","assignment":"unknown","sessionId":"main"}', packet)).toThrow()
 })
-it('uses the generated parent assignment and native whole-task scope while retaining Jev supersession', () => {
+it('uses the generated parent assignment and relevant sources while retaining Jev supersession', () => {
   const result = composeGoalContextReview(parseGoalRouteText(JSON.stringify(assignment), packet), wire(), input, packet, graph)
   expect(result.route).toMatchObject({ intent: 'new-task', forkParentSessionId: 'main',
     candidates: [{ sessionId: 'main', supersededScore: .1, evidenceScore: .6 }] })
-  expect(result.scopeSessionId).toBe('main')
-  expect(result.decision.include.map(x => x.nodeId)).toEqual(['main:1'])
-  expect(result.decision.exclude.map(x => x.nodeId)).toEqual(['hotel:1'])
+  expect(result.scopeSessionId).toBeUndefined()
+  expect(result.decision.include.map(x => x.nodeId)).toEqual(['hotel:1'])
+  expect(result.decision.exclude.map(x => x.nodeId)).toEqual(['main:1'])
 })
 it('keeps Jev individual membership when whole-task policy is absent and maps existing work correctly', () => {
   const raw = wire(); raw.answers.wholeTask.noul = .1
-  const existing = (id: string) => parseGoalRouteText(JSON.stringify({ ...assignment, assignment: 'existing', sessionId: id }), packet)
+  const existing = (id: string) => parseGoalRouteText(JSON.stringify({ ...assignment, retention: 'relevance', assignment: 'existing', sessionId: id }), packet)
   expect(composeGoalContextReview(existing('hotel'), raw, input, packet, graph)).toMatchObject({
     route: { intent: 'continue' }, decision: { include: [{ nodeId: 'hotel:1' }] },
   })
@@ -112,8 +113,8 @@ it('composes a known goal without requiring discarded placement scores', () => {
   const result = composeGoalContextReview(parseGoalRouteText(JSON.stringify(assignment), packet), minimal, input, packet, graph)
   expect(result.route?.intent).toBe('new-task')
   expect(result.route?.forkParentSessionId).toBe('main')
-  expect(result.decision.include.map(item => item.nodeId)).toEqual(['main:1'])
-  for (const key of ['n0', 'e0', 's0', 'wholeTask']) {
+  expect(result.decision.include.map(item => item.nodeId)).toEqual(['hotel:1'])
+  for (const key of ['n0', 'e0', 's0']) {
     const malformed = structuredClone(minimal)
     Reflect.set(malformed.answers, key, { type: 'noul', noul: 2 })
     expect(() => composeGoalContextReview(

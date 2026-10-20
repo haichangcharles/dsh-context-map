@@ -26,6 +26,7 @@ import { contextLifecycleAdvice } from './lifecycle-advice.ts'
 import { requestJevContextReview, resolveJevContextCredential } from './jev-reviewer.ts'
 import { buildJevRouteRequest, parseJevRouteResponse, type JevRouteDecision } from './jev-route-reviewer.ts'
 import { buildGoalRouteInput, parseGoalRouteText, composeGoalContextReview, type GoalRouteAssignment } from './goal-route.ts'
+import { resolveGoalPreservationScope, type GoalPreservationScope } from './goal-retention.ts'
 import { draftRouteAdvice } from './draft-route.ts'
 import { carryRouteScope, ContextRouteScopeReplacementError, planRouteScope, taskAndAncestorNodeIds } from './route-scope.ts'
 import { compileContextRoutePlan } from './route-plan.ts'
@@ -751,6 +752,7 @@ export class ContextifyService extends TypertRemoteService {
       let fastInput: ReturnType<typeof buildFastRecommendationInput> | undefined
       let localCandidates: ReturnType<typeof buildLocalContextCandidates> | undefined
       let jevScopeSessionId: SessionId | undefined
+      let goalPreservation: GoalPreservationScope | undefined
       let goalAbstained = false
       const exactWebSources = recommendationMode !== 'deep' && draftBound
         && objective?.trim() === goal
@@ -838,10 +840,11 @@ export class ContextifyService extends TypertRemoteService {
           if (promptSettings.fastDecisionProvider !== 'parent-model') {
             const goalReview = promptSettings.fastDecisionProvider === 'goal-model-jev' && draftBound === true && objective?.trim() === goal
             const parsed = goalReview
-              ? await this.reviewGoalContext(agent, input, routePacket, family.graph, system,
+              ? await this.reviewGoalContext(agent, input, routePacket, family.graph, family.inspections, system,
                 [contextPrompt, effectivePrompt(CONTEXTIFY_DEFAULT_PROMPTS.branch, promptSettings.branch)].join('\n\n'), operation.controller.signal)
               : await this.reviewJevContext(agent, input, routePacket, family.graph, system, operation.controller.signal)
             jevScopeSessionId = parsed.scopeSessionId
+            goalPreservation = parsed.preservation
             goalAbstained = goalReview && parsed.route?.intent === 'unknown'
             fastText = JSON.stringify({ ...parsed.decision, route: parsed.route })
           } else {
@@ -887,6 +890,12 @@ export class ContextifyService extends TypertRemoteService {
           decision = { include: [...whole].map(item),
             exclude: family.graph.nodes.filter(node => !whole.has(node.id)).map(node => item(node.id)), archive: [] }
         }
+        if (goalPreservation !== undefined) {
+          const selected = new Set(goalPreservation.nodeIds)
+          const item = (nodeId: string) => ({ nodeId, reason: 'Apply the explicitly reviewed retention policy and source exceptions.' })
+          decision = { include: family.graph.nodes.filter(node => selected.has(node.id)).map(node => item(node.id)),
+            exclude: family.graph.nodes.filter(node => !selected.has(node.id)).map(node => item(node.id)), archive: [] }
+        }
         const validation = {
           mode: recommendationMode,
           base,
@@ -906,7 +915,7 @@ export class ContextifyService extends TypertRemoteService {
         })
         const generic = validateRecommendation(withoutRepeatedDeclines(decision), validation)
         const calibrated = recommendationMode !== 'deep' && exactWebSelection === null
-          && !goalAbstained && calibrationEdits.length > 0
+          && !goalAbstained && goalPreservation === undefined && calibrationEdits.length > 0
           ? calibrateContextRecommendation({
             exclude: generic.selection.filter(item => item.action === 'exclude'),
             include: generic.selection.filter(item => item.action === 'include'),
@@ -926,7 +935,7 @@ export class ContextifyService extends TypertRemoteService {
           decision = { include: [], exclude: [], archive: [] }
           contextProposal = validateRecommendation(decision, validation)
         }
-        if (recommendationMode !== 'deep' && draftBound && objective?.trim() === goal) {
+        if (recommendationMode !== 'deep' && draftBound && objective?.trim() === goal && !goalAbstained) {
           invariant(profileEvidence !== undefined, 'non-Deep reviews always capture Profile policy evidence')
           route = draftRouteAdvice({
             graph: family.graph, contents, objective: goal, base,
@@ -940,13 +949,18 @@ export class ContextifyService extends TypertRemoteService {
             ),
           })
           const reviewedTask = route?.action === 'branch' ? route.forkParentSessionId ?? agent.id : route?.targetSessionId ?? agent.id
-          if (jevScopeSessionId !== undefined && reviewedTask !== jevScopeSessionId) {
+          if ((jevScopeSessionId !== undefined && reviewedTask !== jevScopeSessionId)
+            || (goalPreservation !== undefined && (reviewedTask !== goalPreservation.sessionId
+              || (route?.action === 'branch') !== (goalPreservation.assignment === 'new')))) {
             // Routing rejection/explicit overrides cannot apply another task's scope here.
             decision = { include: [], exclude: [], archive: [] }
             contextProposal = validateRecommendation(decision, validation)
+            if (goalPreservation !== undefined) route = undefined
+            goalPreservation = undefined
           }
           const scopeDestination = route?.action === 'branch'
-            && (jevScopeSessionId !== undefined || route.forkParentSessionId !== undefined && route.forkParentSessionId !== agent.id)
+            && (jevScopeSessionId !== undefined || goalPreservation !== undefined
+              || route.forkParentSessionId !== undefined && route.forkParentSessionId !== agent.id)
             ? route.forkParentSessionId ?? agent.id
             : promptSettings.fastDecisionProvider !== 'parent-model' ? route?.targetSessionId : undefined
           if (scopeDestination !== undefined && route !== undefined) {
@@ -955,6 +969,7 @@ export class ContextifyService extends TypertRemoteService {
             try {
               route = Object.freeze({ ...route, contextNodeIds: planRouteScope({ graph: family.graph,
                 parentSessionId: scopeDestination,
+                ...(goalPreservation === undefined ? {} : { selectedNodeIds: contextProposal.proposedNodeIds }),
                 wholeTask: jevScopeSessionId === scopeDestination,
                 parentPlan: currentContextPlan({ snapshotEvents: () => [...parent.events] }),
                 sourcePlan: plan, proposal: contextProposal,
@@ -2385,7 +2400,8 @@ export class ContextifyService extends TypertRemoteService {
   }
 
   private async reviewGoalContext(agent: Agent, input: FastRecommendationInput, packet: ContextActionPacket,
-    graph: ContextFamilyGraph, system: string, policy: string, signal: AbortSignal): Promise<JevRouteDecision> {
+    graph: ContextFamilyGraph, inspections: ReadonlyMap<SessionId, ContextFamilyInspection>,
+    system: string, policy: string, signal: AbortSignal): Promise<JevRouteDecision> {
     const bounded = AbortSignal.any([signal, AbortSignal.timeout(45_000)])
     const cancelled = Promise.withResolvers<never>()
     const listener = addAbortListener(bounded, () => { cancelled.reject(bounded.reason) })
@@ -2399,20 +2415,26 @@ export class ContextifyService extends TypertRemoteService {
       request.system, request.userText, request.maxTokens, bounded, true)
     bounded.throwIfAborted()
     const assignment = parseGoalRouteText(text, packet)
-    if (assignment.assignment === 'unknown') return composeGoalContextReview(assignment, undefined, input, packet, graph)
-    return await this.reviewJevContext(agent, input, packet, graph, system, bounded, assignment, credential)
+    if (assignment.assignment === 'unknown' || assignment.retention === 'unknown') {
+      return composeGoalContextReview(assignment, undefined, input, packet, graph)
+    }
+    const preservation = assignment.retention === 'relevance' ? undefined
+      : resolveGoalPreservationScope({ ...assignment, retention: assignment.retention }, graph, inspections)
+    if (preservation === null) return composeGoalContextReview({ ...assignment, retention: 'unknown' },
+      undefined, input, packet, graph)
+    return await this.reviewJevContext(agent, input, packet, graph, system, bounded, assignment, credential, preservation)
   }
 
   private async reviewJevContext(agent: Agent, input: FastRecommendationInput, packet: ContextActionPacket,
     graph: ContextFamilyGraph, system: string, signal: AbortSignal, assignment?: Exclude<GoalRouteAssignment, { assignment: 'unknown' }>,
-    credential?: string): Promise<JevRouteDecision> {
-    const body = buildJevRouteRequest(input, packet, system, assignment, graph)
+    credential?: string, preservation?: GoalPreservationScope): Promise<JevRouteDecision> {
+    const body = buildJevRouteRequest(input, packet, system, assignment, graph, preservation)
     agent.session.append('contextify/recommendation-request', { base: packet.base, provider: 'typesafe', model: body.model,
       objective: packet.objective, system, userText: JSON.stringify(body), maxTokens: 0 })
     const wire = await requestJevContextReview(body, { signal,
       resolveCredential: () => credential === undefined ? resolveJevContextCredential(this.ctx) : Promise.resolve(credential) })
     return assignment === undefined ? parseJevRouteResponse(wire, input, packet, graph)
-      : composeGoalContextReview(assignment, wire, input, packet, graph)
+      : composeGoalContextReview(assignment, wire, input, packet, graph, preservation)
   }
 
   private reviewObjective(proposal: ContextRecommendationProposal): string {

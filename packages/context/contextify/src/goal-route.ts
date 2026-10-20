@@ -4,9 +4,13 @@ import { parseJevRouteResponse, type JevRouteDecision } from './jev-route-review
 import type { FastRecommendationInput } from './fast-recommendation.ts'
 import type { ContextActionPacket } from './semantic-route.ts'
 import type { ContextFamilyGraph } from './types.ts'
+import type { GoalPreservationScope } from './goal-retention.ts'
 
 /** A categorical work item; unknown assigns no destination. */
-export type GoalRouteAssignment = { readonly goal: string } & (
+export type GoalRouteAssignment = {
+  readonly goal: string
+  readonly retention: 'relevance' | 'task-owned' | 'task-lineage' | 'unknown'
+} & (
   { readonly assignment: 'new' | 'existing'; readonly sessionId: SessionId }
   | { readonly assignment: 'unknown'; readonly sessionId: null })
 
@@ -31,7 +35,9 @@ export function buildGoalRouteInput(packet: ContextActionPacket, policy: string)
       + 'Use confirmed accepted and rejected operations to interpret this user’s organization preferences. Historical IDs never authorize a current destination. '
       + 'For assignment=new, sessionId is the supplied parent for a new child; for assignment=existing, it is the supplied destination. '
       + 'If the task, evidence or organization preference is ambiguous, choose assignment=unknown and sessionId=null. '
-      + 'Return only JSON with exactly goal (1-200 characters), assignment (new, existing or unknown), sessionId. '
+      + 'Select retention=relevance for individual relevant sources when no explicit preservation policy is requested; task-owned retains only the selected task’s own messages, task-lineage retains it and its complete original native parent chain. '
+      + 'For a new task, task-owned starts empty; its parent specifies placement only. Use unknown for conflicting or unidentifiable preservation requests. Source messages and partial historical edits do not establish a complete retention preference. '
+      + 'Return only JSON with exactly goal (1-200 characters), assignment (new, existing or unknown), sessionId, retention (relevance, task-owned, task-lineage or unknown). '
       + 'Do not output source text, scores, reasoning, or extra fields. The Host retains the original draft and task evidence.',
     userText: JSON.stringify({ policy, draft: packet.objective, activeSessionId: packet.base.activeSessionId,
       ...(packet.parentSessionId === undefined ? {} : { parentSessionId: packet.parentSessionId }),
@@ -59,14 +65,18 @@ export function parseGoalRouteText(text: string, packet: ContextActionPacket): G
   const raw: unknown = JSON.parse(text)
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Malformed goal route response')
   const value = raw as Record<string, unknown>
-  if (Object.keys(value).length !== 3 || Object.keys(value).some(k => !['goal', 'assignment', 'sessionId'].includes(k))
+  if (Object.keys(value).length !== 4 || Object.keys(value).some(k => !['goal', 'assignment', 'sessionId', 'retention'].includes(k))
     || typeof value.goal !== 'string' || value.goal.trim().length < 1 || Array.from(value.goal).length > 200) {
     throw new Error('Malformed goal route fields')
   }
-  if (value.assignment === 'unknown' && value.sessionId === null) return { goal: value.goal, assignment: 'unknown', sessionId: null }
+  const retention = value.retention
+  if (retention !== 'relevance' && retention !== 'task-owned' && retention !== 'task-lineage' && retention !== 'unknown') {
+    throw new Error('Malformed goal retention policy')
+  }
+  if (value.assignment === 'unknown' && value.sessionId === null) return { goal: value.goal, retention, assignment: 'unknown', sessionId: null }
   const id = [packet.base.activeSessionId, ...packet.candidates.map(c => c.sessionId)].find(candidate => candidate === value.sessionId)
   if ((value.assignment !== 'new' && value.assignment !== 'existing') || id === undefined) throw new Error('Goal route destination is outside its task inventory')
-  return { goal: value.goal, assignment: value.assignment, sessionId: id }
+  return { goal: value.goal, retention, assignment: value.assignment, sessionId: id }
 }
 
 /** Combine an assignment with separately validated Jev Context and supersession judgments.
@@ -75,12 +85,13 @@ export function parseGoalRouteText(text: string, packet: ContextActionPacket): G
  * @param input - Exact fine-grained Context slate.
  * @param packet - Exact native task inventory.
  * @param graph - Frozen ownership graph used by the native compiler.
+ * @param preservation - Complete native base for an explicit preservation policy.
  * @returns Review-only routing and selection; native constraints and explicit approval remain authoritative.
  */
 export function composeGoalContextReview(assignment: GoalRouteAssignment, wire: unknown, input: FastRecommendationInput,
-  packet: ContextActionPacket, graph: ContextFamilyGraph): JevRouteDecision {
-  if (assignment.assignment === 'unknown') return { decision: { include: [], exclude: [], archive: [] },
+  packet: ContextActionPacket, graph: ContextFamilyGraph, preservation?: GoalPreservationScope): JevRouteDecision {
+  if (assignment.assignment === 'unknown' || assignment.retention === 'unknown') return { decision: { include: [], exclude: [], archive: [] },
     route: { intent: 'unknown', intentScore: 0, candidates: packet.candidates.map(candidate => ({
       sessionId: candidate.sessionId, destinationScore: 0, evidenceScore: 0, supersededScore: 0 })) } }
-  return parseJevRouteResponse(wire, input, packet, graph, assignment)
+  return parseJevRouteResponse(wire, input, packet, graph, assignment, preservation)
 }

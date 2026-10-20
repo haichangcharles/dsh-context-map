@@ -27,6 +27,10 @@ describe('portable reviewed scope', () => {
       sourcePlan: { ...plan, included: [{ nodeId: 'side:1', snapshotSeq: 1, position: 1 }] },
       proposal: { ...input.proposal, selection: [{ action: 'include', nodeId: 'root:1', reason: 'Needed', confidence: 'high' }] } }))
       .toEqual(['root:1', 'side:1'])
+    expect(planRouteScope({ ...input, selectedNodeIds: [],
+      parentPlan: { ...plan, included: [{ nodeId: 'side:1', snapshotSeq: 1, position: 1 }] } })).toEqual(['side:1'])
+    expect(planRouteScope({ ...input, selectedNodeIds: ['root:1', 'side:1'],
+      parentPlan: { ...plan, excluded: [{ nodeId: 'root:1', eventSeq: 1 }] } })).toEqual(['side:1'])
   })
 
   it('does not expand a replaced parent source during a sibling fork', () => {

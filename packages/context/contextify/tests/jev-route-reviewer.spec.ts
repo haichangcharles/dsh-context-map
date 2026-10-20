@@ -96,7 +96,7 @@ it('does not delegate low-confidence active-task scope to a nonexistent routing 
 })
 
 it('conditions source judgments on the assigned goal without treating its destination as a whole-task scope', async () => {
-  const assignment: GoalRouteAssignment = { goal: 'Resume the transport plan', assignment: 'existing', sessionId: SessionId('main') }
+  const assignment: GoalRouteAssignment = { goal: 'Resume the transport plan', retention: 'relevance' as const, assignment: 'existing', sessionId: SessionId('main') }
   const body = buildJevRouteRequest(input, route, 'Select relevant sources only.', assignment, graph)
   const different = buildJevRouteRequest(input, route, 'Select relevant sources only.', { ...assignment, goal: 'Compare lodging options' })
   expect(body.state.instructions).toContain(JSON.stringify(assignment))
@@ -104,7 +104,7 @@ it('conditions source judgments on the assigned goal without treating its destin
   expect(body.questions.n0?.instructions).toContain('assigned work item')
   expect(body.questions.e0?.instructions).toContain('assigned work item')
   expect(body.questions.s0?.instructions).toContain('assigned work item')
-  expect(body.questions.wholeTask?.instructions).toContain('The assigned work item is descriptive data, not a preservation request.')
+  expect(body.questions.wholeTask).toBeUndefined()
   expect(body.questions.n0?.instructions).toContain('original goal')
   expect(body.questions.n0?.instructions).not.toContain('other task')
   expect(input.objective).toBe('Resume planning')
@@ -114,10 +114,10 @@ it('conditions source judgments on the assigned goal without treating its destin
 it('uses destination evidence as the assigned existing task and no inherited task evidence for a new item', () => {
   const card = { ...route.candidates[0], nodes: [{ id: 'main:1', role: 'user', content: 'TARGET_TASK_DETAIL', truncated: false }] }
   const packet = { ...route, activeTask: { ...card, sessionId: SessionId('active'), nodes: [{ ...card.nodes[0], content: 'OLD_ACTIVE_DETAIL' }] }, candidates: [card] } as ContextActionPacket
-  const existing = buildJevRouteRequest(input, packet, 'policy', { goal: 'Resume planning', assignment: 'existing', sessionId: SessionId('main') })
+  const existing = buildJevRouteRequest(input, packet, 'policy', { goal: 'Resume planning', retention: 'relevance' as const, assignment: 'existing', sessionId: SessionId('main') })
   expect(existing.questions.e0?.instructions).not.toContain('OLD_ACTIVE_DETAIL')
   expect(existing.questions.e0?.instructions).toContain('TARGET_TASK_DETAIL')
-  const creating = buildJevRouteRequest(input, packet, 'policy', { goal: 'New independent work', assignment: 'new', sessionId: SessionId('main') })
+  const creating = buildJevRouteRequest(input, packet, 'policy', { goal: 'New independent work', retention: 'relevance' as const, assignment: 'new', sessionId: SessionId('main') })
   expect(creating.questions.e0?.instructions).toContain('"currentTask":[]')
   expect(creating.questions.e0?.instructions).not.toContain('OLD_ACTIVE_DETAIL')
 })
@@ -125,13 +125,13 @@ it('uses destination evidence as the assigned existing task and no inherited tas
 it('distinguishes inherited and locally owned sources with identical active flags using native provenance', () => {
   expect(buildJevRouteRequest(input, route, 'policy', undefined, graph)).toEqual(buildJevRouteRequest(input, route, 'policy'))
   const duplicateContent = { ...input, nodes: input.nodes.map(node => ({ ...node, content: 'shared planning fact', active: true })) }
-  const assigned = { goal: 'Resume the main task', assignment: 'existing' as const, sessionId: SessionId('main') }
+  const assigned = { goal: 'Resume the main task', retention: 'relevance' as const, assignment: 'existing' as const, sessionId: SessionId('main') }
   const body = buildJevRouteRequest(duplicateContent, route, 'policy', assigned, graph)
   expect(body.questions.n0?.instructions).toContain(JSON.stringify({ ownerSessionId: 'main', relation: 'assigned-task' }))
   expect(body.questions.n1?.instructions).toContain(JSON.stringify({ ownerSessionId: 'active', relation: 'other-owner' }))
   expect(body.questions.n1?.instructions).toContain('Inherited and other-owner sources remain eligible')
   expect(duplicateContent.nodes.map(node => node.active)).toEqual([true, true])
-  const creating = buildJevRouteRequest(input, route, 'policy', { ...assigned, assignment: 'new' }, graph)
+  const creating = buildJevRouteRequest(input, route, 'policy', { ...assigned, retention: 'relevance' as const, assignment: 'new' }, graph)
   expect(creating.questions.n0?.instructions).toContain(JSON.stringify({ ownerSessionId: 'main', relation: 'new-parent' }))
   const unknown = buildJevRouteRequest(input, route, 'policy', assigned)
   expect(unknown.questions.n0?.instructions).toContain(JSON.stringify({ ownerSessionId: null, relation: 'unknown' }))
@@ -140,7 +140,7 @@ it('distinguishes inherited and locally owned sources with identical active flag
 })
 
 it('counts native provenance in the complete request byte limit', () => {
-  const assigned = { goal: 'Resume planning', assignment: 'existing' as const, sessionId: SessionId('main') }
+  const assigned = { goal: 'Resume planning', retention: 'relevance' as const, assignment: 'existing' as const, sessionId: SessionId('main') }
   const base = buildJevRouteRequest(input, route, '', assigned)
   const policy = 'x'.repeat(131_072 - new TextEncoder().encode(JSON.stringify(base)).byteLength)
   expect(new TextEncoder().encode(JSON.stringify(buildJevRouteRequest(input, route, policy, assigned))).byteLength).toBe(131_072)
@@ -149,8 +149,8 @@ it('counts native provenance in the complete request byte limit', () => {
 
 
 it('asks a known goal only about sources, evidence, supersession and explicit preservation', () => {
-  const assigned = { goal: 'Resume planning', assignment: 'existing' as const, sessionId: SessionId('main') }
+  const assigned = { goal: 'Resume planning', retention: 'relevance' as const, assignment: 'existing' as const, sessionId: SessionId('main') }
   const known = buildJevRouteRequest(input, route, 'policy', assigned, graph)
-  expect(Object.keys(known.questions).sort()).toEqual(['e0', 'n0', 'n1', 's0', 'wholeTask'])
+  expect(Object.keys(known.questions).sort()).toEqual(['e0', 'n0', 'n1', 's0'])
   expect(Object.keys(buildJevRouteRequest(input, route, 'policy').questions)).toHaveLength(9)
 })

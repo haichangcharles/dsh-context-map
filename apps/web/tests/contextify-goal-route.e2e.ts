@@ -51,7 +51,7 @@ it('reviews a new sibling task in the browser, preserves its draft and applies n
       const input = request.messages[0]?.content[0]
       expect(input?.type === 'text' && (JSON.parse(input.text) as { draft: string }).draft).toBe('Arrange transport for the trip.')
       modelCalls += 1
-      const text = JSON.stringify({ goal: 'Arrange transport', assignment: 'new', sessionId: root.id })
+      const text = JSON.stringify({ goal: 'Arrange transport', retention: 'task-lineage', assignment: 'new', sessionId: root.id })
       return (async function* () {
         yield { type: 'block-start', index: 0, blockType: 'text' }
         yield { type: 'text-delta', index: 0, text }
@@ -67,7 +67,7 @@ it('reviews a new sibling task in the browser, preserves its draft and applies n
         state: { instructions: string; graph: { preferenceExamples: unknown[] } }
         questions: Record<string, { type: string; instructions: string; criteria?: Record<string, string> }>
       }
-      expect(body.state.instructions).toContain(JSON.stringify({ goal: 'Arrange transport', assignment: 'new', sessionId: root.id }))
+      expect(body.state.instructions).toContain(JSON.stringify({ goal: 'Arrange transport', retention: 'task-lineage', assignment: 'new', sessionId: root.id }))
       observedExamples = body.state.graph.preferenceExamples
       const questions = Object.values(body.questions)
       expect(questions.some(question => question.instructions.includes(
@@ -75,7 +75,10 @@ it('reviews a new sibling task in the browser, preserves its draft and applies n
       expect(questions.some(question => question.instructions.includes(
         JSON.stringify({ ownerSessionId: hotel.id, relation: 'other-owner' })))).toBe(true)
       return Response.json({ model: 'jev-1.13.0', answers: Object.fromEntries(Object.entries(body.questions).map(([key, q]) => {
-        if (q.type === 'noul') return [key, { type: 'noul', noul: key === 'wholeTask' ? 1 : .05 }]
+        if (q.type === 'noul') {
+          const preserved = key.startsWith('n') && q.instructions.includes('"baseIncluded":true')
+          return [key, { type: 'noul', noul: key === 'wholeTask' || preserved ? 1 : .05 }]
+        }
         const choice: string = q.criteria?.p0 === undefined ? 'active' : 'p0'
         return [key, { type: 'choice', choice, probabilities: { [choice]: 1 } }]
       })) as Record<string, unknown> })
@@ -158,7 +161,7 @@ it('projects confirmed management workflows through the real Loader and removes 
       const block = request.messages[0]?.content[0]
       if (block?.type !== 'text') throw new Error('Expected goal fixture input')
       goalInputs.push(JSON.parse(block.text) as Record<string, unknown>)
-      const text = JSON.stringify({ goal: 'Plan workshop', assignment: 'existing', sessionId: root.id })
+      const text = JSON.stringify({ goal: 'Plan workshop', retention: 'task-lineage', assignment: 'existing', sessionId: root.id })
       return (async function* () {
         yield { type: 'block-start', index: 0, blockType: 'text' }
         yield { type: 'text-delta', index: 0, text }
@@ -171,13 +174,16 @@ it('projects confirmed management workflows through the real Loader and removes 
       if (typeof init?.body !== 'string') throw new Error('Expected Jev fixture input')
       const body = JSON.parse(init.body) as {
         state: { contextActions: Record<string, unknown> }
-        questions: Record<string, { type: string; criteria?: Record<string, string> }>
+        questions: Record<string, { type: string; instructions: string; criteria?: Record<string, string> }>
       }
       expect(Object.keys(body.questions).some(key => ['active', 'newTask', 'parent'].includes(key) || /^task\d+$/.test(key))).toBe(false)
-      expect(body.questions.wholeTask?.type).toBe('noul')
+      expect(body.questions.wholeTask).toBeUndefined()
       jevInputs.push(body.state.contextActions)
       return Response.json({ model: 'jev-1.13.0', answers: Object.fromEntries(Object.entries(body.questions).map(([key, q]) => {
-        if (q.type === 'noul') return [key, { type: 'noul', noul: key === 'wholeTask' ? 1 : .05 }]
+        if (q.type === 'noul') {
+          const preserved = key.startsWith('n') && q.instructions.includes('"baseIncluded":true')
+          return [key, { type: 'noul', noul: key === 'wholeTask' || preserved ? 1 : .05 }]
+        }
         const choice: string = q.criteria?.p0 === undefined ? 'active' : 'p0'
         return [key, { type: 'choice', choice, probabilities: { [choice]: 1 } }]
       })) as Record<string, unknown> })
