@@ -415,6 +415,8 @@ The two core IDs are `ToolCallId` (correlates a tool call with its result; dsh-l
 
 [Contextify](../../packages/context/contextify/README.md) derives `ContextManagementMemory` from confirmed, retraction-filtered native events. Its optional field on `ContextRecommendationProposal.personalization` is the same object supplied to the Context-action packet and goal reviewer; disabled personalization omits it. Source declarations live in [Contextify types](../../packages/context/contextify/src/types.ts).
 
+`ContextActionCandidate` carries bounded task evidence and optional native `workStateSource` (`explicit` or `derived`) alongside `workState`. [Task cards](../../packages/context/contextify/src/task-card.ts) obtain both from the frozen native Session, including the active task; absent metadata remains unknown. The [Goal input](../../packages/context/contextify/src/goal-route.ts) exposes these facts without granting lifecycle or Context authority.
+
 `ContextScopePolicyReview` is an optional server-built publication descriptor on `ContextRecommendationProposal`: a unique review identity/key, categorical preservation mode, original assignment/Session and complete source count. The Client echoes only the displayed key; it does not supply source authority. A matching full changed approval can annotate the existing reviewed event. `ContextScopePolicyExample` retains its owned source Session/event, time, bounded objective, mode and assignment after Undo/reset filtering; at most four enter the enabled action/goal packet and inspectable decision snapshot. Partial or unidentifiable history provides no such label. [Scope-policy implementation](../../packages/context/contextify/src/scope-policy.ts) defines validation and bounds.
 
 | Type | Fields and meaning |

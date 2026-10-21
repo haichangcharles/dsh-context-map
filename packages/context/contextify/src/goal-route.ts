@@ -36,6 +36,9 @@ export function buildGoalRouteInput(packet: ContextActionPacket, policy: string,
       + 'Sharing entities or borrowing facts does not make work the same task. Follow the policy on task granularity and parent placement. '
       + (packet.omittedTaskCount === undefined ? '' : 'The supplied task inventory is partial: other tasks were omitted. '
         + 'Absence from this inventory does not establish a new task. Choose assignment=unknown if deciding new versus existing would depend on an omitted task. ')
+      + (tasks.some(task => task.workState !== undefined)
+        ? 'Lifecycle is separate from Context membership. Derived states are not explicit user choices or organization preferences. Lifecycle evidence does not authorize changing or reopening a task, altering retained Context, or bypassing review. '
+        : '')
       + 'Use confirmed accepted and rejected operations to interpret this user’s organization preferences. Historical IDs never authorize a current destination. '
       + 'For assignment=new, sessionId is the supplied parent for a new child; for assignment=existing, it is the supplied destination. '
       + 'If the task, evidence or organization preference is ambiguous, choose assignment=unknown and sessionId=null. '
@@ -50,6 +53,8 @@ export function buildGoalRouteInput(packet: ContextActionPacket, policy: string,
       ...(packet.omittedTaskCount === undefined ? {} : { omittedTaskCount: packet.omittedTaskCount }),
       ...(packet.parentSessionId === undefined ? {} : { parentSessionId: packet.parentSessionId }),
       tasks: tasks.map(task => ({ sessionId: task.sessionId, depth: task.depth,
+        ...(task.workState === undefined ? {} : { workState: task.workState }),
+        ...(task.workState === undefined || task.workStateSource === undefined ? {} : { workStateSource: task.workStateSource }),
         ...('parentSessionId' in task ? { parentSessionId: task.parentSessionId } : {}),
         evidence: task.nodes.map(node => ({ id: node.id, role: node.role,
           content: Array.from(node.content).slice(0, 600).join(''),

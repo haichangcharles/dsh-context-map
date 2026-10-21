@@ -168,3 +168,31 @@ it('composes categorical native destinations without individual provider scores'
   expect(exact.system).toContain('without individual source exceptions')
   expect(buildGoalRouteInput(packet, 'Preserve the whole task.').system).not.toContain('without individual source exceptions')
 })
+
+it('exposes lifecycle as factual task evidence without granting state authority', () => {
+  for (const exact of [false, true]) {
+    const active = packet.activeTask!
+    const known = { ...packet, activeTask: { ...active, workState: 'completed', workStateSource: 'explicit' },
+      candidates: packet.candidates.map(task => ({ ...task, workState: 'parked', workStateSource: 'derived' })) } as ContextActionPacket
+    const result = buildGoalRouteInput(known, '', exact)
+    expect((JSON.parse(result.userText) as { tasks: unknown[] }).tasks).toMatchObject([
+      { sessionId: 'hotel', workState: 'completed', workStateSource: 'explicit' },
+      { sessionId: 'main', workState: 'parked', workStateSource: 'derived' },
+    ])
+    expect(result.system).toContain('Lifecycle is separate from Context membership')
+    expect(result.system).toContain('Derived states are not explicit user choices or organization preferences')
+    expect(result.system).toContain('does not authorize changing or reopening a task')
+    const reopened = { ...known, activeTask: { ...active, workState: 'open', workStateSource: 'derived' } } as ContextActionPacket
+    expect(buildGoalRouteInput(reopened, '', exact).userText).not.toBe(result.userText)
+    expect(() => parseGoalRouteText(JSON.stringify({ ...assignment, workState: 'open' }), known)).toThrow()
+  }
+  const stateOnly = { ...packet, activeTask: { ...packet.activeTask!, workState: 'parked' } } as ContextActionPacket
+  expect((JSON.parse(buildGoalRouteInput(stateOnly, '').userText) as { tasks: unknown[] }).tasks[0]).toHaveProperty('workState', 'parked')
+  expect((JSON.parse(buildGoalRouteInput(stateOnly, '').userText) as { tasks: unknown[] }).tasks[0]).not.toHaveProperty('workStateSource')
+  const ordinary = buildGoalRouteInput(packet, '')
+  expect(ordinary.system).not.toContain('Lifecycle is separate')
+  expect((JSON.parse(ordinary.userText) as { tasks: unknown[] }).tasks[0]).not.toHaveProperty('workState')
+  const orphan = { ...packet, activeTask: { ...packet.activeTask!, workStateSource: 'explicit' },
+    candidates: packet.candidates.map(task => ({ ...task, workStateSource: 'derived' })) } as ContextActionPacket
+  expect(buildGoalRouteInput(orphan, '')).toEqual(ordinary)
+})

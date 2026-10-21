@@ -394,3 +394,40 @@ it('allows explicitly reviewed borrowed child Context after Return and keeps own
     expect(provenance[1]?.some(text => text.includes(JSON.stringify({ ownerSessionId: child.id, relation: 'assigned-task' })))).toBe(true)
   } finally { fetcher.mockRestore(); await b.close() }
 })
+
+it('logs native lifecycle changes and derived reopening without changing Context or learning a policy', async () => {
+  const b = await lineageHarness(), fetcher = vi.spyOn(globalThis, 'fetch')
+  try {
+    append(b.parent.session, 'Plan the shared trip.')
+    const child = await fork(b, b.parent, 'goal-lifecycle-child')
+    append(child.session, 'Plan lodging independently.')
+    configure(b, '{"goal":"Unidentified work","retention":"unknown","assignment":"unknown","sessionId":null}', false, 'goal-model-native')
+    fetcher.mockRejectedValue(new Error('Lifecycle evidence requires no Jev request'))
+    const before = b.ctx.contextify.get(child).plan
+    const compiled = () => compileContextify({ session: child.session, turn: child.session.seq + 1, step: 1 }).messages
+    const original = compiled()
+    for (const [id, state] of [[b.parent.id, 'completed'], [child.id, 'parked']] as const) {
+      const page = await b.ctx.contextify.familyPage(child)
+      await b.ctx.contextify.setWorkState(child, id, state, page.revision, 'contextify-client')
+    }
+    const captured = () => {
+      const event = child.session.snapshotEvents().findLast(e => e.type === 'contextify/recommendation-request')
+      if (event?.type !== 'contextify/recommendation-request') throw new Error('Goal request missing')
+      return JSON.parse(event.data.userText) as { tasks: { sessionId: string; workState: string; workStateSource: string }[] }
+    }
+    expect((await review(b, child)).route).toBeUndefined()
+    expect(captured().tasks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sessionId: b.parent.id, workState: 'completed', workStateSource: 'explicit' }),
+      expect.objectContaining({ sessionId: child.id, workState: 'parked', workStateSource: 'explicit' }),
+    ]))
+    expect(b.ctx.contextify.get(child).plan).toEqual(before)
+    expect(compiled()).toEqual(original)
+    append(child.session, 'Continue the lodging task.')
+    await review(b, child)
+    expect(captured().tasks.find(task => task.sessionId === child.id)).toMatchObject({ workState: 'open', workStateSource: 'derived' })
+    expect((await b.ctx.contextify.stewardProfile(child)).scopePolicyExamples).toEqual([])
+    expect(b.ctx.contextify.get(child).plan).toEqual(before)
+    expect(fetcher).not.toHaveBeenCalled()
+    expect(b.adapter.requests).toHaveLength(2)
+  } finally { fetcher.mockRestore(); await b.close() }
+})

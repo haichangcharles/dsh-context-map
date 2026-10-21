@@ -13,6 +13,7 @@ import { lexicalTokens, jaccardOverlap } from './lexical-tokens.ts'
  */
 export function buildTaskCard(candidate: ContextRouteCandidate, graph: ContextFamilyGraph,
   contents: Readonly<Record<string, string>>, objective: string): ContextActionCandidate {
+  const session = graph.sessions.find(item => item.id === candidate.sessionId)
   const owned = graph.nodes.filter(node => node.owner.sessionId === candidate.sessionId)
   const text = (node: ContextFamilyGraph['nodes'][number]) => contents[node.id] ?? node.preview
   const entry = owned.find(node => node.role === 'user' && lexicalTokens(text(node)).size >= 3)
@@ -30,5 +31,8 @@ export function buildTaskCard(candidate: ContextRouteCandidate, graph: ContextFa
       content, truncated: content.length < exact.length })
   })
   const label = entry === undefined ? candidate.label : Array.from(text(entry).replace(/\s+/g, ' ').trim()).slice(0, 100).join('')
-  return Object.freeze({ ...candidate, label, nodes: Object.freeze(nodes) })
+  return Object.freeze({ ...candidate,
+    ...(session?.workState === undefined ? {} : { workState: session.workState }),
+    ...(session?.workState === undefined || session.workStateSource === undefined ? {} : { workStateSource: session.workStateSource }),
+    label, nodes: Object.freeze(nodes) })
 }

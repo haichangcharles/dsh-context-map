@@ -17,7 +17,7 @@ function append(session: Session, text: string) {
   session.append('turn/end', { turn, reason: { kind: 'completed' } })
 }
 
-it('logs omitted task count through the real Loader without granting omitted routes', async () => {
+it('logs partial inventory and native lifecycle through the real Loader without granting routes', async () => {
   const scaffold = await launchWebScaffold()
   try {
     const settings = scaffold.ctx.contextify as unknown as { promptSettings: () => ContextifyPromptSettings }
@@ -45,6 +45,10 @@ it('logs omitted task count through the real Loader without granting omitted rou
         yield { type: 'finish', reason: { kind: 'stop' } }
       })()
     }, { global: true, prepend: true })
+    for (const [id, state] of [[root.id, 'completed'], [active.id, 'parked']] as const) {
+      const page = await scaffold.ctx.contextify.familyPage(active)
+      await scaffold.ctx.contextify.setWorkState(active, id, state, page.revision, 'contextify-client')
+    }
     const page = await scaffold.ctx.contextify.familyPage(active)
     const before = scaffold.ctx.contextify.get(active).plan
     const result = await scaffold.ctx.contextify.recommend(active,
@@ -55,6 +59,10 @@ it('logs omitted task count through the real Loader without granting omitted rou
     const input = JSON.parse(requests[0]!.data.userText) as { omittedTaskCount: number; tasks: unknown[] }
     expect(input.omittedTaskCount).toBe(1)
     expect(input.tasks).toHaveLength(9)
+    expect(input.tasks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sessionId: root.id, workState: 'completed', workStateSource: 'explicit' }),
+      expect.objectContaining({ sessionId: active.id, workState: 'parked', workStateSource: 'explicit' }),
+    ]))
     expect(requests[0]!.data.system).toContain('The supplied task inventory is partial')
     expect(result.route).toBeUndefined()
     expect(result.selection).toEqual([])

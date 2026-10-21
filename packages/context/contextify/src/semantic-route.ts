@@ -26,6 +26,8 @@ export interface ContextActionNode {
 
 /** A native Session candidate with bounded, inspectable source summaries. */
 export interface ContextActionCandidate extends ContextRouteCandidate {
+  /** Native lifecycle provenance; absence does not establish an explicit user choice. */
+  readonly workStateSource?: ContextFamilyGraph['sessions'][number]['workStateSource']
   readonly nodes: readonly ContextActionNode[]
 }
 
