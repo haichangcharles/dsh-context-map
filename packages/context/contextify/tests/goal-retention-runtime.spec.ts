@@ -41,6 +41,32 @@ async function review(b: Harness, agent: Harness['parent'], draft = 'Keep only t
     planRevision: b.ctx.contextify.get(agent).plan.revision }, draft, 'fast', true)
 }
 
+it('keeps a pending current turn after public sibling imports and exclusions', async () => {
+  const b = await lineageHarness()
+  try {
+    const first = append(b.parent.session, 'REMOVE_FIRST')
+    const second = append(b.parent.session, 'REMOVE_SECOND')
+    append(b.parent.session, 'RETAIN_ANCESTOR')
+    const child = await fork(b, b.parent, 'current-tail-child')
+    const imported = append(b.parent.session, 'BORROWED_LATER')
+    const turn = child.session.seq + 1
+    child.session.append('turn/start', { turn })
+    child.session.append('user/message', createUserMessage({ source: { kind: 'user' },
+      content: [{ type: 'text', text: 'CURRENT_PENDING' }] }), { surfaceOp: 'append' })
+    const ref = (id: string) => ({ sessionId: b.parent.id, seq: SessionSeq(Number(id.split(':').at(-1))) })
+    await b.ctx.contextify.setNodeModes(child, { revision: b.ctx.contextify.get(child).plan.revision }, [
+      { node: ref(first), mode: 'exclude' }, { node: ref(second), mode: 'exclude' },
+      { node: ref(imported), mode: 'include' },
+    ])
+    const compiled = compileContextify({ session: child.session, turn, step: 1 })
+    const users = compiled.messages.filter(message => message.role === 'user')
+      .map(message => message.content.flatMap(block => block.type === 'text' ? [block.text] : []).join(''))
+    expect(users).toEqual(['RETAIN_ANCESTOR', 'BORROWED_LATER', 'CURRENT_PENDING'])
+    expect(compiled.messages.at(-1)?.content).toEqual([{ type: 'text', text: 'CURRENT_PENDING' }])
+    expect(b.adapter.requests).toHaveLength(0)
+  } finally { await b.close() }
+})
+
 it.each(['continue', 'return'] as const)('preserves a complete >32-source owned scope on %s', async (operation) => {
   const b = await lineageHarness(), fetcher = vi.spyOn(globalThis, 'fetch')
   try {

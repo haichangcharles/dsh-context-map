@@ -32,7 +32,7 @@ Locate in Chat 通过原生 Session ID 与持久消息序号委托给 conversati
 
 ## Append-only 兼容
 
-Context 修改不会 edit 或 delete transcript event。Include 写入 `context/compiler-snapshot`；plan 修改写入完整、带 revision 的 `contextify/plan` event。`contextify@3` compiler 在请求时选择 model message、恢复 current-turn message，并保持 Harness 普通 surface 不变。
+Context 修改不会 edit 或 delete transcript event。Include 写入 `context/compiler-snapshot`；plan 修改写入完整、带 revision 的 `contextify/plan` event。`contextify@3` compiler 在请求时选择 model message、恢复 current-turn message，并保持 Harness 普通 surface 不变。排除与 replacement 映射之后，历史 Include 的插入位置以当前对话轮的起点为上界，避免缩短历史前缀后把导入内容排到问题后面或插入当前工具交互内部；持久位置不会被重写，也不会按物理追加序号重新排序消息。
 
 ## 测试
 

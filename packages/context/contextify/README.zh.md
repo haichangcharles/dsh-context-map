@@ -111,7 +111,7 @@ Fast 默认使用当前聊天模型。将 `fastDecisionProvider` 设为 `jev` �
 
 #### 模型看到的内容
 
-Harness 原始 transcript 仍然是 append-only。Contextify 按现有顺序选择 active-family 消息、移除显式 exclusion、替换已确认的 placeholder snapshot、从持久 `context/compiler-snapshot` event 读取已 include 的 sibling 消息，并恢复当前 turn 的消息，因此旧 plan 无法隐藏正在回答的请求。
+Harness 原始 transcript 仍然是 append-only。Contextify 按现有顺序选择 active-family 消息、移除显式 exclusion、替换已确认的 placeholder snapshot、从持久 `context/compiler-snapshot` event 读取已 include 的 sibling 消息，并恢复当前 turn 的消息，因此旧 plan 无法隐藏正在回答的请求。历史快照位于当前轮第一条对话消息之前，该消息的 replacement snapshot 也受此边界保护。System 前缀和当前 user/assistant/tool 序列保持原顺序；没有当前轮消息时，持久插入位置仍按普通规则解释。
 
 #### Token 影响
 

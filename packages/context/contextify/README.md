@@ -111,7 +111,7 @@ Explicitly carrying Context with Navigate or Return rebases the complete approve
 
 #### What the model sees
 
-The ordinary Harness transcript remains append-only. Contextify selects active-family messages in their existing order, removes explicit exclusions, substitutes confirmed placeholder snapshots, reads included sibling messages from durable `context/compiler-snapshot` events, and restores current-turn messages so an old plan cannot hide the request being answered.
+The ordinary Harness transcript remains append-only. Contextify selects active-family messages in their existing order, removes explicit exclusions, substitutes confirmed placeholder snapshots, reads included sibling messages from durable `context/compiler-snapshot` events, and restores current-turn messages so an old plan cannot hide the request being answered. Historical snapshots stay before the first current-turn conversational message, including a replacement snapshot for that message. System prefixes and the current user/assistant/tool sequence retain their order; without current-turn messages, stored insertion positions retain their ordinary meaning.
 
 #### Token effect
 

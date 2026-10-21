@@ -360,11 +360,14 @@ function insertSnapshots(
   included: readonly ContextIncludedNode[],
   replacements: ReadonlyMap<string, ContextReplacementNode>,
   session: Session,
+  currentSeqs: ReadonlySet<number>,
 ): void {
   const ordered = [...included].sort((left, right) =>
     left.position - right.position || left.snapshotSeq - right.snapshotSeq)
   const systemPrefix = eventSeqs.findIndex(seq => session.eventAt(SessionSeq(seq))?.type !== 'system/message')
   const firstContent = systemPrefix < 0 ? eventSeqs.length : systemPrefix
+  const currentStart = eventSeqs.findIndex(seq => currentSeqs.has(seq))
+  let historyEnd = currentStart < 0 ? eventSeqs.length : currentStart
   let samePositionOffset = 0
   let previousPosition = -1
   for (const item of ordered) {
@@ -376,7 +379,8 @@ function insertSnapshots(
     if (eventSeqs.includes(selectedSeq)) throw new Error('Contextify included snapshot is duplicated')
     samePositionOffset = item.position === previousPosition ? samePositionOffset + 1 : 0
     previousPosition = item.position
-    eventSeqs.splice(Math.min(Math.max(firstContent, item.position) + samePositionOffset, eventSeqs.length), 0, selectedSeq)
+    eventSeqs.splice(Math.min(Math.max(firstContent, item.position) + samePositionOffset, historyEnd), 0, selectedSeq)
+    historyEnd += 1
   }
 }
 
@@ -467,7 +471,10 @@ export function compileContextify(request: {
     .filter(seq => selected.has(seq))
     .map(seq => activeReplacementBySeq.get(seq) ?? seq)
   if (new Set(eventSeqs).size !== eventSeqs.length) throw new Error('Contextify replacement snapshot is duplicated')
-  insertSnapshots(eventSeqs, plan.included, replacements, request.session)
+  const currentSeqs = new Set(natural
+    .filter(seq => turns.get(seq) === request.turn)
+    .map(seq => activeReplacementBySeq.get(seq) ?? seq))
+  insertSnapshots(eventSeqs, plan.included, replacements, request.session, currentSeqs)
   const messages = eventSeqs.map(seq => selectedMessage(request.session, seq))
   return Object.freeze({
     eventSeqs: Object.freeze(eventSeqs),
