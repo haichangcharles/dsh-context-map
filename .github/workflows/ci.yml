@@ -315,6 +315,14 @@ jobs:
 
       - name: Run compatibility, snapshot, and artifact gates
         run: pnpm run check:ci:consumers
+      - name: Retain isolated Chat restore search failure screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chat-restore-search-failure
+          path: .artifacts/web-e2e-chat-scroll-restore-composer.png
+          if-no-files-found: ignore
+          retention-days: 3
 
 
   node-compat:

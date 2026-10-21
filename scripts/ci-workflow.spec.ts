@@ -8,6 +8,23 @@ const runnerPrivatePnpmDestination = /^\$\{\{ runner\.temp \}\}\/setup-pnpm-\$\{
 const nativeWindowsPnpmDestination = '${{ runner.temp }}/setup-pnpm-js-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}'
 
 describe('CI workflow', () => {
+  it('retains the isolated Chat search failure screenshot in both browser lanes', () => {
+    for (const [file, jobName] of [['ci.yml', 'node-24-consumers'], ['e2e.yml', 'e2e']] as const) {
+      const job = workflowJob(loadWorkflow('.github/workflows/' + file), jobName)
+      expect(job.steps).toContainEqual({
+        name: 'Retain isolated Chat restore search failure screenshot',
+        if: 'failure()',
+        uses: 'actions/upload-artifact@v4',
+        with: {
+          name: 'chat-restore-search-failure',
+          path: '.artifacts/web-e2e-chat-scroll-restore-composer.png',
+          'if-no-files-found': 'ignore',
+          'retention-days': 3,
+        },
+      })
+    }
+  })
+
   it.each(['ci.yml', 'ci-master.yml', 'e2e.yml', 'release.yml', 'release-vendor.yml'])(
     '%s cancels superseded validation runs without crossing workflow or ref boundaries', (name) => {
       const workflow = loadWorkflow('.github/workflows/' + name)

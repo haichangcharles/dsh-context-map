@@ -273,6 +273,12 @@ async function loadedFlowRows(page: Page): Promise<number> {
 async function openSeed(page: Page, fixture: ChatScrollFixture, tailMarker?: string): Promise<void> {
   // Search collapsed into a header action; expand it before filling.
   const searchButton = page.getByRole('button', { name: 'Search sessions' })
+  // A collapsing sidebar keeps its wide controls mounted for the fade.
+  // Wait for the rail before the one expanding gesture; filling the fading
+  // wide input would let the pending collapse unmount an accepted query.
+  if (await page.locator('[data-sidebar-collapsed]').count() > 0) {
+    await expect.poll(() => searchButton.getAttribute('aria-expanded'), { timeout: 10_000 }).toBeNull()
+  }
   if (await searchButton.getAttribute('aria-expanded') !== 'true') await searchButton.click()
   const search = page.getByRole('textbox', { name: 'Search sessions...', exact: true })
   // Cold summaries initially show the temporary workspace basename, so the
@@ -296,6 +302,11 @@ async function openSeed(page: Page, fixture: ChatScrollFixture, tailMarker?: str
         return {
           inputs: inputs.map(input => ({ matchesExpected: input.value === expected, length: input.value.length,
             visible: input.getBoundingClientRect().width > 0 && getComputedStyle(input).visibility !== 'hidden' })),
+          sidebarCollapsed: document.querySelector('[data-sidebar-collapsed]') !== null,
+          searchButtons: document.querySelectorAll('[aria-label="Search sessions"]').length,
+          sidebarFading: (document.querySelector('[aria-label="Search sessions"]')?.closest('[class*="fading"]') ?? null) !== null,
+          rightbarColumns: document.querySelectorAll('[data-rightbar-col]').length,
+          rightbarOpen: document.querySelectorAll('[data-sidebar-right-open]').length,
           searchExpanded: document.querySelector('[aria-label="Search sessions"]')?.getAttribute('aria-expanded') ?? null,
           searchTrees: trees.length,
           resultRows: trees.reduce((sum, tree) => sum + tree.querySelectorAll('[role="treeitem"]').length, 0),

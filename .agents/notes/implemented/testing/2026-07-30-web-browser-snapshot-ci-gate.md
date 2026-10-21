@@ -22,6 +22,10 @@ For pull requests, the gate runs only in the Linux consumer job: these scenarios
 
 Completed local replays measured the six-worker browser command at about 65–71 seconds. A twelve-worker comparison completed in about 50 seconds, so halving the browser worker budget adds about 15–20 seconds rather than doubling wall time. The gate scheduler starts browser snapshots as soon as `built-package-invariants` succeeds and runs independent gates concurrently, so it needs neither a dedicated job timeout nor a manual YAML ordering rule.
 
+The Chat restore/composer fixture waits for the actual collapsed rail Search control before its single expanding gesture. During the sidebar fade, the wide input can still accept a query that the pending collapse then unmounts; frame-only animation completion does not prove that the sidebar's separate settle timer finished. This is a state barrier, not a search retry or a longer result timeout. The original one-result assertion and scroll/composer checks remain authoritative.
+
+Both the consumer job and the independent E2E job retain only this fixture's existing `web-e2e-chat-scroll-restore-composer.png` on failure, for three days. Its structural error receipt distinguishes frame collapse, fading wide controls, missing input and backend pending/empty/error states without dumping arbitrary page text or authentication state. A controlled page-local timing reproduction establishes the readiness race; it does not attest the exact hosted callback or explain every earlier search failure.
+
 ## Alternatives considered
 
 **Continue requiring only local runs.** Rejected: execution depends on developer memory, which is precisely why stale goldens drift across PRs, and cannot guarantee that the PR introducing a behavior change carries its own expected-output diff.
