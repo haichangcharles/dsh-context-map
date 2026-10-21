@@ -179,6 +179,241 @@ function branchDecisionAdapter(text: string): LlmAdapter {
 }
 
 describe('ContextifyService native Session family', () => {
+  it('does not turn past task-specific chat exclusions into a global rule to remove new constraints', async () => {
+    const { ctx, start } = await harness()
+    try {
+      const old = ctx.sessions.create(SessionId('chat-calibration-old-family'))
+      const prior = start(old).agent
+      for (let i = 1; i <= 4; i += 1) {
+        const turn = appendClosedTurn(old, i, `Old project correction ${String(i)}`, 'obsolete answer')
+        await ctx.contextify.setNodeMode(prior, { revision: ctx.contextify.get(prior).plan.revision },
+          { sessionId: old.id, seq: turn.userSeq }, 'exclude', 'contextify-client')
+      }
+      const current = ctx.sessions.create(SessionId('chat-calibration-current-family'))
+      const agent = start(current).agent
+      appendClosedTurn(current, 1, 'Keep the new website accessible', 'The current plan')
+      ctx.llm.registerAdapter(['mock'], branchDecisionAdapter('{"include":[],"exclude":[],"archive":[]}'))
+      const page = await ctx.contextify.familyPage(agent)
+      const proposal = await ctx.contextify.recommend(agent, { planRevision: 1, graphRevision: page.revision,
+        activeSessionId: current.id }, 'Draft the new accessible website plan', 'fast')
+      expect(proposal.selection).toEqual([])
+      expect(proposal.personalization?.examples.length).toBeGreaterThan(0)
+      expect(proposal.personalization?.calibrationSources).toEqual([])
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it('captures current settings after the initial family read', async () => {
+    const { ctx, start } = await harness()
+    try {
+      const session = ctx.sessions.create(SessionId('settings-during-family-read'))
+      const agent = start(session).agent
+      appendClosedTurn(session, 1, 'writing task', 'draft')
+      const page = await ctx.contextify.familyPage(agent)
+      const service = ctx.contextify as unknown as {
+        loadFamily: (...args: unknown[]) => Promise<unknown>
+        promptSettings: () => ContextifyPromptSettings
+      }
+      const read = service.loadFamily.bind(service)
+      let enabled = true
+      service.promptSettings = () => ({ ...CONTEXTIFY_DEFAULT_SETTINGS, personalizationEnabled: enabled })
+      vi.spyOn(service, 'loadFamily').mockImplementationOnce(async (...args) => {
+        enabled = false
+        return read(...args)
+      })
+      const proposal = await ctx.contextify.recommend(agent, { planRevision: 1, graphRevision: page.revision, activeSessionId: session.id }, 'writing task', 'local')
+      expect(proposal.personalization?.enabled).toBe(false)
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it('cancels an in-flight Jev decision when the user disables personalization', async () => {
+    const { ctx, start } = await harness()
+    const fetcher = vi.spyOn(globalThis, 'fetch')
+    try {
+      await ctx.plugin(ContextTestSettings)
+      await ctx.settings.update('contextify', { fastDecisionProvider: 'jev' })
+      ctx.provide('credentials', { resolve: async () => ({ value: 'fixture-only-credential' }) } as never)
+      const session = ctx.sessions.create(SessionId('jev-settings-cancel'))
+      const agent = start(session).agent
+      appendClosedTurn(session, 1, 'writing task', 'draft')
+      fetcher.mockImplementation(async (_url, init) => new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => { reject(new Error('aborted')) }, { once: true })
+      }))
+      const page = await ctx.contextify.familyPage(agent)
+      const result = ctx.contextify.recommend(agent, { planRevision: 1, graphRevision: page.revision, activeSessionId: session.id }, 'writing task', 'fast')
+      const assertion = expect(result).rejects.toMatchObject({ code: 'CONTEXTIFY_RECOMMENDATION_CANCELLED' })
+      await vi.waitFor(() => { expect(fetcher).toHaveBeenCalledTimes(1) })
+      await ctx.settings.update('contextify', { personalizationEnabled: false })
+      await assertion
+    } finally { fetcher.mockRestore(); await ctx.fiber.dispose() }
+  })
+
+  it.each([false, true])('keeps Branch review available without personal feedback (catalog failure %s)', async (failCatalog) => {
+    const { ctx, start } = await harness()
+    try {
+      const session = ctx.sessions.create(SessionId('branch-personal-off'))
+      const agent = start(session, { provider: 'mock', model: 'mock' }).agent
+      await ctx.plugin(ContextTestSettings)
+      await ctx.settings.update('contextify', { automaticBranchReview: true, personalizationEnabled: false })
+      const adapter = new MockAdapter(['hang', textResponse('{"action":"keep","confidence":0.9,"reason":"Continue"}')])
+      ctx.llm.registerAdapter(['mock'], adapter)
+      appendClosedTurn(session, 1, 'Plan the website', 'A plan')
+      await vi.waitFor(() => { expect(adapter.requests).toHaveLength(1) })
+      await ctx.settings.update('contextify', { automaticBranchReview: false })
+      await vi.waitFor(() => { expect(adapter.requests[0]?.signal?.aborted).toBe(true) })
+      await ctx.settings.update('contextify', { automaticBranchReview: true })
+      if (failCatalog) {
+        const original = ctx.sessionPersistence.list.bind(ctx.sessionPersistence)
+        vi.spyOn(ctx.sessionPersistence, 'list').mockImplementation(original)
+          .mockImplementationOnce(original).mockRejectedValueOnce(new Error('Profile catalog unavailable'))
+      }
+      const turn = appendClosedTurn(session, 2, 'Continue the website', 'Updated plan')
+      await vi.waitFor(() => {
+        expect(session.snapshotEvents().findLast(event => event.type === 'contextify/branch-review')?.data)
+          .toMatchObject({ suggestion: null, turnEndSeq: turn.boundary })
+      })
+      expect(ctx.contextify.get(agent).plan.revision).toBe(1)
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it('cancels an automatic Branch classifier when policy memory is reset', async () => {
+    const { ctx, start } = await harness()
+    try {
+      await ctx.plugin(ContextTestSettings)
+      await ctx.settings.update('contextify', { automaticBranchReview: true })
+      const session = ctx.sessions.create(SessionId('branch-policy-reset-cancel'))
+      const agent = start(session).agent
+      const adapter = new MockAdapter(['hang'])
+      ctx.llm.registerAdapter(['mock'], adapter)
+      appendClosedTurn(session, 1, 'Plan the website', 'A plan')
+      await vi.waitFor(() => { expect(adapter.requests).toHaveLength(1) })
+      await ctx.contextify.resetPolicy(agent, 'contextify-client')
+      await vi.waitFor(() => { expect(adapter.requests[0]?.signal?.aborted).toBe(true) })
+      expect(session.snapshotEvents().some(event => event.type === 'contextify/branch-review')).toBe(false)
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it('runs opt-in Jev through native Context review and logs its exact request before dispatch', async () => {
+    const { ctx, start } = await harness()
+    const fetcher = vi.spyOn(globalThis, 'fetch')
+    try {
+      ctx.provide('credentials', { resolve: async () => ({ value: 'fixture-only-credential' }) } as never)
+      ;(ctx.contextify as unknown as { promptSettings: () => ContextifyPromptSettings }).promptSettings = () => ({
+        ...CONTEXTIFY_DEFAULT_SETTINGS, fastDecisionProvider: 'jev',
+      })
+      const session = ctx.sessions.create(SessionId('jev-native-reviewed'))
+      const agent = start(session).agent
+      const turn = appendClosedTurn(session, 1, 'current task', 'obsolete draft')
+      fetcher.mockImplementation(async (_url, init) => {
+        expect(session.snapshotEvents().at(-1)?.type).toBe('contextify/recommendation-request')
+        expect(typeof init?.body).toBe('string')
+        const body: unknown = JSON.parse(init?.body as string)
+        expect(JSON.stringify(body)).not.toContain('fixture-only-credential')
+        return Response.json({ model: 'jev-1.13.0', answers: { n0: { type: 'noul', noul: 0.9 }, n1: { type: 'noul', noul: 0.1 },
+          active: { type: 'noul', noul: 1 }, newTask: { type: 'noul', noul: 0 }, wholeTask: { type: 'noul', noul: 0 },
+          parent: { type: 'choice', choice: 'active', probabilities: { active: 1 } } }, usage: { input_tokens: 100, output_tokens: 20 } })
+      })
+      const page = await ctx.contextify.familyPage(agent)
+      const proposal = await ctx.contextify.recommend(agent, { planRevision: 1, graphRevision: page.revision, activeSessionId: session.id }, 'current task', 'fast')
+      expect(proposal.selection).toContainEqual(expect.objectContaining({ nodeId: `${session.id}:${String(turn.userSeq + 1)}`, action: 'exclude' }))
+      expect(proposal.personalization?.reviewer).toBe('jev')
+      expect(fetcher).toHaveBeenCalledTimes(1)
+    } finally { fetcher.mockRestore(); await ctx.fiber.dispose() }
+  })
+
+  it('uses reset-aware choices from another native family in the live Fast decision', async () => {
+    const { ctx, start } = await harness()
+    try {
+      const old = ctx.sessions.create(SessionId('personal-case-old'))
+      const prior = start(old).agent
+      const turn = appendClosedTurn(old, 1, 'Plan the launch; exclude the outdated budget', 'outdated budget')
+      await ctx.contextify.setNodeMode(prior, { revision: 1 }, { sessionId: old.id, seq: turn.userSeq }, 'exclude', 'contextify-client')
+      const current = ctx.sessions.create(SessionId('personal-case-current'))
+      const agent = start(current).agent
+      appendClosedTurn(current, 1, 'Plan the next launch', 'current budget')
+      ctx.llm.registerAdapter(['mock'], branchDecisionAdapter('{"include":[],"exclude":[],"archive":[]}'))
+      const recommend = async () => {
+        const page = await ctx.contextify.familyPage(agent)
+        return ctx.contextify.recommend(agent, { planRevision: 1, graphRevision: page.revision, activeSessionId: current.id }, 'Plan the launch', 'fast')
+      }
+      const proposal = await recommend()
+      const request = current.snapshotEvents().findLast(event => event.type === 'contextify/recommendation-request')!
+      expect(request.type).toBe('contextify/recommendation-request')
+      if (request.type !== 'contextify/recommendation-request') throw new Error('missing request')
+      expect(request.data.userText).toContain('outdated budget')
+      expect(proposal.personalization?.examples).toContainEqual(expect.objectContaining({ action: 'exclude', sourceSessionId: old.id }))
+      await ctx.contextify.resetPolicy(agent, 'contextify-client')
+      const reset = await recommend()
+      expect(reset.personalization?.examples).toEqual([])
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it('reuses ordered multi-node plans across families and removes them on reset', async () => {
+    const { ctx, start } = await harness()
+    try {
+      let reply = '{"include":[],"exclude":[],"archive":[]}'
+      const adapter = new MockAdapter([])
+      adapter.stream = async function * () { yield * textResponse(reply) }
+      ctx.llm.registerAdapter(['mock'], adapter)
+      for (const id of ['plan-old-a', 'plan-old-b']) {
+        const session = ctx.sessions.create(SessionId(id))
+        const agent = start(session).agent
+        const turn = appendClosedTurn(session, 1, 'Prior writing scope', 'An obsolete draft')
+        const page = await ctx.contextify.familyPage(agent)
+        const nodeIds = page.records.map(record => record.id)
+        expect(nodeIds).toHaveLength(2)
+        reply = JSON.stringify({ include: [], archive: [], exclude: nodeIds.map(nodeId => ({ nodeId, reason: 'Old scope' })) })
+        await ctx.contextify.recommend(agent, { planRevision: 1, graphRevision: page.revision, activeSessionId: session.id }, 'Release this old scope', 'fast')
+        await ctx.contextify.setNodeModes(agent, { revision: 1 }, [
+          { node: { sessionId: session.id, seq: turn.userSeq }, mode: 'exclude' },
+          { node: { sessionId: session.id, seq: SessionSeq(turn.userSeq + 1) }, mode: 'exclude' },
+        ], page.revision, 'contextify-client')
+      }
+      const current = ctx.sessions.create(SessionId('plan-current'))
+      const agent = start(current).agent
+      appendClosedTurn(current, 1, 'Current writing', 'Current draft')
+      reply = '{"include":[],"exclude":[],"archive":[]}'
+      const review = async () => {
+        const page = await ctx.contextify.familyPage(agent)
+        return ctx.contextify.recommend(agent, { planRevision: 1, graphRevision: page.revision, activeSessionId: current.id }, 'Current writing', 'fast')
+      }
+      const proposal = await review()
+      expect(proposal.personalization?.examples.length).toBeGreaterThan(0)
+      const request = current.snapshotEvents().findLast(event => event.type === 'contextify/recommendation-request')!
+      if (request.type !== 'contextify/recommendation-request') throw new Error('missing request')
+      const packet = JSON.parse(request.data.userText.split('Conversation graph JSON:\n')[1]!) as FastRecommendationInput
+      expect(packet.planExamples.map(item => item.sourceSessionId)).toEqual(['plan-old-a', 'plan-old-b'])
+      await review()
+      await ctx.contextify.resetPolicy(agent, 'contextify-client')
+      expect((await review()).personalization?.examples).toEqual([])
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it('disables personal decision evidence and calibration without changing current candidates', async () => {
+    const { ctx, start } = await harness()
+    try {
+      const old = ctx.sessions.create(SessionId('personal-case-off-old'))
+      const prior = start(old).agent
+      const turn = appendClosedTurn(old, 1, 'private past launch objective', 'private past budget')
+      await ctx.contextify.setNodeMode(prior, { revision: 1 }, { sessionId: old.id, seq: turn.userSeq }, 'exclude', 'contextify-client')
+      const current = ctx.sessions.create(SessionId('personal-case-off-new'))
+      const agent = start(current).agent
+      appendClosedTurn(current, 1, 'current launch', 'current budget')
+      ctx.llm.registerAdapter(['mock'], branchDecisionAdapter('{"include":[],"exclude":[],"archive":[]}'))
+      ;(ctx.contextify as unknown as { promptSettings: () => ContextifyPromptSettings }).promptSettings = () => ({
+        ...CONTEXTIFY_DEFAULT_SETTINGS, personalizationEnabled: false,
+      })
+      const page = await ctx.contextify.familyPage(agent)
+      const proposal = await ctx.contextify.recommend(agent, { planRevision: 1, graphRevision: page.revision, activeSessionId: current.id }, 'current launch', 'fast', true)
+      const request = current.snapshotEvents().findLast(event => event.type === 'contextify/recommendation-request')!
+      if (request.type !== 'contextify/recommendation-request') throw new Error('missing request')
+      expect(request.data.userText).not.toContain('private past')
+      expect(proposal.personalization).toMatchObject({ enabled: false, examples: [] })
+      const latest = await ctx.contextify.familyPage(agent)
+      const local = await ctx.contextify.recommend(agent, { planRevision: 1, graphRevision: latest.revision, activeSessionId: current.id }, undefined, 'local', true)
+      expect(local.route).toBeUndefined()
+    } finally { await ctx.fiber.dispose() }
+  })
+
   it('leaves the unedited Session log and surface compiler unchanged while projecting the graph', async () => {
     const { ctx, start } = await harness()
     const session = ctx.sessions.create(SessionId('contextify-transparent-natural'))
@@ -454,7 +689,7 @@ describe('ContextifyService native Session family', () => {
       expect(proposal.selection).not.toContainEqual(expect.objectContaining({
         nodeId: `${current.id}:${String(searchSeq)}`, action: 'exclude',
       }))
-      expect(packet?.preferenceExamples).toEqual([])
+      expect(packet?.preferenceExamples).toHaveLength(4)
       for (let index = 0; index < 3; index += 1) {
         const oldView = ctx.contextify.get(earlierAgent)
         ctx.contextify.undo(earlierAgent, { revision: oldView.plan.revision })
@@ -3260,7 +3495,8 @@ describe('Contextify public operation boundaries', () => {
       const omitted = page.records.find(node => !shown.has(node.id))
       if (omitted === undefined) throw new Error('long history must exceed the bounded source slate')
       const adapter = new MockAdapter([(options) => {
-        expect(JSON.stringify(options.messages)).not.toContain(`\\"id\\":\\"${omitted.id}\\"`)
+        const text = options.messages.flatMap(message => message.content.flatMap(block => block.type === 'text' ? [block.text] : [])).join('')
+        expect(text.split('Conversation graph JSON:\n')[1]).not.toContain(`"id":"${omitted.id}"`)
         return textResponse(JSON.stringify({ include: [], exclude: [{ nodeId: omitted.id, reason: 'A fabricated selection outside the packet' }], archive: [] }))
       }])
       ctx.llm.registerAdapter(['mock'], adapter)

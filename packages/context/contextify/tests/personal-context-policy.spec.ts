@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { createAssistantMessage, createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { ToolCallId as CallId } from '@deepseek-ai/dsh-llm/brand'
-import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import {
   calibrateContextRecommendation,
   contextEditsFromFamily,
@@ -18,6 +18,80 @@ import { contextPolicyObservationsFromFamily } from '../src/context-steward-prof
 import type { ContextFamilyGraph, ContextFamilyInspection } from '../src/types.ts'
 
 describe('personal Context candidate routing', () => {
+  it('distinguishes confirmed local, inherited and borrowed source owners on the same path', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    try {
+      const root = ctx.sessions.create(SessionId('owner-history-root'))
+      const addMessage = (session: typeof root, text: string) => {
+        session.append('turn/start', { turn: 1 })
+        const event = session.append('user/message', createUserMessage({
+          content: [{ type: 'text', text }], source: { kind: 'user' },
+        }), { surfaceOp: 'append' })
+        session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+        return `${session.id}:${String(event.seq)}`
+      }
+      const inherited = addMessage(root, 'shared planning constraint')
+      const child = ctx.sessions.fork(root, undefined, SessionId('owner-history-child'))
+      const local = addMessage(child, 'child planning detail')
+      const sibling = ctx.sessions.fork(root, undefined, SessionId('owner-history-sibling'))
+      const borrowed = addMessage(sibling, 'borrowed planning alternative')
+      for (const nodeId of [inherited, local, borrowed]) child.append('contextify/node-choice', {
+        origin: 'direct', changed: true, uiOrigin: 'contextify-client',
+        beforePlanRevision: 1, afterPlanRevision: 2, graphRevision: 'g',
+        mutations: [{ nodeId, mode: 'include' }],
+      })
+      const inspections = new Map([root, child, sibling].map(session => [session.id, {
+        meta: session.header, events: session.snapshotEvents(), inheritedEventCount: session.inheritedEventCount,
+      }]))
+      const graph = projectSessionFamily({ activeSessionId: child.id, sessions: [...inspections.values()] })
+      expect(contextEditsFromFamily(graph, inspections).map(edit => ({
+        content: edit.content, onActiveBranch: edit.onActiveBranch,
+        ownerRelation: edit.ownerRelation,
+      }))).toEqual([
+        { content: 'shared planning constraint', onActiveBranch: true, ownerRelation: 'ancestor-task' },
+        { content: 'child planning detail', onActiveBranch: true, ownerRelation: 'local-task' },
+        { content: 'borrowed planning alternative', onActiveBranch: false, ownerRelation: 'other-task' },
+      ])
+      const returned = projectSessionFamily({ activeSessionId: root.id, sessions: [...inspections.values()] })
+      expect(contextEditsFromFamily(returned, inspections)).toEqual(contextEditsFromFamily(graph, inspections))
+      for (const parentSession of [SessionId('unavailable-parent'), child.id]) {
+        const partial = new Map(inspections)
+        partial.set(root.id, { ...inspections.get(root.id)!, meta: { ...root.header, parentSession } })
+        for (const edit of contextEditsFromFamily(graph, partial)) expect(edit).not.toHaveProperty('ownerRelation')
+      }
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it.each(['missing-parent', 'changed-copy'] as const)('omits ownership for an unverified inherited fallback: %s', async (kind) => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    try {
+      const root = ctx.sessions.create(SessionId('owner-fallback-root'))
+      root.append('user/message', createUserMessage({
+        content: [{ type: 'text', text: 'original inherited request' }], source: { kind: 'user' },
+      }), { surfaceOp: 'append' })
+      const child = ctx.sessions.create(SessionId('owner-fallback-child'), {
+        seed: root.snapshotEvents(), inheritedEventCount: SessionLogOffset(root.snapshotEvents().length),
+        meta: { parentSession: root.id, isSeeded: true },
+      })
+      child.append('contextify/node-choice', {
+        origin: 'direct', changed: true, uiOrigin: 'contextify-client',
+        beforePlanRevision: 1, afterPlanRevision: 2, graphRevision: 'g',
+        mutations: [{ nodeId: `${child.id}:0`, mode: 'exclude' }],
+      })
+      const childInspection = { meta: child.header, events: child.snapshotEvents(), inheritedEventCount: 1 }
+      const inspections = new Map<SessionId, ContextFamilyInspection>([[child.id, childInspection]])
+      if (kind === 'changed-copy') inspections.set(root.id, { meta: root.header,
+        events: root.snapshotEvents().map(event => ({ ...event, time: event.time + 1 })), inheritedEventCount: 0 })
+      const graph = projectSessionFamily({ activeSessionId: child.id, sessions: [...inspections.values()] })
+      expect(graph.nodes.find(node => node.id === `${child.id}:0`)?.owner.sessionId).toBe(child.id)
+      const edits = contextEditsFromFamily(graph, inspections)
+      expect(edits).toHaveLength(1)
+      expect(edits[0]).not.toHaveProperty('ownerRelation')
+    } finally { await ctx.fiber.dispose() }
+  })
+
   it('shrinks from explicit Include/Exclude edits and ignores unrelated objectives', () => {
     const positive = { objective: 'compare warranty coverage', content: 'vendor regional repair terms', mode: 'include' as const }
     const negative = { ...positive, mode: 'exclude' as const }
@@ -305,7 +379,7 @@ describe('personal Context candidate routing', () => {
       expect(edits.map(({ episodeId: _episodeId, ...edit }) => edit))
         .toEqual([{ objective: 'Compare the cited sources', content: 'Exploratory search results',
           mode: 'exclude', sourceKind: 'web', speakerRole: 'tool',
-          webAction: 'web_search', onActiveBranch: true }])
+          webAction: 'web_search', onActiveBranch: true, ownerRelation: 'local-task' }])
     } finally { await ctx.fiber.dispose() }
   })
 
@@ -518,7 +592,7 @@ describe('personal Context candidate routing', () => {
       expect(edits.map(({ episodeId: _episodeId, ...edit }) => edit))
         .toEqual([{ objective: 'compare warranty coverage',
           content: 'vendor regional repair terms', mode: 'include',
-          speakerRole: 'user', onActiveBranch: true }])
+          speakerRole: 'user', onActiveBranch: true, ownerRelation: 'local-task' }])
     } finally {
       await ctx.fiber.dispose()
     }
@@ -573,9 +647,9 @@ describe('personal Context candidate routing', () => {
       expect(edits[0]?.episodeId).toMatch(/^context-reviewed-root:\d+$/)
       expect(edits.map(({ episodeId: _episodeId, ...edit }) => edit)).toEqual([
         { objective: 'compare regional warranty coverage', content: 'regional repair terms',
-          mode: 'include', speakerRole: 'assistant', onActiveBranch: true, weight: 0.5 },
+          mode: 'include', speakerRole: 'assistant', onActiveBranch: true, ownerRelation: 'local-task', weight: 0.5 },
         { objective: 'compare regional warranty coverage', content: 'battery chemistry',
-          mode: 'exclude', speakerRole: 'assistant', onActiveBranch: true, weight: 0.5 },
+          mode: 'exclude', speakerRole: 'assistant', onActiveBranch: true, ownerRelation: 'local-task', weight: 0.5 },
       ])
       expect(personalContextCandidateBonus('compare regional warranty coverage',
         'regional repair terms', edits)).toBeGreaterThan(0)
@@ -631,7 +705,7 @@ describe('personal Context candidate routing', () => {
         return edit
       })).toEqual([{
         objective: 'compare regional warranty coverage', content: 'regional repair terms',
-        mode: 'include', speakerRole: 'assistant', onActiveBranch: true, weight: 0.5,
+        mode: 'include', speakerRole: 'assistant', onActiveBranch: true, ownerRelation: 'local-task', weight: 0.5,
       }])
       expect(contextPolicyObservationsFromFamily(graph, inspections).map(item => item.choice))
         .toEqual(['accept', 'reject'])
@@ -751,14 +825,20 @@ describe('personal Context candidate routing', () => {
           events, inheritedEventCount: events.length }],
       ])
       expect(contextPlanExamplesFromFamily(graph, inspections)).toEqual([{
+        sourceSessionId: root.id, sourceEventSeq: 2, at: events[2]!.time,
         objective: 'Draft the new camera plan',
         choices: [
           { content: 'the old camera budget is 600', action: 'exclude',
-            beforeIncluded: true, afterIncluded: false, speakerRole: 'user', onActiveBranch: true },
+            beforeIncluded: true, afterIncluded: false, speakerRole: 'user', onActiveBranch: true, ownerRelation: 'local-task' },
           { content: 'the new camera budget is 900', action: 'include',
-            beforeIncluded: false, afterIncluded: true, speakerRole: 'user', onActiveBranch: true },
+            beforeIncluded: false, afterIncluded: true, speakerRole: 'user', onActiveBranch: true, ownerRelation: 'local-task' },
         ],
       }])
+      const unavailable = { ...graph, nodes: graph.nodes.map(node => ({ ...node,
+        owner: { ...node.owner, sessionId: SessionId('unavailable-owner') } })) }
+      const unknown = contextPlanExamplesFromFamily(unavailable, inspections)
+      expect(unknown).toHaveLength(1)
+      for (const choice of unknown[0]!.choices) expect(choice).not.toHaveProperty('ownerRelation')
     } finally {
       await ctx.fiber.dispose()
     }

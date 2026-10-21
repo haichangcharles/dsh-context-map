@@ -30,6 +30,7 @@ export interface ContextifyTransport {
     mutations: readonly ContextNodeMutation[],
     expectedGraphRevision?: string,
     reviewedDeclinedNodeIds?: readonly string[],
+    displayedPolicyKey?: string,
   ) => Promise<ContextifyView>
   reset: (ref: ContextPlanRef) => Promise<ContextifyView>
   undo: (ref: ContextPlanRef) => Promise<ContextifyView>
@@ -183,7 +184,8 @@ export class ContextifyController {
   async redo(): Promise<void> { await this.mutate(ref => this.transport.redo(ref)) }
 
   /**
-   * Run an isolated, review-only Context recommendation against the current revision.
+   * Run an isolated, review-only Context recommendation after a fresh graph read.
+   * A newer preflight or clear discards an undispatched request; pending writes and failed reads refuse review.
    * @param mode - Manually selected Local, bounded Fast, or full-tree Deep review.
    * @param objective - Optional review objective forwarded to the isolated Agent.
    * @param draftBound - Whether the review must remain bound to the current unsent draft.
@@ -193,19 +195,21 @@ export class ContextifyController {
     if (this.snapshot.recommendation.phase === 'running') {
       throw new Error('Context recommendation is already running')
     }
-    if (this.refreshPromise !== undefined) await this.refreshPromise
-    if (this.snapshot.view === undefined || this.snapshot.graph === undefined) await this.refresh()
-    const { view, graph, graphRevision } = this.snapshot
-    if (view === undefined || graph === undefined || graphRevision === undefined) {
-      // A failed initial load always publishes its error; loaded graphs are retained.
-      throw new Error(this.snapshot.error)
+    if (this.snapshot.pending) throw new Error('Context Map mutation is already pending')
+    const request = ++this.recommendationRequest
+    await this.refresh()
+    if (request !== this.recommendationRequest) return
+    const snapshot = this.getSnapshot()
+    if (snapshot.pending) throw new Error('Context Map mutation is already pending')
+    const { view, graph, graphRevision } = snapshot
+    if (snapshot.phase !== 'ready' || view === undefined || graph === undefined || graphRevision === undefined) {
+      throw new Error(snapshot.error)
     }
     const base: ContextRecommendationBase = Object.freeze({
       planRevision: view.plan.revision,
       graphRevision,
       activeSessionId: graph.activeSessionId,
     })
-    const request = ++this.recommendationRequest
     this.publish({ ...this.snapshot, recommendation: Object.freeze({ phase: 'running', mode }) })
     try {
       const proposal = await this.transport.recommend(base, objective, mode, draftBound)
@@ -278,8 +282,9 @@ export class ContextifyController {
   /**
    * Replace the effective Context version in one atomic Context Plan revision.
    * @param declinedNodeIds - Proposed items the user explicitly declined.
+   * @param displayedPolicyKey - Optional key explicitly acknowledged by the complete-scope review UI.
    */
-  async applyRecommendations(declinedNodeIds: readonly string[] = []): Promise<void> {
+  async applyRecommendations(declinedNodeIds: readonly string[] = [], displayedPolicyKey?: string): Promise<void> {
     const recommendation = this.snapshot.recommendation
     if (recommendation.phase === 'stale') throw new Error('Context recommendation is stale')
     if (recommendation.phase !== 'ready') throw new Error('No Context recommendation is ready')
@@ -304,6 +309,7 @@ export class ContextifyController {
     try {
       await this.mutate(ref => this.transport.setNodeModes(
         ref, mutations, recommendation.proposal.base.graphRevision, declinedNodeIds,
+        ...(displayedPolicyKey === undefined ? [] : [displayedPolicyKey] as const),
       ))
     } catch (cause) {
       this.publish({

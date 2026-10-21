@@ -1,0 +1,5 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`ContextifyPromptSettingsView > offers an exact native reviewer in 'en' 1`] = `"Uses at most one chat-model request and no Jev request. Retains the complete task or ancestry, without individual source exceptions. Uncertain tasks or scopes abstain; without a draft, only the current task is reviewed. Chat-model calls may incur a charge."`;
+
+exports[`ContextifyPromptSettingsView > offers an exact native reviewer in 'zh' 1`] = `"至多一次聊天模型，不调用 Jev；仅保留完整任务或祖先链，不逐条选择来源。任务或范围不明确时不建议切换。无草稿时仅审核当前任务。聊天模型调用可能收费。"`;

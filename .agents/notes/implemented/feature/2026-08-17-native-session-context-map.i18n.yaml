@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-17-native-session-context-map.md
-2026-08-17-native-session-context-map.md: 39f4761240ee6e7f98149f045e05002fba9da18a
-2026-08-17-native-session-context-map.zh.md: ce32ab226e8f49b7095fcaa43bb0a21dad29a779
+2026-08-17-native-session-context-map.md: 0fe856e74bc7023e80c61810fd1cc0dde52edcd4
+2026-08-17-native-session-context-map.zh.md: 3e0581a76031f36f576371e13a301d4a806baadb

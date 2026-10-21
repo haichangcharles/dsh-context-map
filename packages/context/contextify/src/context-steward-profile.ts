@@ -7,6 +7,7 @@ import type {
 import { contextPlanFeedbackStates } from './plan.ts'
 import { contextActivityFromObjective } from './context-activity.ts'
 import { contextReviewFeedback } from './context-review-feedback.ts'
+import invariant from 'tiny-invariant'
 
 const ACTIONS: readonly ContextPolicyAction[] = ['include', 'navigate', 'branch', 'return', 'release', 'park', 'complete', 'reopen']
 const SOURCE_KINDS: readonly NonNullable<ContextPolicyObservation['sourceKind']>[]
@@ -177,6 +178,8 @@ export function contextPolicyObservationsFromFamily(
           observation: Object.freeze({ action: 'branch',
             choice: event.data.choice === 'move' ? 'accept' : 'reject',
             origin: 'explicit-review', branchDepth, at: event.time, weight: 1,
+            ...(turnInput?.type === 'user/message' ? { objective: turnInput.data.content.flatMap(block =>
+              block.type === 'text' ? [block.text] : []).join('\n') } : {}),
             ...(turnActivity === undefined ? {} : { activity: turnActivity }) }) })
       } else if (event.type === 'contextify/route-choice'
         && event.data.uiOrigin === 'contextify-client') {
@@ -186,6 +189,7 @@ export function contextPolicyObservationsFromFamily(
             branchDepth, at: event.time, weight: 1,
             ...(activity === undefined ? {} : { activity }),
             ...(event.data.objective?.trim() ? { objective: event.data.objective } : {}),
+            ...(event.data.forkParentSessionId === undefined ? {} : { forkParentSessionId: event.data.forkParentSessionId }),
             ...(event.data.targetSessionId === undefined ? {} : {
               targetSessionId: event.data.targetSessionId,
             }) }) })
@@ -220,8 +224,37 @@ export function contextPolicyObservationsFromFamily(
   }
   return Object.freeze(observed.sort((left, right) => left.observation.at - right.observation.at
     || left.sessionId.localeCompare(right.sessionId) || left.seq - right.seq)
-    .map(item => Object.freeze({ ...item.observation,
-      sourceSessionId: item.sessionId, sourceEventSeq: item.seq })))
+    .map((item) => {
+      const observation = item.observation
+      const source = inspections.get(item.sessionId)
+      invariant(source, 'policy observations must have their owning inspection')
+      const event = source.events.find(event => event.seq === item.seq)
+      invariant(event, 'policy observations must have their owning event')
+      const cutoff = event.type === 'contextify/branch-choice'
+        ? source.events.findLast(candidate => candidate.seq <= event.data.turnEndSeq
+          && candidate.type === 'user/message' && candidate.data.source.kind === 'user')?.seq ?? item.seq
+        : item.seq
+      const taskText = (inspection: ContextFamilyInspection | undefined): string => (inspection?.events
+        .slice(inspection.inheritedEventCount).filter(candidate => candidate.type === 'user/message'
+          && candidate.data.source.kind === 'user' && (inspection.meta.id === item.sessionId
+          ? candidate.seq < cutoff : candidate.time < event.time))
+        .slice(-2).flatMap((candidate) => {
+          // The preceding filter admits only direct human messages.
+          const message = candidate as Extract<typeof candidate, { type: 'user/message' }>
+          return message.data.content.flatMap(block => block.type === 'text' ? [block.text] : [])
+        }) ?? [])
+        .map(text => Array.from(text).slice(0, 400).join('')).join('\n')
+      const routeContext = observation.action === 'branch' || observation.action === 'navigate'
+        || observation.action === 'return'
+        ? { source: taskText(source),
+          ...(observation.forkParentSessionId === undefined ? {}
+            : { parent: taskText(inspections.get(observation.forkParentSessionId)) }),
+          ...(observation.targetSessionId === undefined ? {}
+            : { target: taskText(inspections.get(observation.targetSessionId)) }) } : undefined
+      return Object.freeze({ ...observation,
+        ...(routeContext === undefined ? {} : { routeContext: Object.freeze(routeContext) }),
+        sourceSessionId: item.sessionId, sourceEventSeq: item.seq })
+    }))
 }
 
 function threshold(base: number, value: ContextPolicyEstimate): number {

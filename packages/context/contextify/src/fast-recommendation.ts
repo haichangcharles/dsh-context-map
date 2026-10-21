@@ -136,11 +136,13 @@ function preferenceExamples(
     objective: boundedText(edit.objective, FAST_RECOMMENDATION_EXAMPLE_CHARS),
     content: boundedText(edit.content, FAST_RECOMMENDATION_EXAMPLE_CHARS),
     mode: edit.mode,
+    ...(edit.episodeId === undefined ? {} : { episodeId: edit.episodeId }),
     ...(edit.weight === undefined ? {} : { weight: edit.weight }),
     ...(edit.sourceKind === undefined ? {} : { sourceKind: edit.sourceKind }),
     ...(edit.speakerRole === undefined ? {} : { speakerRole: edit.speakerRole }),
     ...(edit.webAction === undefined ? {} : { webAction: edit.webAction }),
     ...(edit.onActiveBranch === undefined ? {} : { onActiveBranch: edit.onActiveBranch }),
+    ...(edit.ownerRelation === undefined ? {} : { ownerRelation: edit.ownerRelation }),
   })] : []))
 }
 
@@ -164,6 +166,8 @@ function planExamples(
   }
   return Object.freeze(eligible.flatMap((example, index) => selected.has(index) ? [Object.freeze({
     objective: boundedText(example.objective, FAST_RECOMMENDATION_EXAMPLE_CHARS),
+    ...(example.sourceSessionId === undefined ? {} : { sourceSessionId: example.sourceSessionId }),
+    ...(example.sourceEventSeq === undefined ? {} : { sourceEventSeq: example.sourceEventSeq }),
     choices: Object.freeze(example.choices.map(choice => Object.freeze({
       ...choice,
       content: boundedText(choice.content, FAST_RECOMMENDATION_EXAMPLE_CHARS),

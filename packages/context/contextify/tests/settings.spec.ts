@@ -27,4 +27,16 @@ describe('Contextify prompt settings', () => {
     expect(CONTEXTIFY_DEFAULT_SETTINGS.automaticBranchReview).toBe(false)
     expect(parse({ automaticBranchReview: true }).automaticBranchReview).toBe(true)
   })
+  it('accepts explicitly selected goal-model and Jev review without changing the default', () => {
+    const parse = ContextifyPromptSettingsSchema as unknown as (input: unknown) => typeof CONTEXTIFY_DEFAULT_SETTINGS
+    expect(parse({ fastDecisionProvider: 'goal-model-jev' }).fastDecisionProvider).toBe('goal-model-jev')
+    expect(parse({}).fastDecisionProvider).toBe('parent-model')
+  })
+})
+
+
+it('accepts the explicit native goal reviewer without changing the default', () => {
+  const parse = ContextifyPromptSettingsSchema as unknown as (input: unknown) => typeof CONTEXTIFY_DEFAULT_SETTINGS
+  expect(parse({ fastDecisionProvider: 'goal-model-native' }).fastDecisionProvider).toBe('goal-model-native')
+  expect(parse({}).fastDecisionProvider).toBe('parent-model')
 })

@@ -421,6 +421,23 @@ type Branded<B extends string> = string & { readonly [BRAND]: B }
 
 两个核心 ID 是 `ToolCallId`（关联工具调用及其结果；dsh-llm）和 `SessionId`（活跃 agent 与持久会话共享的标识；dsh-session）。能力包也会品牌化各自的 id，例如 [jobs.md](jobs.zh.md) 中的 `JobId`。
 
+<a id="context-management-memory"></a>
+
+## Context 管理记忆
+
+[Contextify](../../packages/context/contextify/README.zh.md)从已确认、已过滤撤销记录的原生事件中派生 `ContextManagementMemory`。`ContextRecommendationProposal.personalization` 的可选同名字段与 Context 操作数据包和目标审核模型收到的是同一个对象；关闭个性化时省略该字段。源声明位于 [Contextify 类型](../../packages/context/contextify/src/types.ts)。
+
+`ContextActionCandidate` 携带有界任务证据，以及 `workState` 对应的可选原生 `workStateSource`（`explicit` 或 `derived`）。[任务卡](../../packages/context/contextify/src/task-card.ts) 从冻结的原生 Session 获取这两个字段，包括当前任务；缺失元数据保持未知。[Goal 输入](../../packages/context/contextify/src/goal-route.ts) 提供这些事实，不授予生命周期或 Context 权限。
+
+`ContextScopePolicyReview` 是 `ContextRecommendationProposal` 上可选的服务端发布描述符，包含唯一审核身份与 key、分类保留策略、原始归属/Session 和完整来源数量。Client 只回显展示过的 key，不提供来源权限。匹配且完整接受的实际变更可在既有审核事件上附加标注。`ContextScopePolicyExample` 在 Undo/重置过滤后保留自有来源 Session/事件、时间、有界目标、策略和归属；最多四条进入已启用的动作/目标 packet 和可检查决策快照。局部或不可识别的历史不提供此类标签。[策略实现](../../packages/context/contextify/src/scope-policy.ts)定义校验与边界。
+
+| 类型 | 字段与含义 |
+|---|---|
+| `ContextManagementReference` | `sessionId`、`eventSeq`：拥有记录的确切原生事件；两者都不是当前操作目标。 |
+| `ContextManagementRule` | 既有的 action/tendency/support/acceptRate 与可选 activity/sourceKind，加上 `id`、精确 `branchDepth`、带正负符号的 `accepted`/`rejected` 权重及有界 `references`。 |
+| `ContextManagementWorkflow` | `id`、两步或三步 `actions`、可选起始 `activity`、精确起始 `branchDepth`、tendency/support/acceptRate、带正负符号的 `accepted`/`rejected` 权重、有界事件 `references` 与历史任务 `examples`；它不是可执行计划。 |
+| `ContextManagementMemory` | `rules`、`workflows` 与可选 `omittedRules`/`omittedWorkflows` 计数；最多八条规则、四个工作流，完整 UTF-8 JSON 不超过 16KiB。 |
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>
@@ -984,9 +1001,9 @@ Durable Context Plan mutations and native Session-family graph reads.
 
 /**
  * Project confirmed Context-management choices across this DSH Profile's Sessions.
- * The returned policy changes proposal thresholds only; it cannot authorize mutation.
+ * The returned estimates change proposal thresholds only; historical complete-policy examples cannot authorize mutation.
  * @param agent - Live Agent selecting the native Session family.
- * @returns A compact, inspectable policy with support counts per action.
+ * @returns Action support estimates and at most four undo/reset-aware complete-policy examples.
  */
 @Remote('stewardProfile') async stewardProfile(agent: Agent): Promise<ContextStewardProfile>
 
@@ -1053,8 +1070,10 @@ Durable Context Plan mutations and native Session-family graph reads.
  * @param choice - Explicit acceptance or rejection of that card.
  * @param actualTargetSessionId - Native destination after an accepted transfer.
  * @param uiOrigin - Marks a Client review without claiming authenticated identity.
+ * @param carryContext - Approve complete Context at the final destination; manual conflicts preserve its Plan.
+ * @param displayedPolicyKey - Optional Client-declared acknowledgement of the displayed server policy; never source authority.
  */
-@Remote('reviewRoute') async reviewRoute( agent: Agent, route: ContextRouteAdvice, choice: 'accept' | 'reject', actualTargetSessionId?: SessionId, uiOrigin?: 'contextify-client', ): Promise<void>
+@Remote('reviewRoute') async reviewRoute( agent: Agent, route: ContextRouteAdvice, choice: 'accept' | 'reject', actualTargetSessionId?: SessionId, uiOrigin?: 'contextify-client', carryContext?: boolean, displayedPolicyKey?: string, ): Promise<void>
 
 /**
  * Record one completed manual Context Map fork as a positive Branch choice.
@@ -1115,9 +1134,10 @@ requestExplicitBranch(agent: Agent, reason: string): void
  * @param expectedGraphRevision - Optional family revision required by recommendation acceptance.
  * @param uiOrigin - Optional Client-declared origin for a visible plan action.
  * @param reviewedDeclinedNodeIds - Explicit Keep-current choices within the reviewed proposal.
+ * @param displayedPolicyKey - Optional Client acknowledgement of the displayed complete policy; omission keeps it unlearned.
  * @returns The view after one complete plan commits.
  */
-@Remote('setNodeModes') async setNodeModes( agent: Agent, ref: ContextPlanRef, mutations: readonly ContextNodeMutation[], expectedGraphRevision?: string, uiOrigin?: 'contextify-client', reviewedDeclinedNodeIds?: readonly string[], ): Promise<ContextifyView>
+@Remote('setNodeModes') async setNodeModes( agent: Agent, ref: ContextPlanRef, mutations: readonly ContextNodeMutation[], expectedGraphRevision?: string, uiOrigin?: 'contextify-client', reviewedDeclinedNodeIds?: readonly string[], displayedPolicyKey?: string, ): Promise<ContextifyView>
 
 /**
  * Archive one node's model-visible semantics with a reversible role-preserving placeholder.

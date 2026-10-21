@@ -318,7 +318,7 @@ describe('ui-contextify browser plugin', () => {
       b.draftState.draft = ` ${route.objective} `
       await b.panel.mapActions.rejectRoute(route)
       expect(b.calls.filter(call => call.method === 'reviewRoute')).toEqual([{
-        method: 'reviewRoute', args: [source, route, 'reject', undefined, 'contextify-client'],
+        method: 'reviewRoute', args: [source, route, 'reject', undefined, 'contextify-client', undefined, undefined],
       }])
     } finally { await b.fiber.dispose() }
   })
@@ -359,6 +359,58 @@ describe('ui-contextify browser plugin', () => {
         expect(b.fork).not.toHaveBeenCalled()
       }
       expect(() => nativeBranchSource({ ...b.record, branchAtSeq: null })).toThrow('completed Turn')
+    } finally { await b.fiber.dispose() }
+  })
+  it('forks from the reviewed parent and carries approved Context to the final child', async () => {
+    const b = await bench()
+    const route: ContextRouteAdvice = { action: 'branch', forkParentSessionId: child,
+      objective: 'A new child task', reason: 'Related alternative',
+      base: { activeSessionId: source, planRevision: 4, graphRevision: 'family-7' } }
+    try {
+      b.draftState.draft = route.objective
+      b.page.records = [{ ...b.record, sessionIds: [source, child] }]
+      await (b.panel.hooks.contextify as ContextifyController).refresh()
+      await b.panel.mapActions.acceptRoute(route, true)
+      expect(b.fork).toHaveBeenCalledWith({ sessionId: child, atSeq: 9, increaseTitle: true })
+      expect(b.calls.filter(call => call.method === 'reviewRoute')).toEqual([{
+        method: 'reviewRoute', args: [source, route, 'accept', child, 'contextify-client', true, undefined],
+      }])
+    } finally { await b.fiber.dispose() }
+  })
+  it('rejects a foreign fork parent before creating a native child', async () => {
+    const b = await bench()
+    try {
+      b.draftState.draft = 'A new task'
+      await expect(b.panel.mapActions.acceptRoute({ action: 'branch', forkParentSessionId: sid('foreign'),
+        objective: b.draftState.draft, reason: 'Separate',
+        base: { activeSessionId: source, planRevision: 4, graphRevision: 'family-7' } })).rejects.toThrow(/destination/)
+      expect(b.fork).not.toHaveBeenCalled()
+    } finally { await b.fiber.dispose() }
+  })
+  it.each([true, false])('keeps the destination open when draft rollback is unavailable (%s)', async (missingScope) => {
+    const b = await bench()
+    try {
+      b.draftState.draft = 'A new task'
+      await (b.panel.hooks.contextify as ContextifyController).refresh()
+      if (missingScope) b.sessionScope.mockReturnValueOnce(b.ctx).mockReturnValueOnce(undefined)
+      else b.moveDraft.mockReturnValueOnce(true).mockReturnValueOnce(false)
+      vi.spyOn(b.remoteFace, 'reviewRoute').mockRejectedValue(new Error('stale parent'))
+      await expect(b.panel.mapActions.acceptRoute({ action: 'branch', objective: b.draftState.draft, reason: 'Separate',
+        base: { activeSessionId: source, planRevision: 4, graphRevision: 'family-7' } })).rejects.toThrow('stale parent')
+      expect(b.open).toHaveBeenLastCalledWith(child)
+    } finally { await b.fiber.dispose() }
+  })
+  it('restores the draft to the source when Host approval of the fork fails', async () => {
+    const b = await bench()
+    const route: ContextRouteAdvice = { action: 'branch', objective: 'A new task', reason: 'Separate',
+      base: { activeSessionId: source, planRevision: 4, graphRevision: 'family-7' } }
+    try {
+      b.draftState.draft = route.objective
+      await (b.panel.hooks.contextify as ContextifyController).refresh()
+      vi.spyOn(b.remoteFace, 'reviewRoute').mockRejectedValue(new Error('stale parent'))
+      await expect(b.panel.mapActions.acceptRoute(route, true)).rejects.toThrow('stale parent')
+      expect(b.moveDraft).toHaveBeenLastCalledWith(child, source, { draft: route.objective, draftRev: 0 })
+      expect(b.open).toHaveBeenLastCalledWith(source)
     } finally { await b.fiber.dispose() }
   })
   it.each([
@@ -516,8 +568,21 @@ describe('ui-contextify browser plugin', () => {
     })
     expect(b.open).toHaveBeenCalledWith(child)
     expect(b.calls.filter(call => call.method === 'reviewRoute')).toMatchObject([{
-      args: [source, expect.objectContaining({ action: 'navigate' }), 'accept', child, 'contextify-client'],
+      args: [source, expect.objectContaining({ action: 'navigate' }), 'accept', child, 'contextify-client', undefined, undefined],
     }])
+  })
+
+  it('passes explicit approval of the proposed Context with a native draft transfer', async () => {
+    const b = await bench()
+    b.draftState.draft = 'Continue writing'
+    const route = { action: 'navigate' as const,
+      base: { planRevision: 4, graphRevision: 'family-7', activeSessionId: source },
+      objective: 'Continue writing', targetSessionId: child, reason: 'Resume writing' }
+    await b.panel.mapActions.acceptRoute(route, true)
+    expect(b.calls.filter(call => call.method === 'reviewRoute')).toEqual([{
+      method: 'reviewRoute', args: [source, route, 'accept', child, 'contextify-client', true, undefined],
+    }])
+    expect(b.open).toHaveBeenCalledWith(child)
   })
 
   it('rejects stale draft route advice without switching Sessions', async () => {
@@ -589,7 +654,7 @@ describe('ui-contextify browser plugin', () => {
     expect(b.calls.filter(call => call.method === 'setNodeModes')).toEqual([{
       method: 'setNodeModes',
       args: [source, { revision: 4 }, [{ node: b.record.owner, mode: 'exclude' }], 'family-7',
-        'contextify-client', []],
+        'contextify-client', [], undefined],
     }])
     expect(controller.getSnapshot().recommendation).toMatchObject({ phase: 'idle' })
   })
@@ -625,4 +690,24 @@ describe('ui-contextify browser plugin', () => {
       args: [source, { revision: 4 }, b.record.owner, candidate.reason, 'family-7'],
     }])
   })
+})
+
+it('forwards an explicit policy display key through complete Apply and Carry without synthesizing it', async () => {
+  const b = await bench()
+  try {
+    const key = 'opaque-server-display-key'
+    await b.panel.mapActions.recommend()
+    await b.panel.mapActions.applyRecommendations([], key)
+    expect(b.calls.findLast(call => call.method === 'setNodeModes')?.args).toEqual([
+      source, { revision: 4 }, [{ node: b.record.owner, mode: 'exclude' }], 'family-7', 'contextify-client', [], key,
+    ])
+    b.draftState.draft = 'Continue writing'
+    const route = { action: 'navigate' as const,
+      base: { planRevision: 4, graphRevision: 'family-7', activeSessionId: source },
+      objective: 'Continue writing', targetSessionId: child, reason: 'Resume writing' }
+    await b.panel.mapActions.acceptRoute(route, true, key)
+    expect(b.calls.findLast(call => call.method === 'reviewRoute')?.args).toEqual([
+      source, route, 'accept', child, 'contextify-client', true, key,
+    ])
+  } finally { await b.fiber.dispose() }
 })

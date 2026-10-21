@@ -32,9 +32,13 @@ kind: "package-reference"
 
 沿用独立版画布，节点操作集中在不透明的右键菜单：Locate in Chat、Branch from Here、Archive node、仅在存在 manual override 时显示的 Restore automatic，以及 Archive 后的 Show original/Restore node。Branch 会在消息对应的 completed Turn boundary 调用 Harness 原生 `sessions.fork`，把未变更的待发送草稿及附件转移到空白的 child 输入框，将成功的手动 fork 与转移的有界草稿记为一次 Context 策略选择，然后打开 child Session。如果 fork 期间草稿变更或 child 无法接收草稿，当前 Session 保持选中。Locate 会打开所属原生 Session、切换到 Chat、在需要时加载较早 history，并滚动和高亮准确的持久消息。Batch mode 会在一个 plan revision 中 include、exclude 或恢复多个画布选中节点。Clear manual changes 会移除全部 Include、Exclude 与 Archive overlay，但不会重置 graph layout；Undo 和 Redo 操作持久 plan history。
 
-主要的 `Recommend` 操作执行零模型 Local 审核。旁边的 `Recommendation mode` 菜单显式选择 Local、一次调用的 Fast 或隔离 Deep 审核，不会自动升级。所有模式都在可见图上方使用 Current → Proposed 审核单，分别确认来源、路由与生命周期。确认前复选框保留当前选材。用户可以保持任一来源不变；一次 Apply 只接受选定条目，全部保留当前时 Plan 修订不变。Undo 恢复前一选材。Archive 仍逐节点确认服务端拥有的空占位内容，原文保留且可恢复。渲染只记录展示，不证明注意力。关闭时仅明确标为 Keep-current 的条目提供部分拒绝证据，不代表拒绝整单。草稿、图或 Plan 改变后旧建议失效，Host 在修改前再次检查。
+主要的 `Recommend` 操作执行零模型 Local 审核。旁边的 `Recommendation mode` 菜单显式选择 Local、Fast 或隔离 Deep 审核，不会自动升级。所有模式都在可见图上方使用 Current → Proposed 审核单，分别确认来源、路由与生命周期。确认前复选框保留当前选材。用户可以保持任一来源不变；一次 Apply 只接受选定条目，全部保留当前时 Plan 修订不变。Undo 恢复前一选材。Archive 仍逐节点确认服务端拥有的空占位内容，原文保留且可恢复。渲染只记录展示，不证明注意力。关闭时仅明确标为 Keep-current 的条目提供部分拒绝证据，不代表拒绝整单。草稿、图或 Plan 改变后旧建议失效，Host 在修改前再次检查。
 
-Composer 在未发送文本非空时显示 **Review context for draft**。默认 Local 审核不调用模型；旁边的草稿模式控件显式选择 Fast 或 Deep。点击审核保留未发送草稿并打开 Map。草稿改变后旧建议被丢弃。路由卡可以建议 Return、Navigate 或 Branch；接受时先通过原生服务转移原样草稿与附件，再切换分支，而 Stay 表示明确拒绝。
+每次手动请求建议前，Client 都先刷新原生 family 与 Plan。读取失败或 Plan 写入尚未完成时不会发出审核请求，即使界面仍保留此前的图。新的请求或清除草稿会丢弃仍在等待读取的旧请求；已经运行的审核器会拒绝重叠请求。读取之后发生的变化仍由 Host 的修订检查拒绝。
+
+Composer 在未发送文本非空时显示 **Review context for draft**。默认 Local 审核不调用模型；旁边的草稿模式控件显式选择 Fast 或 Deep。点击审核保留未发送草稿并打开 Map。草稿改变后旧建议被丢弃。路由卡可以建议 Return、Navigate 或 Branch；接受时先通过原生服务转移原样草稿与附件，再切换分支，而 Stay 表示明确拒绝。新分支卡可以指定另一个父节点，预览新分支的 Context，并一次确认两者。Host 批准失败时，Client 尝试把未变化的已转移草稿及附件移回源分支；若并发编辑阻止恢复，草稿仍保留在目标分支。已经创建但未使用的子分支可能保留。
+
+建议审核单展示 Host 提供的确切条件规则与管理工作流，包括任务活动和深度条件、带正负符号的支持度、有界任务案例，以及原生 Session/事件引用。输入大小限制导致条目被省略时，审核单显示省略数量。这些历史记录不会选择回答 Context 或执行工作流步骤。
 
 Map 标题栏的 **Preferences** 按需读取 Profile 策略，展示审核支持度、重复操作倾向，以及带拥有它们的 Session/事件引用的近期明确选择。**Refresh** 在操作或 Undo 后重读证据。**Reset learned preferences** 通过已记录的 Session 水位清空派生学习，同时保留原始记录与当前 Context Plan。视图不存储第二份 Client persona。
 
@@ -49,6 +53,14 @@ Map 也会订阅 Harness 原生的 Workspace archive set。仅属于已归档 Se
 普通 Chat user 消息与已完成 assistant 消息旁提供紧凑的 Auto/Use/Skip/Map control。它们和 graph 使用同一个 controller，所以 Chat 侧修改会同步到 map，并在 reload 后保留。Steering、reasoning、tool 与仅 runtime 可见的 row 不会获得 Context Map control。
 
 Workspace 左侧栏使用上游 Session 列表。Map 提供完整的分支家族导航界面。
+
+Context 提示词设置允许用户为 Fast 检查选择当前聊天模型、Jev、目标模型加 Jev 或目标模型＋完整任务 Context，并启用或关闭历史选择复用。审核表分别展示发送给模型的案例、确定性校准来源记录和分支阈值来源记录，并区分接受与拒绝的选择。这些记录用于管理建议，不加入回答 Context。
+
+对于既有目标，“携带建议 Context 移动草稿”明确批准完整的已审核来源集合，避免再次调用模型。部分 Keep-current 选择会禁用此操作。目标手动设置冲突时保留原 Plan；Client 尝试将未变化的草稿移回源分支，恢复受阻时保留在目标中。只移动草稿的操作独立保留。
+
+可选的目标模型加 Jev 检查会为草稿调用一次聊天模型及至多一次 Jev。设置中说明额外费用；不确定时跳过 Jev 和推断式 Context 修改。仅选择决策模型不会发出请求。
+
+Context 偏好面板显示完整策略确认样例的历史模式、任务和 Session/事件引用。刷新会读取和 Host 输入相同的事件投影，Context Undo/Redo 后请刷新；重置学习会刷新列表。显示历史选择不表示它已影响当前请求，也不授权执行操作。
 
 <a id="model-experience"></a>
 ## 模型体验
@@ -72,3 +84,5 @@ UI 不添加提示词文本。Auto 跟随 active Session 历史，Skip 排除一
 ### 开发备注
 
 不发布不变量伴随插件，因为 Agent Loop 伴随插件检查编译后的请求，而本插件没有独立的运行时不变量。
+
+目标模型＋完整任务 Context 至多调用一次聊天模型，不调用 Jev。它保留完整任务或原始祖先链，不接受逐条来源例外；策略不明确时弃权。没有精确草稿时仅审核当前任务。选择此模式不会发出请求；批准、取消和手动约束仍然有效。

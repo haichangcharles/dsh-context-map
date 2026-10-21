@@ -106,6 +106,9 @@ importers:
       oxlint-tsgolint:
         specifier: 7.0.2001
         version: 7.0.2001
+      parse5:
+        specifier: 8.0.1
+        version: 8.0.1
       publint:
         specifier: ^0.3.21
         version: 0.3.21
@@ -4899,6 +4902,9 @@ importers:
 
   packages/context/contextify:
     dependencies:
+      '@deepseek-ai/dsh-launch-environment':
+        specifier: workspace:^
+        version: link:../../util/launch-environment
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
@@ -4930,6 +4936,9 @@ importers:
       '@deepseek-ai/dsh-context-compiler':
         specifier: workspace:^
         version: link:../context-compiler
+      '@deepseek-ai/dsh-credentials':
+        specifier: workspace:^
+        version: link:../../credentials/credentials
       '@deepseek-ai/dsh-llm':
         specifier: workspace:^
         version: link:../../llm/llm

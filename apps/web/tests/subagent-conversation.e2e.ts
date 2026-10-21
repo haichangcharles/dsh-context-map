@@ -299,37 +299,53 @@ describe('web e2e: persisted subagent conversation and human continuation', () =
     onTestFailed(() => saveFailureShot(page, 'web-e2e-subagent-stale-catalog'))
     const pattern = '**/api/subagents/list'
     let firstClaimed = false
+    let firstPrepared = false
     let emptyDelivered = false
     let trailingRequested = false
+    let releaseFirst = (): void => {}
+    const firstHeld = new Promise<void>((resolve) => { releaseFirst = resolve })
+    const pendingRoutes: Promise<void>[] = []
+    const failures: unknown[] = []
     let releaseCatalog = (): void => {}
     const catalogHeld = new Promise<void>((resolve) => { releaseCatalog = resolve })
-    await page.route(pattern, async (route) => {
-      if (firstClaimed) {
+    await page.route(pattern, (route) => {
+      const pending = (async () => {
+        if (firstClaimed) {
+          const response = await route.fetch()
+          trailingRequested = true
+          await catalogHeld
+          await route.fulfill({ response })
+          return
+        }
+        firstClaimed = true
         const response = await route.fetch()
-        trailingRequested = true
-        await catalogHeld
-        await route.fulfill({ response })
-        return
-      }
-      firstClaimed = true
-      const response = await route.fetch()
-      const body = await response.json() as {
-        result: { ok: true; value: { entries: unknown[] } } | { ok: false }
-      }
-      if (body.result.ok) body.result.value.entries = []
-      await route.fulfill({ response, json: body })
-      emptyDelivered = true
+        const body = await response.json() as {
+          result: { ok: true; value: { entries: unknown[] } } | { ok: false }
+        }
+        if (body.result.ok) body.result.value.entries = []
+        firstPrepared = true
+        await firstHeld
+        await route.fulfill({ response, json: body })
+        emptyDelivered = true
+      })().catch((error: unknown) => { failures.push(error) })
+      pendingRoutes.push(pending)
+      return pending
     })
 
     const warningStart = tripwire.warnings.length
     try {
       await page.reload({ waitUntil: 'load' })
       await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
-      await expect.poll(() => emptyDelivered, { timeout: 15_000 }).toBe(true)
+      await expect.poll(() => firstPrepared, { timeout: 15_000 }).toBe(true)
       await page.getByRole('button', { name: '3 subagents' }).waitFor({ timeout: 15_000 })
       acknowledgeReloadConnectionLoss(tripwire, warningStart)
 
-      await page.getByRole('button', { name: '3 subagents' }).hover()
+      await page.mouse.move(0, 0)
+      const trigger = page.getByRole('button', { name: '3 subagents' })
+      await trigger.hover()
+      await expect.poll(() => trigger.getAttribute('aria-expanded')).toBe('true')
+      releaseFirst()
+      await expect.poll(() => emptyDelivered, { timeout: 15_000 }).toBe(true)
       await expect.poll(() => trailingRequested, { timeout: 15_000 }).toBe(true)
       const tree = page.getByRole('tree', { name: 'Subagent sessions' })
       await tree.getByRole('treeitem', { name: 'Loading subagents' }).first().waitFor()
@@ -342,10 +358,16 @@ describe('web e2e: persisted subagent conversation and human continuation', () =
       releaseCatalog()
       await tree.getByRole('treeitem', { name: new RegExp(LABEL) }).waitFor({ timeout: 15_000 })
       await tree.press('Escape')
+    } catch (error: unknown) {
+      failures.push(error)
     } finally {
+      releaseFirst()
       releaseCatalog()
-      await page.unroute(pattern)
+      await page.unroute(pattern).catch((error: unknown) => { failures.push(error) })
+      await Promise.all(pendingRoutes)
     }
+    if (failures.length === 1) throw failures[0]
+    if (failures.length > 1) throw new AggregateError(failures, 'subagent catalog scenario failed')
   })
 
   it('expands a persisted grandchild progressively without activating either level', async () => {

@@ -123,7 +123,7 @@ describe('public Context component boundaries', () => {
     expect(data.onContextMenu).toHaveBeenCalledWith(data.record, { x: 90, y: 120 })
     const roles = ['worker', 'web', 'chat'] as const
     for (const sourceKind of roles) h.rerender(draw({ ...data, record: node({ sourceKind, role: 'tool' }), included: true, pending: true, active: true, focused: true, searchMatch: true, recommendation: 'include' }, true))
-    expect(screen.getByRole('checkbox')).toHaveProperty('disabled', true)
+    for (const checkbox of screen.getAllByRole('checkbox')) expect(checkbox).toHaveProperty('disabled', true)
     expect(screen.getByRole('article').getAttribute('data-selected')).toBe('true')
     for (const recommendation of ['exclude', 'archive'] as const) h.rerender(draw({ ...data, recommendation }))
     const replacement = { kind: 'placeholder' as const, preview: '', original: 'original', reason: 'obsolete', role: 'user' as const, originalAvailable: true as const }
@@ -260,7 +260,7 @@ describe('prompt settings public scope lifecycle', () => {
     expect(h.container.textContent).toContain('unavailable')
     fixture.update({ status: 'ready', writable: false })
     expect(screen.getByRole('button', { name: 'Save request limit' })).toHaveProperty('disabled', true)
-    expect(screen.getByRole('checkbox')).toHaveProperty('disabled', true)
+    for (const checkbox of screen.getAllByRole('checkbox')) expect(checkbox).toHaveProperty('disabled', true)
     h.unmount()
     expect(fixture.listeners.size).toBe(0)
   })
@@ -301,7 +301,78 @@ function reviewSheet(value = proposal(), overrides: Partial<ContextRecommendatio
     reportError: vi.fn(), reviewWorkState: vi.fn(async () => {}), t, ...overrides }
   return { ...render(<ContextRecommendationReview {...props} />), props }
 }
+
+it('shows the exact personal case used by the Context Agent without making it answer Context', () => {
+  reviewSheet({ ...proposal(), personalization: { enabled: true, reviewer: 'jev',
+    examples: [{ objective: 'Earlier writing task', action: 'exclude', content: 'Superseded outline',
+      sourceSessionId: root, sourceEventSeq: 12 }] } })
+  expect(screen.getByText('Earlier writing task')).toBeTruthy()
+  expect(screen.getByText('Superseded outline')).toBeTruthy()
+  expect(screen.getByText(/Decision examples are not added to the answer Context/)).toBeTruthy()
+})
+it.each(['local', 'jev'] as const)('shows conditional rules and causal workflows with their native evidence (%s)', (reviewer) => {
+  reviewSheet(proposal({ personalization: { enabled: true, reviewer, examples: [], managementMemory: {
+    rules: [{ id: 'rule-1', action: 'branch', activity: 'planning', branchDepth: 0,
+      tendency: 'favor', support: 4, acceptRate: .75, accepted: 4, rejected: 0,
+      references: [{ sessionId: root, eventSeq: 13 }] }],
+    workflows: [{ id: 'workflow-1', actions: ['branch', 'return'], activity: 'planning', branchDepth: 0,
+      tendency: 'favor', support: 4, acceptRate: .75, accepted: 4, rejected: 0,
+      references: [{ sessionId: root, eventSeq: 14 }], examples: [['Plan venue', 'Return to plan']] }],
+    omittedRules: 1, omittedWorkflows: 2,
+  } } }))
+  expect(screen.getByText('Management evidence for this review · 0')).toBeTruthy()
+  expect(screen.queryByText(/Available management summaries/)).toEqual(reviewer === 'local' ? expect.any(HTMLElement) : null)
+  expect(screen.getByText('Conditional management rules')).toBeTruthy()
+  expect(screen.getByText('Confirmed management workflows')).toBeTruthy()
+  expect(screen.getAllByText('Favor')).toHaveLength(2)
+  expect(screen.getAllByText('Accepted weight 4 · declined weight 0')).toHaveLength(2)
+  expect(screen.getByText(`${root}:13`)).toBeTruthy()
+  expect(screen.getByText('Plan venue → Return to plan')).toBeTruthy()
+  expect(screen.getByText('Omitted to bound input: 1 rules, 2 workflows')).toBeTruthy()
+})
+it.each([{ omittedRules: 1 }, { omittedWorkflows: 2 }, {}])('shows source conditions and independently bounded inventories (%j)', (omitted) => {
+  reviewSheet(proposal({ personalization: { enabled: true, reviewer: 'jev', examples: [], managementMemory: {
+    rules: [{ id: 'source-rule', action: 'release', sourceKind: 'web', branchDepth: 1,
+      tendency: 'avoid', support: 4, acceptRate: .25, accepted: 0, rejected: 4, references: [] }],
+    workflows: [{ id: 'unclassified-flow', actions: ['navigate', 'include'], branchDepth: 1,
+      tendency: 'avoid', support: 2, acceptRate: 1 / 3, accepted: 0, rejected: 2, references: [], examples: [] }],
+    ...omitted,
+  } } }))
+  expect(screen.getAllByText('Avoid')).toHaveLength(2)
+  expect(screen.getByText('web')).toBeTruthy()
+  expect(screen.getAllByText('Starting branch depth 1')).toHaveLength(2)
+  if (Object.keys(omitted).length === 0) expect(screen.queryByText(/Omitted to bound input/)).toBeNull()
+  else expect(screen.getByText(/Omitted to bound input/)).toBeTruthy()
+})
+it.each([true, false])('distinguishes empty model evidence from disabled personalization (%s)', (enabled) => {
+  reviewSheet(proposal({ personalization: { enabled, reviewer: 'local', examples: [], calibrationSources: [], thresholdSources: [] } }))
+  expect(screen.getByText(enabled ? 'No historical examples were sent to the decision model.' : 'Personalization was disabled for this review.')).toBeTruthy()
+  expect(screen.queryByText(/Context calibration source records/)).toBeNull()
+})
+
+it('separates a declined model example from calibration and branch-threshold source records', () => {
+  reviewSheet(proposal({ personalization: { enabled: true, reviewer: 'jev',
+    examples: [{ objective: 'Earlier optional context', action: 'include', choice: 'reject' }],
+    calibrationSources: ['calibration-family:7'], thresholdSources: ['routing-family:9'] } }))
+  expect(screen.getByText('Earlier optional context')).toBeTruthy()
+  expect(screen.getByText('Declined')).toBeTruthy()
+  expect(screen.getByText('calibration-family:7')).toBeTruthy()
+  expect(screen.getByText('routing-family:9')).toBeTruthy()
+  expect(screen.getByText(/Context calibration source records/)).toBeTruthy()
+  expect(screen.getByText(/Branch threshold source records/)).toBeTruthy()
+})
+
 describe('Context recommendation review public decisions', () => {
+  it('explicitly approves carrying the complete proposed Context only to an existing branch', async () => {
+    const value = proposal({ route: { action: 'navigate', base: proposal().base,
+      objective: 'Continue writing', targetSessionId: sid('other'), reason: 'Resume writing' } })
+    const h = reviewSheet(value)
+    fireEvent.click(screen.getByRole('button', { name: 'Move draft with proposed Context' }))
+    await waitFor(() => { expect(h.props.acceptRoute).toHaveBeenCalledWith(value.route, true) })
+    fireEvent.click(screen.getByRole('button', { name: 'Keep current context for extra' }))
+    expect(screen.getByRole('button', { name: 'Move draft with proposed Context' }).hasAttribute('disabled')).toBe(true)
+  })
+
   it('tracks partial and reversed choices and applies only the final declined IDs', async () => {
     const h = reviewSheet()
     fireEvent.click(screen.getByRole('button', { name: 'Keep current context for extra' }))
@@ -400,4 +471,43 @@ describe('Context recommendation review public decisions', () => {
     h.rerender(<ContextRecommendationReview {...h.props} state={{ phase: 'idle' }} />)
     expect(screen.queryByRole('dialog')).toBeNull()
   })
+})
+
+it.each(['branch', 'navigate'] as const)('previews the complete %s scope and preserves draft-only routing for replacements', (action) => {
+  const route = { action, base: proposal().base, objective: 'Continue plan', reason: 'Related destination',
+    contextNodeIds: ['root:1', 'missing'], contextUnavailable: true }
+  const h = reviewSheet(proposal({ route }))
+  expect(screen.getByText('missing')).toBeTruthy()
+  expect(screen.getByText(/destination contains replaced content/)).toBeTruthy()
+  const label = action === 'branch' ? 'Create branch with proposed Context' : 'Move draft with proposed Context'
+  expect(screen.getByRole('button', { name: label }).hasAttribute('disabled')).toBe(true)
+  fireEvent.click(screen.getByRole('button', { name: action === 'branch' ? 'Start a new branch' : 'Move draft to branch' }))
+  expect(h.props.acceptRoute).toHaveBeenCalledWith(route)
+})
+
+it('echoes only a displayed complete policy key on complete Apply and Carry', async () => {
+  const scopePolicy = { reviewId: 'fixture-ui-publication', key: 'a'.repeat(64), mode: 'task-owned' as const, assignment: 'existing' as const, sessionId: root, sourceCount: 1 }
+  const route = { action: 'navigate' as const, base: proposal().base, objective: 'Write', reason: 'Resume', targetSessionId: sid('other') }
+  const h = reviewSheet(proposal({ scopePolicy, route }))
+  expect(screen.getByText('Only this task')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Apply proposed context' }))
+  await waitFor(() => { expect(h.props.apply).toHaveBeenCalledWith([], scopePolicy.key) })
+  fireEvent.click(screen.getByRole('button', { name: 'Move draft with proposed Context' }))
+  await waitFor(() => { expect(h.props.acceptRoute).toHaveBeenCalledWith(route, true, scopePolicy.key) })
+  fireEvent.click(screen.getByRole('button', { name: 'Move draft to branch' }))
+  await waitFor(() => { expect(h.props.acceptRoute).toHaveBeenCalledWith(route) })
+})
+
+it('does not acknowledge a complete policy when keeping an item and shows historical scope examples separately', async () => {
+  const scopePolicy = { reviewId: 'fixture-partial-publication', key: 'b'.repeat(64), mode: 'task-lineage' as const, assignment: 'existing' as const, sessionId: root, sourceCount: 1 }
+  const h = reviewSheet(proposal({ scopePolicy, personalization: { enabled: true, reviewer: 'goal-model-jev', examples: [],
+    scopePolicyExamples: [{ sourceSessionId: root, sourceEventSeq: 12, at: 1, objective: 'Earlier full scope', mode: 'task-lineage', assignment: 'existing' },
+      { sourceSessionId: root, sourceEventSeq: 13, at: 2, objective: 'Earlier narrow scope', mode: 'task-owned', assignment: 'existing' }] } }))
+  expect(screen.getByText('This task and its parent tasks')).toBeTruthy()
+  expect(screen.getByText('Earlier full scope').parentElement?.textContent).toContain('This task and its parent tasks')
+  expect(screen.getByText('Earlier narrow scope').parentElement?.textContent).toContain('Only this task')
+  expect(screen.getByText('Earlier full scope')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Keep current context for extra' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Apply selected changes' }))
+  await waitFor(() => { expect(h.props.apply).toHaveBeenCalledWith(['extra']) })
 })

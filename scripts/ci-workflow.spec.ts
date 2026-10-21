@@ -8,6 +8,23 @@ const runnerPrivatePnpmDestination = /^\$\{\{ runner\.temp \}\}\/setup-pnpm-\$\{
 const nativeWindowsPnpmDestination = '${{ runner.temp }}/setup-pnpm-js-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}'
 
 describe('CI workflow', () => {
+  it('retains the isolated Chat search failure screenshot in both browser lanes', () => {
+    for (const [file, jobName] of [['ci.yml', 'node-24-consumers'], ['e2e.yml', 'e2e']] as const) {
+      const job = workflowJob(loadWorkflow('.github/workflows/' + file), jobName)
+      expect(job.steps).toContainEqual({
+        name: 'Retain isolated Chat restore search failure screenshot',
+        if: 'failure()',
+        uses: 'actions/upload-artifact@v4',
+        with: {
+          name: 'chat-restore-search-failure',
+          path: '.artifacts/web-e2e-chat-scroll-restore-composer.png',
+          'if-no-files-found': 'ignore',
+          'retention-days': 3,
+        },
+      })
+    }
+  })
+
   it.each(['ci.yml', 'ci-master.yml', 'e2e.yml', 'release.yml', 'release-vendor.yml'])(
     '%s cancels superseded validation runs without crossing workflow or ref boundaries', (name) => {
       const workflow = loadWorkflow('.github/workflows/' + name)
@@ -220,7 +237,9 @@ describe('CI workflow', () => {
     const coverageCommands = coverageSteps.filter((step): step is Record<string, unknown> & { run: string } => (
       isRecord(step) && typeof step.run === 'string'
     ))
-    expect(coverageCommands.map(step => step.run)).toContain('pnpm run check:ci:coverage')
+    expect(coverageCommands.some(step => step.run.startsWith('./scripts/run-windows-native.ps1 -Lane coverage '))).toBe(true)
+    const windowsWrapper = readFileSync(resolve(root, 'scripts/run-windows-native.ps1'), 'utf8')
+    expect(windowsWrapper).toContain('& pnpm run check:ci:coverage | Out-Host')
     // Windows coverage runs zero-build like the Linux lane: workspace imports
     // resolve to src through the tsconfig paths map, and the lib-consuming
     // suites (webworker-packer image-loadable, webworker-runtime
@@ -229,6 +248,7 @@ describe('CI workflow', () => {
     // 'corepack pnpm run build' or folded into a multi-line run block, which
     // an exact string match would miss.
     expect(coverageCommands.every(step => !/\bpnpm\s+run\s+build(?:\s|$)/.test(step.run))).toBe(true)
+    expect(windowsWrapper).not.toMatch(/\bpnpm\s+run\s+build(?:\s|$)/)
 
     // windows-native-tests runs the Windows-specific specs.
     expect(windowsNativeTests.name).toBe('windows node 24 / native tests')
@@ -236,7 +256,8 @@ describe('CI workflow', () => {
     const nativeTestCommands = nativeTestSteps.filter((step): step is Record<string, unknown> & { run: string } => (
       isRecord(step) && typeof step.run === 'string'
     ))
-    const nativeTestCommand = nativeTestCommands.map(step => step.run).join('\n')
+    expect(nativeTestCommands.some(step => step.run.startsWith('./scripts/run-windows-native.ps1 '))).toBe(true)
+    const nativeTestCommand = readFileSync(resolve(root, 'scripts/run-windows-native.ps1'), 'utf8')
     expect(nativeTestCommand).toContain('--no-file-parallelism')
     expect(nativeTestCommand).toContain('--testTimeout 90000')
     expect(nativeTestCommand).toContain('tool-pwsh/tests/loader.spec.ts')

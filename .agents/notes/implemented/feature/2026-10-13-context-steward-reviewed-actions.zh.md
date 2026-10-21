@@ -10,7 +10,7 @@ Status: implemented
 
 ## 决策
 
-[Context Steward 指南](../../../../docs/user/guide/context-steward.zh.md)介绍基于原生 Session 图的统一审核流程。Local 为默认模式，不产生模型请求。显式 Fast 审核使用一次有界、无工具的请求，可分别提供目标分支与证据分数。明确的文本提示和原生图合法性约束建议。低置信度的新任务或含糊目标不能静默创建或选择分支。Fast 将准确的冻结系统提示、用户数据包、目标、provider/model 和 640-token 输出上限记录在原生 Session 日志中，不记录密钥；该记录用于审计，不训练偏好记忆，也不改变图修订。Deep 仍是隔离的 DSH 审核，`deepMaxRequests` 默认三次，可配置一至十次并计入重试；超时为 45 秒，每次输出上限为 1,200 tokens。每轮结束后的自动 Branch 分类需要主动开启。
+[Context Steward 指南](../../../../docs/user/guide/context-steward.zh.md)介绍基于原生 Session 图的统一审核流程。Local 为默认模式，不产生模型请求。显式 Fast 审核使用一次有界、无工具的请求，可分别提供目标分支与证据分数。明确的文本提示和原生图合法性约束建议。低置信度的新任务或含糊目标不能静默创建或选择分支。Fast 在原生 Session 日志中记录准确且不含凭据的请求；当前聊天模型路径采用 640-token 文本输出上限，[Jev 路径](2026-10-15-personal-context-decision-cases.zh.md)则使用结构化问题；该记录用于审计，不训练偏好记忆，也不改变图修订。Deep 仍是隔离的 DSH 审核，`deepMaxRequests` 默认三次，可配置一至十次并计入重试；超时为 45 秒，每次输出上限为 1,200 tokens。每轮结束后的自动 Branch 分类需要主动开启。
 
 Client 将 Move draft here 与 Locate 区分开。Move draft here 要求非空的未发送文本，是明确的目标分支操作；转移草稿时检查版本，并保护目标已有草稿。Host 仅在原生转移成功后记录手动路由证据。Locate 仍然只是查看，不贡献标签。分支生命周期建议与 Context 选择分开，需要单独确认。Local 只接纳明确生命周期提示；Fast 和 Deep 最多建议一次合法、非 no-op 的原生 Session 状态变化，明确提示优先。Complete 保留证据；之后的人工新轮次重新打开任务。
 
@@ -25,6 +25,8 @@ Policy memory 仍是可以从明确原生事件重建的投影。证据标明拥
 浏览器集成保持 Map 改变宽度时的 Chat 阅读行为。贴底位置到达新的精确底部时，滚动状态先落定，再响应随后输入框或回复增长；离底阅读仍保留原采样阈值。轮次导航条追踪实测视口高度，在单轮对话增长出导航条时安装监听，并在隐藏后恢复可见时跟随当前轮次；普通阅读滚动和指针操作仍由用户控制。[Chat 滚动验收](../../../../apps/web/tests/chat-scroll-contract.e2e.ts) 的全部七条原有路径通过，未降低门槛，流式 fling 场景保持 Map 打开。原生对话 fixture 先观察 Map 自动打开，再通过真实 UI 恢复完整宽度参考面。子 Agent 执行详情路由不会自动打开不受支持的家族 Map。归档投影保留任务状态及其事件来源，即使归档 Session 属于另一家族也如此。审阅后的快照保留新增 Context 控件和 Event details，录制的模型日志和快照 normalizer 保持不变。React Flow 控件使用应用已有的表面与标签颜色别名和本地化标签；真实浏览器验证了浅色与深色主题中的图标对比度。
 
 [线性 Context Map 布局决策](../bug-fix/2026-10-14-linear-context-map-layout.zh.md) 负责为首次打开延迟增加的单链精确定位；上述控制器缓存与已审阅操作决策继续有效。
+
+可选的目标模型加 Jev 检查由[目标组合记录](2026-10-18-goal-context-composition.zh.md)部分替代下文对额外路由模型的否决；此处一次调用的说明指普通 Fast 检查。
 
 ## 考虑过的替代方案
 

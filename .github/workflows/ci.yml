@@ -6,7 +6,8 @@ permissions:
   contents: read
 
 env:
-  PRIMARY_NODE_VERSION: '24'
+  # Node 24.22 fixes the captured cppgc ContextifyScript/Realm teardown use-after-free (#65778).
+  PRIMARY_NODE_VERSION: '24.22.0'
   # CI runs must never report to the production telemetry endpoint baked
   # into apps/cli/cordis.yml (AppCLIEntry disables the row when set).
   DSH_TELEMETRY_DISABLED: '1'
@@ -314,6 +315,14 @@ jobs:
 
       - name: Run compatibility, snapshot, and artifact gates
         run: pnpm run check:ci:consumers
+      - name: Retain isolated Chat restore search failure screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chat-restore-search-failure
+          path: .artifacts/web-e2e-chat-scroll-restore-composer.png
+          if-no-files-found: ignore
+          retention-days: 3
 
 
   node-compat:
@@ -491,6 +500,11 @@ jobs:
     name: windows node 24 / coverage
     timeout-minutes: 120
     env:
+      DEEPSEEK_API_KEY: ''
+      SILICONFLOW_API_KEY: ''
+      TYPESAFE_API_KEY: ''
+      JEV_API_KEY: ''
+      OPENAI_API_KEY: ''
       DSH_COVERAGE_MAX_WORKERS: ${{ (vars.DSH_CI_WINDOWS_RUNNER != '' || vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted') && '6' || '2' }}
       DSH_COVERAGE_PARTITIONS: ${{ (vars.DSH_CI_WINDOWS_RUNNER != '' || vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted') && '4' || '2' }}
       DSH_COVERAGE_TEST_TIMEOUT_MS: '90000'
@@ -546,7 +560,20 @@ jobs:
       # unbuilt checkouts.
       - name: Run Windows coverage
         shell: pwsh
-        run: pnpm run check:ci:coverage
+        env:
+          DSH_EPHEMERAL_NATIVE_CAPTURE: ${{ runner.environment == 'github-hosted' && '1' || '0' }}
+        run: ./scripts/run-windows-native.ps1 -Lane coverage -CaptureCrash:($env:DSH_EPHEMERAL_NATIVE_CAPTURE -ceq '1')
+      - name: Retain Windows coverage failure reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-coverage-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            coverage/.partitioned/partition-*.report.json
+            ${{ runner.temp }}/required-coverage-crash.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 3
       - name: Save coverage duration history
         # Coverage flakes must not prevent the cache from building; the
         # measured durations remain useful even when a partition failed. The
@@ -566,6 +593,12 @@ jobs:
           || (vars.DSH_CI_WINDOWS_RUNNER || 'windows-2025') }}
     name: windows node 24 / native tests
     timeout-minutes: 60
+    env:
+      DEEPSEEK_API_KEY: ''
+      SILICONFLOW_API_KEY: ''
+      TYPESAFE_API_KEY: ''
+      JEV_API_KEY: ''
+      OPENAI_API_KEY: ''
     steps:
       - uses: actions/checkout@v6
         with:
@@ -594,16 +627,36 @@ jobs:
           } else {
             pnpm install --frozen-lockfile
           }
-      - name: Run Windows-specific native tests
+      # Capture only after a fault, preserving the original command/runner/Node selection.
+      # See .agents/notes/implemented/testing/2026-10-19-required-native-crash-evidence.md.
+      - name: Verify crash-capture registry restoration
+        if: runner.environment == 'github-hosted'
         shell: pwsh
-        run: >-
-          pnpm exec vitest run
-          --no-file-parallelism
-          --testTimeout 90000
-          packages/shell/tool-pwsh/tests/loader.spec.ts
-          packages/workflow/workflow-worker-thread/tests/workflow-worker-thread.spec.ts
-          packages/workflow/tool-ralph/tests/integration.spec.ts
-          packages/subprocess/subprocess-local/tests/process-exit.spec.ts
+        run: |
+          ./scripts/native-postmortem-registry.ps1 -SelfTest
+          ./scripts/native-pageheap-image.ps1 -SelfTest
+          ./scripts/windows-process-exit-evidence.ps1 -SelfTest
+      - name: Verify live debugger verdicts
+        if: runner.environment == 'github-hosted'
+        shell: pwsh
+        run: ./scripts/native-live-debugger.ps1 -SelfTest
+      - name: Run Windows-specific native tests
+        id: native-check
+        shell: pwsh
+        env:
+          DSH_EPHEMERAL_NATIVE_CAPTURE: ${{ runner.environment == 'github-hosted' && '1' || '0' }}
+        run: ./scripts/run-windows-native.ps1 -CaptureCrash:($env:DSH_EPHEMERAL_NATIVE_CAPTURE -eq '1')
+      - name: Retain Windows native failure reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-native-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/required-native-report.json
+            ${{ runner.temp }}/required-native-crash.log
+            ${{ runner.temp }}/worker-reduction-*
+          if-no-files-found: warn
+          retention-days: 3
 
   windows-observational:
     if: github.event_name == 'pull_request'

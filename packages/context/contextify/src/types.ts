@@ -21,6 +21,10 @@ export interface ContextifyPromptSettings {
   readonly branch: ContextifyPromptSection
   /** Opt-in auxiliary classifier; explicit Branch requests do not require it. */
   readonly automaticBranchReview: boolean
+  /** Reuse confirmed, undo-aware choices in review packets and calibration. */
+  readonly personalizationEnabled: boolean
+  /** Fast review uses the chat model, Jev, or a validated goal with Jev or exact native task Context. */
+  readonly fastDecisionProvider: 'parent-model' | 'jev' | 'goal-model-jev' | 'goal-model-native'
   /** Maximum model requests in one explicitly selected Deep review. */
   readonly deepMaxRequests: number
 }
@@ -38,9 +42,13 @@ export interface ContextPolicyObservation {
   readonly origin: 'explicit-review' | 'manual-action'
   /** Exact draft objective when the reviewed event recorded one. */
   readonly objective?: string
+  /** Bounded task text known before the operation; historical targets grant no current authority. */
+  readonly routeContext?: { readonly source: string; readonly target?: string; readonly parent?: string }
   /** Context item or destination actually considered by this choice. */
   readonly targetNodeId?: string
   readonly targetSessionId?: SessionId
+  /** Parent considered when reviewing a new child placement. */
+  readonly forkParentSessionId?: SessionId
   /** Zero-based position within one displayed multi-item review. */
   readonly displayedIndex?: number
   /** Relation at review time, before any approved Context Plan mutation. */
@@ -70,8 +78,47 @@ export interface ContextPolicyRule extends ContextPolicyEstimate {
   readonly tendency: 'favor' | 'avoid'
 }
 
+/** Owned native event supporting an inspectable management rule or workflow. */
+export interface ContextManagementReference {
+  readonly sessionId: SessionId
+  readonly eventSeq: number
+}
+
+/** Conditional preference with bounded positive/negative evidence references. */
+export interface ContextManagementRule extends ContextPolicyRule {
+  readonly id: string
+  readonly branchDepth: number
+  readonly accepted: number
+  readonly rejected: number
+  readonly references: readonly ContextManagementReference[]
+}
+
+/** Repeated causally connected management actions; never an executable plan. */
+export interface ContextManagementWorkflow extends ContextPolicyEstimate {
+  readonly id: string
+  readonly actions: readonly ContextPolicyAction[]
+  readonly activity?: ContextPolicyObservation['activity']
+  readonly branchDepth: number
+  readonly tendency: 'favor' | 'avoid'
+  readonly accepted: number
+  readonly rejected: number
+  readonly references: readonly ContextManagementReference[]
+  /** Historical objectives are examples, never current source or destination authority. */
+  readonly examples: readonly (readonly string[])[]
+}
+
+/** Bounded, retraction-aware memory derived from confirmed management events. */
+export interface ContextManagementMemory {
+  readonly rules: readonly ContextManagementRule[]
+  readonly workflows: readonly ContextManagementWorkflow[]
+  readonly omittedRules?: number
+  readonly omittedWorkflows?: number
+}
+
 /** Inspectable policy memory for review thresholds and repeated choice rules. */
 export interface ContextStewardProfile {
+  /** Up to four still-active complete approvals; historical examples, not current authority. */
+  readonly scopePolicyExamples?: readonly ContextScopePolicyExample[]
   readonly evidence: ContextPolicyEstimate
   readonly destination: ContextPolicyEstimate
   readonly branch: ContextPolicyEstimate
@@ -111,6 +158,8 @@ export const CONTEXTIFY_DEFAULT_SETTINGS: ContextifyPromptSettings = Object.free
   archive: Object.freeze({ additional: '', override: '' }),
   branch: Object.freeze({ additional: '', override: '' }),
   automaticBranchReview: false,
+  personalizationEnabled: true,
+  fastDecisionProvider: 'parent-model',
   deepMaxRequests: 3,
 })
 
@@ -350,16 +399,63 @@ export interface ContextArchiveCandidate {
   readonly evidenceNodeIds: readonly string[]
 }
 
+/** Server-bound complete preservation choice; the key is not authentication. */
+export interface ContextScopePolicyReview {
+  /** Server-owned identity of this publication, independent of graph revisions. */
+  readonly reviewId: string
+  readonly key: string
+  readonly mode: 'task-owned' | 'task-lineage'
+  readonly assignment: 'new' | 'existing'
+  /** Original selected task or new-task parent, never an inherited UI alias. */
+  readonly sessionId: SessionId
+  readonly sourceCount: number
+}
+
+/** One Client-acknowledged complete policy approval, with owned Undo provenance. */
+export interface ContextScopePolicyExample {
+  readonly sourceSessionId: SessionId
+  readonly sourceEventSeq: number
+  readonly at: number
+  readonly objective: string
+  readonly mode: ContextScopePolicyReview['mode']
+  readonly assignment: ContextScopePolicyReview['assignment']
+}
+
 /** Ephemeral, revision-scoped Agent output. Nothing here is a mutation. */
 export interface ContextRecommendationProposal {
+  /** Optional unambiguous complete policy displayed before explicit full approval. */
+  readonly scopePolicy?: ContextScopePolicyReview
   readonly mode: ContextRecommendationMode
   readonly base: ContextRecommendationBase
+  /** Original model decision when an approved scope is carried to another Session. */
+  readonly sourceBase?: ContextRecommendationBase
   readonly currentNodeIds: readonly string[]
   readonly proposedNodeIds: readonly string[]
   readonly addedNodeIds: readonly string[]
   readonly removedNodeIds: readonly string[]
   readonly selection: readonly ContextSelectionRecommendation[]
   readonly archive: readonly ContextArchiveCandidate[]
+  /** Bounded evidence actually supplied to this decision, separate from answer Context. */
+  readonly personalization?: {
+    readonly enabled: boolean
+    readonly reviewer: 'parent-model' | 'jev' | 'goal-model-jev' | 'goal-model-native' | 'local'
+    /** Owned event identities available to deterministic selection calibration. */
+    readonly calibrationSources?: readonly string[]
+    /** Owned event identities in the recent per-action threshold input pools. */
+    readonly thresholdSources?: readonly string[]
+    /** Exact conditional rules/workflows supplied to this management decision. */
+    readonly managementMemory?: ContextManagementMemory
+    /** Confirmed complete policies actually supplied to this decision. */
+    readonly scopePolicyExamples?: readonly ContextScopePolicyExample[]
+    readonly examples: readonly {
+      readonly objective: string
+      readonly action: ContextPolicyAction | 'exclude'
+      readonly choice?: 'accept' | 'reject'
+      readonly content?: string
+      readonly sourceSessionId?: SessionId
+      readonly sourceEventSeq?: number
+    }[]
+  }
   /** Optional draft-bound Session route, reviewed separately from Context edits. */
   readonly route?: ContextRouteAdvice
   /** Separate review-only task lifecycle advice; never changes prompt inclusion. */
@@ -379,6 +475,12 @@ export interface ContextRouteAdvice {
   readonly base: ContextRecommendationBase
   readonly objective: string
   readonly targetSessionId?: SessionId
+  /** Native parent of a proposed child; absent means the active Session. */
+  readonly forkParentSessionId?: SessionId
+  /** Complete destination-based Context proposed for a reviewed route. */
+  readonly contextNodeIds?: readonly string[]
+  /** Destination replacements prevent carrying scope; draft-only routing remains available. */
+  readonly contextUnavailable?: boolean
   readonly reason: string
 }
 
@@ -410,6 +512,8 @@ declare module '@deepseek-ai/dsh-session/types' {
     }
     /** Explicit decision on a draft-bound native Session route card. */
     'contextify/route-choice': {
+      /** Host-consumed recommendation correlation; not original Client callback identity. */
+      readonly recommendationTraceId?: string
       readonly routeKey: string
       readonly action: ContextRouteAdvice['action']
       readonly choice: 'accept' | 'reject'
@@ -417,6 +521,8 @@ declare module '@deepseek-ai/dsh-session/types' {
       /** Bounded reviewed draft objective; recorded only after an explicit route decision. */
       readonly objective?: string
       readonly targetSessionId?: SessionId
+      /** Reviewed parent of a new child; absent on existing-destination routes. */
+      readonly forkParentSessionId?: SessionId
       /** Client-declared confirmation, not authenticated human identity. */
       readonly uiOrigin?: 'contextify-client'
     }
@@ -483,6 +589,8 @@ declare module '@deepseek-ai/dsh-session/types' {
     }
     /** Frozen auxiliary Fast model request; no credentials are stored. */
     'contextify/recommendation-request': {
+      /** Host-consumed recommendation correlation; not original Client callback identity. */
+      readonly recommendationTraceId?: string
       readonly base: ContextRecommendationBase
       readonly provider: string
       readonly model: string
@@ -493,6 +601,8 @@ declare module '@deepseek-ai/dsh-session/types' {
     }
     /** A current review rendered in the visible Client document; not proof that it was read. */
     'contextify/recommendation-presented': {
+      /** Host-consumed recommendation correlation; not original Client callback identity. */
+      readonly recommendationTraceId?: string
       readonly mode: ContextRecommendationMode
       readonly base: ContextRecommendationBase
       readonly selection: readonly {
@@ -508,6 +618,8 @@ declare module '@deepseek-ai/dsh-session/types' {
     }
     /** Explicit closure of one reviewed Context proposal; no Plan mutation. */
     'contextify/recommendation-dismissed': {
+      /** Host-consumed recommendation correlation; not original Client callback identity. */
+      readonly recommendationTraceId?: string
       readonly mode: ContextRecommendationMode
       readonly base: ContextRecommendationBase
       /** Bounded reviewed objective, present only when items were explicitly declined. */
@@ -524,8 +636,14 @@ declare module '@deepseek-ai/dsh-session/types' {
     }
     /** Resolution of a current review; accepted and declined proposed changes are disjoint. */
     'contextify/recommendation-reviewed': {
+      /** Host-consumed recommendation correlation; not original Client callback identity. */
+      readonly recommendationTraceId?: string
+      /** Server-bound policy after matching Client display acknowledgement and complete changed application. */
+      readonly scopePolicy?: ContextScopePolicyReview
       readonly mode: ContextRecommendationMode
       readonly base: ContextRecommendationBase
+      /** Original decision log for an explicitly approved cross-Session scope. */
+      readonly sourceBase?: ContextRecommendationBase
       /** Bounded objective used to produce this confirmed recommendation. */
       readonly objective?: string
       readonly selection: readonly {

@@ -19,7 +19,7 @@ import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, recordFixture, seedSession, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { expandOwningTurnProcess, newEnglishPage, saveFailureShot } from './support.ts'
+import { expandOwningTurnProcess, newEnglishPage, restoreFullWidthChat, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/navigation-panes', import.meta.url))
 const SEED = join(SNAPSHOT_DIR, 'session.v3.jsonl')
@@ -279,20 +279,23 @@ describe('web e2e: navigation & panes over a rich seeded session', () => {
   it.skipIf(MODE === 'record')('downloads through the Session Header and /export with one dialog', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-navigation-export'))
     await ensureSeedOpen(page)
+    await restoreFullWidthChat(page)
     const exportButton = page.getByRole('button', { name: 'More actions' })
     expect(await exportButton.isDisabled()).toBe(false)
     const header = exportButton.locator('xpath=ancestor::header[1]')
     // The right Sidebar's expand button holds the header's corner; the export
     // control sits immediately to its left.
-    const sidebarButton = page.getByRole('button', { name: 'Open right sidebar' })
-    const [buttonBox, sidebarBox, headerBox] = await Promise.all([
-      exportButton.boundingBox(), sidebarButton.boundingBox(), header.boundingBox(),
-    ])
-    if (buttonBox === null || sidebarBox === null || headerBox === null) {
-      throw new Error('Session Header export geometry is unavailable')
-    }
-    expect(headerBox.x + headerBox.width - (sidebarBox.x + sidebarBox.width)).toBeLessThanOrEqual(32)
-    expect(sidebarBox.x - (buttonBox.x + buttonBox.width)).toBeLessThanOrEqual(32)
+    const geometry = await header.evaluate((element) => {
+      const buttons = element.querySelectorAll('button')
+      const more = Array.from(buttons).find(button => button.getAttribute('aria-label') === 'More actions')
+      const sidebar = Array.from(buttons).find(button => button.getAttribute('aria-label') === 'Open right sidebar')
+      if (more === undefined || sidebar === undefined) throw new Error('Session Header export geometry is unavailable')
+      const headerBox = element.getBoundingClientRect(), buttonBox = more.getBoundingClientRect()
+      const sidebarBox = sidebar.getBoundingClientRect()
+      return { cornerGap: headerBox.right - sidebarBox.right, actionGap: sidebarBox.left - buttonBox.right }
+    })
+    expect(geometry.cornerGap).toBeLessThanOrEqual(32)
+    expect(geometry.actionGap).toBeLessThanOrEqual(32)
     const responsePromise = page.waitForResponse(response =>
       response.request().method() === 'HEAD'
       && new URL(response.url()).pathname === '/api/session.export', { timeout: 30_000 })

@@ -1,14 +1,17 @@
 /** Bounded Context-action data shared by Fast review, local scorers and offline replay. */
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { ContextFamilyGraph, ContextPolicyObservation, ContextRecommendationBase, ContextStewardProfile } from './types.ts'
+import type { ContextFamilyGraph, ContextManagementMemory, ContextPolicyObservation, ContextRecommendationBase, ContextStewardProfile, ContextScopePolicyExample } from './types.ts'
 import { buildContextRouteCandidates, planContextRoute, draftRouteIntent,
   type ContextRouteCandidate, type ContextRouteIntent, type ContextRouteProposal } from './context-route-policy.ts'
 import { parseRecommendationJson, parseRecommendationDecisionText, type ContextRecommendationDecision } from './recommendation.ts'
+import { buildTaskCard } from './task-card.ts'
+import { buildManagementMemory } from './management-memory.ts'
+import { contextActivityFromObjective } from './context-activity.ts'
 
 /** Protocol ceiling on scored native Sessions in one Context-action packet. */
 export const CONTEXT_ACTION_MAX_SESSIONS = 8
 /** Protocol ceiling on bounded source summaries per Session. */
-export const CONTEXT_ACTION_MAX_SESSION_NODES = 12
+export const CONTEXT_ACTION_MAX_SESSION_NODES = 4
 /** Confidence required before an inferred intent proposes a branch switch. */
 export const CONTEXT_ACTION_INTENT_THRESHOLD = 0.8
 
@@ -23,6 +26,8 @@ export interface ContextActionNode {
 
 /** A native Session candidate with bounded, inspectable source summaries. */
 export interface ContextActionCandidate extends ContextRouteCandidate {
+  /** Native lifecycle provenance; absence does not establish an explicit user choice. */
+  readonly workStateSource?: ContextFamilyGraph['sessions'][number]['workStateSource']
   readonly nodes: readonly ContextActionNode[]
 }
 
@@ -33,14 +38,23 @@ export interface ContextActionPacket {
   readonly explicitIntent: ContextRouteIntent
   readonly parentSessionId?: SessionId
   readonly candidates: readonly ContextActionCandidate[]
+  /** Positive count of native non-active tasks omitted by the bounded candidate slate. */
+  readonly omittedTaskCount?: number
+  /** Owned evidence for the active task, separate from inherited Context. */
+  readonly activeTask?: ContextActionCandidate
   /** Confirmed historical route examples; target IDs here do not authorize current actions. */
   readonly preferenceExamples?: readonly ContextPolicyObservation[]
+  /** Conditional preference rules and causal workflows; historical references grant no authority. */
+  readonly scopePolicyExamples?: readonly ContextScopePolicyExample[]
+  readonly managementMemory?: ContextManagementMemory
 }
 
 /** Model-supplied ranking signals; these scores are not calibrated probabilities. */
 export interface SemanticContextRoute {
   readonly intent: ContextRouteIntent
   readonly intentScore: number
+  /** Validated native parent for a new child, distinct from resuming that task. */
+  readonly forkParentSessionId?: SessionId
   readonly candidates: readonly {
     readonly sessionId: SessionId
     readonly destinationScore: number
@@ -61,7 +75,7 @@ function bounded(value: string, limit: number): string {
 
 /**
  * Build a bounded native-Session slate without fetching data or invoking a model.
- * @param input - Frozen graph, exact contents, draft, revisions and optional visible source IDs.
+ * @param input - Frozen graph, exact contents, draft, revisions and optional evidence-import IDs.
  * @returns A JSON-serializable candidate packet with native ancestry and work state.
  */
 export function buildContextActionPacket(input: {
@@ -71,39 +85,57 @@ export function buildContextActionPacket(input: {
   readonly base: ContextRecommendationBase
   readonly visibleNodeIds?: readonly string[]
   readonly preferenceExamples?: readonly ContextPolicyObservation[]
+  readonly scopePolicyExamples?: readonly ContextScopePolicyExample[]
 }): ContextActionPacket {
   const visible = input.visibleNodeIds === undefined ? undefined : new Set(input.visibleNodeIds)
   const active = input.graph.sessions.find(session => session.id === input.graph.activeSessionId)
-  const candidates = buildContextRouteCandidates(input).slice(0, CONTEXT_ACTION_MAX_SESSIONS)
-    .map((candidate): ContextActionCandidate => {
-      const nodes = input.graph.nodes.filter(node => node.owner.sessionId === candidate.sessionId
-        && (visible === undefined || visible.has(node.id)))
-        .slice(-CONTEXT_ACTION_MAX_SESSION_NODES).map((node): ContextActionNode => {
-          const id = node.id
-          const exact = input.contents[id] ?? node.preview
-          const content = bounded(exact, 1200)
-          return Object.freeze({ id, role: node.role,
-            ...(node.sourceKind === undefined ? {} : { sourceKind: node.sourceKind }),
-            content, truncated: content.length < exact.length })
-        })
-      const ownedNodeIds = nodes.map(node => node.id)
-      return Object.freeze({ ...candidate,
-        ownedNodeIds: Object.freeze(ownedNodeIds),
-        offPathNodeIds: Object.freeze(candidate.offPathNodeIds.filter(id => ownedNodeIds.includes(id))),
-        nodes: Object.freeze(nodes) })
+  const ancestorRanks = new Map<SessionId, number>()
+  let parentId = active?.parentSessionId
+  while (parentId !== undefined && !ancestorRanks.has(parentId)) {
+    ancestorRanks.set(parentId, ancestorRanks.size)
+    parentId = input.graph.sessions.find(session => session.id === parentId)?.parentSessionId
+  }
+  const available = [...buildContextRouteCandidates(input)]
+    .sort((a, b) => (ancestorRanks.get(a.sessionId) ?? Infinity) - (ancestorRanks.get(b.sessionId) ?? Infinity))
+  const candidates = available
+    .slice(0, CONTEXT_ACTION_MAX_SESSIONS)
+    .map((candidate) => {
+      const card = buildTaskCard(candidate, input.graph, input.contents, input.objective)
+      return Object.freeze({ ...card, ownedNodeIds: Object.freeze(card.nodes.map(node => node.id)),
+        offPathNodeIds: Object.freeze(card.nodes.filter(node => candidate.offPathNodeIds.includes(node.id)
+          && (visible === undefined || visible.has(node.id))).map(node => node.id)) })
     })
+  const activeTask = active === undefined ? undefined : buildTaskCard({ sessionId: active.id,
+    depth: active.depth, label: 'Current task', ownedNodeIds: [], offPathNodeIds: [], lexicalScore: 0 },
+  input.graph, input.contents, input.objective)
   const preferenceExamples = (input.preferenceExamples ?? []).filter(observation => !observation.undone
-    && observation.action !== 'include' && observation.action !== 'release')
+    && (observation.action === 'branch' || observation.action === 'navigate' || observation.action === 'return'))
     .slice(-8).map(observation => Object.freeze({ ...observation,
       ...(observation.objective === undefined ? {} : { objective: bounded(observation.objective, 800) }),
+      ...(observation.routeContext === undefined ? {} : { routeContext: Object.freeze({
+        source: bounded(observation.routeContext.source, 800),
+        ...(observation.routeContext.target === undefined ? {} : { target: bounded(observation.routeContext.target, 800) }),
+        ...(observation.routeContext.parent === undefined ? {} : { parent: bounded(observation.routeContext.parent, 800) }),
+      }) }),
     }))
+  const activity = contextActivityFromObjective(input.objective)
+  const memory = active === undefined ? undefined : buildManagementMemory(input.preferenceExamples ?? [], {
+    branchDepth: active.depth, ...(activity === undefined ? {} : { activity }),
+  })
+  const scopePolicyExamples = (input.scopePolicyExamples ?? []).slice(-4)
+    .map(example => Object.freeze({ ...example, objective: bounded(example.objective, 200) }))
   return Object.freeze({
+    ...(scopePolicyExamples.length === 0 ? {} : { scopePolicyExamples: Object.freeze(scopePolicyExamples) }),
+    ...(memory === undefined || memory.rules.length === 0 && memory.workflows.length === 0
+      ? {} : { managementMemory: memory }),
     ...(preferenceExamples.length === 0 ? {} : { preferenceExamples: Object.freeze(preferenceExamples) }),
     base: Object.freeze({ ...input.base }),
     objective: bounded(input.objective.trim(), 4000),
     explicitIntent: draftRouteIntent(input.objective),
     ...(active?.parentSessionId === undefined ? {} : { parentSessionId: active.parentSessionId }),
     candidates: Object.freeze(candidates),
+    ...(available.length > candidates.length ? { omittedTaskCount: available.length - candidates.length } : {}),
+    ...(activeTask === undefined ? {} : { activeTask }),
   })
 }
 
@@ -131,7 +163,7 @@ function score(value: unknown, label: string): number {
  * @returns Frozen independent intent, destination, evidence and supersession scores.
  */
 export function parseSemanticContextRoute(value: unknown, packet: ContextActionPacket): SemanticContextRoute {
-  const root = record(value, 'route', ['intent', 'intentScore', 'candidates'])
+  const root = record(value, 'route', ['intent', 'intentScore', 'candidates', 'forkParentSessionId'])
   const intents: readonly ContextRouteIntent[] = ['continue', 'resume', 'reference', 'new-task', 'return', 'unknown']
   if (typeof root.intent !== 'string' || !intents.includes(root.intent as ContextRouteIntent)) {
     throw new Error('route intent is unsupported')
@@ -140,6 +172,12 @@ export function parseSemanticContextRoute(value: unknown, packet: ContextActionP
   if (!Array.isArray(root.candidates)) throw new Error('route candidates must be an array')
   if (root.candidates.length > CONTEXT_ACTION_MAX_SESSIONS) throw new Error('route candidates exceed 8 Sessions')
   const ids = new Map(packet.candidates.map(candidate => [String(candidate.sessionId), candidate.sessionId]))
+  const parentIds = new Map([...ids, [String(packet.base.activeSessionId), packet.base.activeSessionId]])
+  const forkParent = root.forkParentSessionId === undefined ? undefined
+    : typeof root.forkParentSessionId === 'string' ? parentIds.get(root.forkParentSessionId) : undefined
+  if (root.forkParentSessionId !== undefined && (root.intent !== 'new-task' || forkParent === undefined)) {
+    throw new Error('route fork parent is unavailable or intent is not new-task')
+  }
   const seen = new Set<string>()
   const candidates = root.candidates.map((raw, index) => {
     const item = record(raw, `route candidates[${String(index)}]`,
@@ -154,6 +192,7 @@ export function parseSemanticContextRoute(value: unknown, packet: ContextActionP
       supersededScore: score(item.supersededScore, 'supersededScore') })
   })
   return Object.freeze({ intent: root.intent as ContextRouteIntent, intentScore,
+    ...(forkParent === undefined ? {} : { forkParentSessionId: forkParent }),
     candidates: Object.freeze(candidates) })
 }
 
@@ -180,18 +219,36 @@ export function planSemanticContextRoute(input: {
   readonly route: SemanticContextRoute
   readonly profile: ContextStewardProfile
   readonly evidenceNodeIds?: readonly string[]
+  /** Host-only signal that intent and destination scores encode one concrete placement. */
+  readonly jointPlacement?: boolean
+  /** Native-validated proposed Context, used to corroborate a concrete destination. */
+  readonly selectedNodeIds?: readonly string[]
 }): ContextRouteProposal {
   const { packet, route, profile } = input
-  const intent = packet.explicitIntent !== 'unknown' ? packet.explicitIntent
-    : route.intentScore >= CONTEXT_ACTION_INTENT_THRESHOLD ? route.intent : 'unknown'
   const scores = new Map(route.candidates.map(candidate => [candidate.sessionId, candidate]))
+  const selected = new Set(input.selectedNodeIds ?? [])
+  const supportedPlacement = input.jointPlacement === true
+    && (route.intent === 'resume' || route.intent === 'return')
+    && packet.candidates.some(candidate => scores.get(candidate.sessionId)?.destinationScore === route.intentScore
+      && candidate.ownedNodeIds.some(id => selected.has(id)))
+  const intentThreshold = supportedPlacement ? profile.thresholds.destination : CONTEXT_ACTION_INTENT_THRESHOLD
+  const intent = packet.explicitIntent !== 'unknown' ? packet.explicitIntent
+    : route.intentScore >= intentThreshold ? route.intent : 'unknown'
+  if (intent === 'new-task' && route.intent === 'new-task' && route.forkParentSessionId !== undefined
+    && route.intentScore >= intentThreshold) {
+    return Object.freeze({ action: 'branch', forkParentSessionId: route.forkParentSessionId,
+      reason: `Create a separate task below ${packet.candidates.find(candidate => candidate.sessionId === route.forkParentSessionId)?.label ?? 'the current branch'}.`, needsReview: true })
+  }
   const candidates = packet.candidates.map((candidate) => {
     const value = scores.get(candidate.sessionId)
     return { ...candidate, destinationScore: value?.destinationScore ?? 0,
       evidenceScore: value?.evidenceScore ?? 0, supersededScore: value?.supersededScore ?? 0,
       evidenceNodeIds: (input.evidenceNodeIds ?? []).filter(id => candidate.offPathNodeIds.includes(id)) }
   })
-  return planContextRoute({ intent, activeSessionId: packet.base.activeSessionId,
+  const safeIntent = intent === 'return' && packet.explicitIntent === 'unknown'
+    && !candidates.some(candidate => candidate.sessionId === packet.parentSessionId
+      && candidate.ownedNodeIds.length > 0 && candidate.supersededScore < 0.5) ? 'unknown' : intent
+  return planContextRoute({ intent: safeIntent, activeSessionId: packet.base.activeSessionId,
     ...(packet.parentSessionId === undefined ? {} : { parentSessionId: packet.parentSessionId }),
     candidates, thresholds: profile.thresholds })
 }

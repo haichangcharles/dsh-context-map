@@ -123,6 +123,69 @@ describe('native Contextify plan compiler', () => {
     ])
   })
 
+  it.each([false, true])('keeps historical imports before current input after exclusions (replacement=%s)', (replace) => {
+    const session = Session.create(SessionId('current-input-before-imports'))
+    const initial = createInitialContextPlan()
+    session.append('contextify/plan', initial)
+    const systemSeq = session.append('system/message', {
+      turn: 2, step: 1, message: createSystemMessage('rules', 'system-prompt'),
+    }, { surfaceOp: 'append' }).seq
+    session.append('turn/start', { turn: 1 })
+    const oldSeq = appendUser(session, 'discarded history')
+    session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    session.append('turn/start', { turn: 2 })
+    const currentSeq = appendUser(session, 'current question')
+    const snapshots = ['first import', 'second import'].map((value, index) => {
+      const event = session.append('context/compiler-snapshot', {
+        id: `sibling-${String(index)}`,
+        message: createUserMessage({ content: [{ type: 'text', text: value }], source: { kind: 'user' } }),
+      })
+      return { nodeId: `sibling-${String(index)}`, snapshotSeq: event.seq, position: 99 }
+    })
+    const replacement = session.append('context/compiler-snapshot', {
+      id: 'current-replacement',
+      message: createUserMessage({ content: [{ type: 'text', text: 'edited current' }], source: { kind: 'user' } }),
+    })
+    session.append('contextify/plan', nextPlan(initial, {
+      excluded: [{ nodeId: 'old', eventSeq: oldSeq }], included: snapshots,
+      replacements: replace ? [{ nodeId: 'current', snapshotSeq: replacement.seq,
+        originalEventSeq: currentSeq, role: 'user', kind: 'placeholder', reason: 'explicit edit' }] : [],
+    }))
+    const before = JSON.stringify(session.snapshotEvents())
+    const result = compileContextify({ session, turn: 2, step: 1 })
+    expect(result.eventSeqs).toEqual([systemSeq, ...snapshots.map(item => item.snapshotSeq),
+      replace ? replacement.seq : currentSeq])
+    expect(result.messages.map(text)).toEqual(['rules', 'first import', 'second import',
+      replace ? 'edited current' : 'current question'])
+    expect(JSON.stringify(session.snapshotEvents())).toBe(before)
+  })
+
+  it('keeps the whole current tool exchange after historical imports', () => {
+    const session = Session.create(SessionId('current-tool-suffix'))
+    const initial = createInitialContextPlan()
+    session.append('contextify/plan', initial)
+    session.append('turn/start', { turn: 3 })
+    const currentSeq = appendUser(session, 'inspect a file')
+    const callId = CallId('current-tail-call')
+    const assistant = session.append('assistant/message', { turn: 3, step: 1, stream: [],
+      message: createAssistantMessage({ source: { provider: 'mock', model: 'mock' },
+        content: [{ type: 'tool-call', id: callId, name: 'read', arguments: '{}' }] }),
+    }, { surfaceOp: 'append' }).seq
+    const tool = session.append('tool/result', { turn: 3, step: 1,
+      message: createToolResultMessage({ callId, content: [{ type: 'text', text: 'file content' }], isError: false }),
+    }, { surfaceOp: 'append' }).seq
+    const imported = session.append('context/compiler-snapshot', {
+      id: 'historical-file', message: createUserMessage({
+        content: [{ type: 'text', text: 'historical context' }], source: { kind: 'user' },
+      }),
+    }).seq
+    session.append('contextify/plan', nextPlan(initial, {
+      excluded: [], replacements: [], included: [{ nodeId: 'historical-file', snapshotSeq: imported, position: 99 }],
+    }))
+    expect(compileContextify({ session, turn: 3, step: 2 }).eventSeqs)
+      .toEqual([imported, currentSeq, assistant, tool])
+  })
+
   it('appends immutable Reset, Undo, and Redo revisions without rewriting state history', () => {
     const session = Session.create(SessionId('contextify-history'))
     const initial = createInitialContextPlan()

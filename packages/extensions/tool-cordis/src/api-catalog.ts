@@ -784,9 +784,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: '@Remote(\'stewardProfile\') async stewardProfile(agent: Agent): Promise<ContextStewardProfile>',
-        description: 'Project confirmed Context-management choices across this DSH Profile\'s Sessions. The returned policy changes proposal thresholds only; it cannot authorize mutation.',
+        description: 'Project confirmed Context-management choices across this DSH Profile\'s Sessions. The returned estimates change proposal thresholds only; historical complete-policy examples cannot authorize mutation.',
         parameters: [{ name: 'agent', description: 'Live Agent selecting the native Session family.' }],
-        returns: 'A compact, inspectable policy with support counts per action.',
+        returns: 'Action support estimates and at most four undo/reset-aware complete-policy examples.',
       },
       {
         signature: '@Remote(\'policyEvidence\') async policyEvidence(agent: Agent): Promise<readonly ContextPolicyObservation[]>',
@@ -826,9 +826,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'agent', description: 'Live Agent whose Session owns the pending proposal.' }, { name: 'proposal', description: 'Exact proposal rendered by the Client.' }, { name: 'uiOrigin', description: 'Optional Client-declared source of the render.' }],
       },
       {
-        signature: '@Remote(\'reviewRoute\') async reviewRoute( agent: Agent, route: ContextRouteAdvice, choice: \'accept\' | \'reject\', actualTargetSessionId?: SessionId, uiOrigin?: \'contextify-client\', ): Promise<void>',
+        signature: '@Remote(\'reviewRoute\') async reviewRoute( agent: Agent, route: ContextRouteAdvice, choice: \'accept\' | \'reject\', actualTargetSessionId?: SessionId, uiOrigin?: \'contextify-client\', carryContext?: boolean, displayedPolicyKey?: string, ): Promise<void>',
         description: 'Record a reviewed route after its native draft transfer succeeds, or a Stay choice.',
-        parameters: [{ name: 'agent', description: 'Live Agent that owns the pending route card.' }, { name: 'route', description: 'Exact revision-bound route card returned by Fast review.' }, { name: 'choice', description: 'Explicit acceptance or rejection of that card.' }, { name: 'actualTargetSessionId', description: 'Native destination after an accepted transfer.' }, { name: 'uiOrigin', description: 'Marks a Client review without claiming authenticated identity.' }],
+        parameters: [{ name: 'agent', description: 'Live Agent that owns the pending route card.' }, { name: 'route', description: 'Exact revision-bound route card returned by Fast review.' }, { name: 'choice', description: 'Explicit acceptance or rejection of that card.' }, { name: 'actualTargetSessionId', description: 'Native destination after an accepted transfer.' }, { name: 'uiOrigin', description: 'Marks a Client review without claiming authenticated identity.' }, { name: 'carryContext', description: 'Approve complete Context at the final destination; manual conflicts preserve its Plan.' }, { name: 'displayedPolicyKey', description: 'Optional Client-declared acknowledgement of the displayed server policy; never source authority.' }],
       },
       {
         signature: '@Remote(\'recordManualBranch\') async recordManualBranch( agent: Agent, childSessionId: SessionId, uiOrigin?: \'contextify-client\', objective?: string, ): Promise<void>',
@@ -863,9 +863,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'The view after the mutation commits.',
       },
       {
-        signature: '@Remote(\'setNodeModes\') async setNodeModes( agent: Agent, ref: ContextPlanRef, mutations: readonly ContextNodeMutation[], expectedGraphRevision?: string, uiOrigin?: \'contextify-client\', reviewedDeclinedNodeIds?: readonly string[], ): Promise<ContextifyView>',
+        signature: '@Remote(\'setNodeModes\') async setNodeModes( agent: Agent, ref: ContextPlanRef, mutations: readonly ContextNodeMutation[], expectedGraphRevision?: string, uiOrigin?: \'contextify-client\', reviewedDeclinedNodeIds?: readonly string[], displayedPolicyKey?: string, ): Promise<ContextifyView>',
         description: 'Apply several node-mode changes as one Context Plan revision.',
-        parameters: [{ name: 'agent', description: 'Live Agent whose Session receives durable events.' }, { name: 'ref', description: 'Expected current plan revision.' }, { name: 'mutations', description: 'Ordered message-mode replacements.' }, { name: 'expectedGraphRevision', description: 'Optional family revision required by recommendation acceptance.' }, { name: 'uiOrigin', description: 'Optional Client-declared origin for a visible plan action.' }, { name: 'reviewedDeclinedNodeIds', description: 'Explicit Keep-current choices within the reviewed proposal.' }],
+        parameters: [{ name: 'agent', description: 'Live Agent whose Session receives durable events.' }, { name: 'ref', description: 'Expected current plan revision.' }, { name: 'mutations', description: 'Ordered message-mode replacements.' }, { name: 'expectedGraphRevision', description: 'Optional family revision required by recommendation acceptance.' }, { name: 'uiOrigin', description: 'Optional Client-declared origin for a visible plan action.' }, { name: 'reviewedDeclinedNodeIds', description: 'Explicit Keep-current choices within the reviewed proposal.' }, { name: 'displayedPolicyKey', description: 'Optional Client acknowledgement of the displayed complete policy; omission keeps it unlearned.' }],
         returns: 'The view after one complete plan commits.',
       },
       {
@@ -4195,6 +4195,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ContextIncludedNode {\n    readonly nodeId: string;\n    readonly snapshotSeq: number;\n    readonly position: number;\n}',
   },
   {
+    name: 'ContextManagementMemory',
+    declaration: 'export interface ContextManagementMemory {\n    readonly rules: readonly ContextManagementRule[];\n    readonly workflows: readonly ContextManagementWorkflow[];\n    readonly omittedRules?: number;\n    readonly omittedWorkflows?: number;\n}',
+  },
+  {
+    name: 'ContextManagementReference',
+    declaration: 'export interface ContextManagementReference {\n    readonly sessionId: SessionId;\n    readonly eventSeq: number;\n}',
+  },
+  {
+    name: 'ContextManagementRule',
+    declaration: 'export interface ContextManagementRule extends ContextPolicyRule {\n    readonly id: string;\n    readonly branchDepth: number;\n    readonly accepted: number;\n    readonly rejected: number;\n    readonly references: readonly ContextManagementReference[];\n}',
+  },
+  {
+    name: 'ContextManagementWorkflow',
+    declaration: 'export interface ContextManagementWorkflow extends ContextPolicyEstimate {\n    readonly id: string;\n    readonly actions: readonly ContextPolicyAction[];\n    readonly activity?: ContextPolicyObservation[\'activity\'];\n    readonly branchDepth: number;\n    readonly tendency: \'favor\' | \'avoid\';\n    readonly accepted: number;\n    readonly rejected: number;\n    readonly references: readonly ContextManagementReference[];\n    readonly examples: readonly (readonly string[])[];\n}',
+  },
+  {
     name: 'ContextMessageRef',
     declaration: 'export interface ContextMessageRef {\n    readonly sessionId: SessionId;\n    readonly seq: number;\n}',
   },
@@ -4220,7 +4236,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContextPolicyObservation',
-    declaration: 'export interface ContextPolicyObservation {\n    readonly sourceSessionId?: SessionId;\n    readonly sourceEventSeq?: number;\n    readonly action: ContextPolicyAction;\n    readonly choice: \'accept\' | \'reject\';\n    readonly origin: \'explicit-review\' | \'manual-action\';\n    readonly objective?: string;\n    readonly targetNodeId?: string;\n    readonly targetSessionId?: SessionId;\n    readonly displayedIndex?: number;\n    readonly onActiveBranch?: boolean;\n    readonly activity?: \'planning\' | \'writing\' | \'brainstorming\' | \'other\';\n    readonly sourceKind?: \'chat\' | \'web\' | \'worker\';\n    readonly branchDepth: number;\n    readonly at: number;\n    readonly weight?: number;\n    readonly undone?: boolean;\n}',
+    declaration: 'export interface ContextPolicyObservation {\n    readonly sourceSessionId?: SessionId;\n    readonly sourceEventSeq?: number;\n    readonly action: ContextPolicyAction;\n    readonly choice: \'accept\' | \'reject\';\n    readonly origin: \'explicit-review\' | \'manual-action\';\n    readonly objective?: string;\n    readonly routeContext?: {\n        readonly source: string;\n        readonly target?: string;\n        readonly parent?: string;\n    };\n    readonly targetNodeId?: string;\n    readonly targetSessionId?: SessionId;\n    readonly forkParentSessionId?: SessionId;\n    readonly displayedIndex?: number;\n    readonly onActiveBranch?: boolean;\n    readonly activity?: \'planning\' | \'writing\' | \'brainstorming\' | \'other\';\n    readonly sourceKind?: \'chat\' | \'web\' | \'worker\';\n    readonly branchDepth: number;\n    readonly at: number;\n    readonly weight?: number;\n    readonly undone?: boolean;\n}',
   },
   {
     name: 'ContextPolicyRule',
@@ -4236,7 +4252,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContextRecommendationProposal',
-    declaration: 'export interface ContextRecommendationProposal {\n    readonly mode: ContextRecommendationMode;\n    readonly base: ContextRecommendationBase;\n    readonly currentNodeIds: readonly string[];\n    readonly proposedNodeIds: readonly string[];\n    readonly addedNodeIds: readonly string[];\n    readonly removedNodeIds: readonly string[];\n    readonly selection: readonly ContextSelectionRecommendation[];\n    readonly archive: readonly ContextArchiveCandidate[];\n    readonly route?: ContextRouteAdvice;\n    readonly workStates?: readonly ContextWorkStateAdvice[];\n}',
+    declaration: 'export interface ContextRecommendationProposal {\n    readonly scopePolicy?: ContextScopePolicyReview;\n    readonly mode: ContextRecommendationMode;\n    readonly base: ContextRecommendationBase;\n    readonly sourceBase?: ContextRecommendationBase;\n    readonly currentNodeIds: readonly string[];\n    readonly proposedNodeIds: readonly string[];\n    readonly addedNodeIds: readonly string[];\n    readonly removedNodeIds: readonly string[];\n    readonly selection: readonly ContextSelectionRecommendation[];\n    readonly archive: readonly ContextArchiveCandidate[];\n    readonly personalization?: {\n        readonly enabled: boolean;\n        readonly reviewer: \'parent-model\' | \'jev\' | \'goal-model-jev\' | \'goal-model-native\' | \'local\';\n        readonly calibrationSources?: readonly string[];\n        readonly thresholdSources?: readonly string[];\n        readonly managementMemory?: ContextManagementMemory;\n        readonly scopePolicyExamples?: readonly ContextScopePolicyExample[];\n        readonly examples: readonly {\n            readonly objective: string;\n            readonly action: ContextPolicyAction | \'exclude\';\n            readonly choice?: \'accept\' | \'reject\';\n            readonly content?: string;\n            readonly sourceSessionId?: SessionId;\n            readonly sourceEventSeq?: number;\n        }[];\n    };\n    readonly route?: ContextRouteAdvice;\n    readonly workStates?: readonly ContextWorkStateAdvice[];\n}',
   },
   {
     name: 'ContextReplacementNode',
@@ -4248,7 +4264,15 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContextRouteAdvice',
-    declaration: 'export interface ContextRouteAdvice {\n    readonly action: \'navigate\' | \'branch\' | \'return\';\n    readonly base: ContextRecommendationBase;\n    readonly objective: string;\n    readonly targetSessionId?: SessionId;\n    readonly reason: string;\n}',
+    declaration: 'export interface ContextRouteAdvice {\n    readonly action: \'navigate\' | \'branch\' | \'return\';\n    readonly base: ContextRecommendationBase;\n    readonly objective: string;\n    readonly targetSessionId?: SessionId;\n    readonly forkParentSessionId?: SessionId;\n    readonly contextNodeIds?: readonly string[];\n    readonly contextUnavailable?: boolean;\n    readonly reason: string;\n}',
+  },
+  {
+    name: 'ContextScopePolicyExample',
+    declaration: 'export interface ContextScopePolicyExample {\n    readonly sourceSessionId: SessionId;\n    readonly sourceEventSeq: number;\n    readonly at: number;\n    readonly objective: string;\n    readonly mode: ContextScopePolicyReview[\'mode\'];\n    readonly assignment: ContextScopePolicyReview[\'assignment\'];\n}',
+  },
+  {
+    name: 'ContextScopePolicyReview',
+    declaration: 'export interface ContextScopePolicyReview {\n    readonly reviewId: string;\n    readonly key: string;\n    readonly mode: \'task-owned\' | \'task-lineage\';\n    readonly assignment: \'new\' | \'existing\';\n    readonly sessionId: SessionId;\n    readonly sourceCount: number;\n}',
   },
   {
     name: 'ContextSelection',
@@ -4264,7 +4288,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContextStewardProfile',
-    declaration: 'export interface ContextStewardProfile {\n    readonly evidence: ContextPolicyEstimate;\n    readonly destination: ContextPolicyEstimate;\n    readonly branch: ContextPolicyEstimate;\n    readonly return: ContextPolicyEstimate;\n    readonly release: ContextPolicyEstimate;\n    readonly thresholds: {\n        readonly evidence: number;\n        readonly destination: number;\n    };\n    readonly rules: readonly ContextPolicyRule[];\n}',
+    declaration: 'export interface ContextStewardProfile {\n    readonly scopePolicyExamples?: readonly ContextScopePolicyExample[];\n    readonly evidence: ContextPolicyEstimate;\n    readonly destination: ContextPolicyEstimate;\n    readonly branch: ContextPolicyEstimate;\n    readonly return: ContextPolicyEstimate;\n    readonly release: ContextPolicyEstimate;\n    readonly thresholds: {\n        readonly evidence: number;\n        readonly destination: number;\n    };\n    readonly rules: readonly ContextPolicyRule[];\n}',
   },
   {
     name: 'ContextWorkStateAdvice',

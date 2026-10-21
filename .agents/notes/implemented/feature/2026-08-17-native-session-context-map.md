@@ -32,7 +32,7 @@ The client projects the graph through the Workspace runtime's native archive set
 
 ## Append-only compatibility
 
-Context changes never edit or delete transcript events. Include writes `context/compiler-snapshot`; plan changes write complete revisioned `contextify/plan` events. The `contextify@3` compiler selects model messages at request time, restores current-turn messages, and leaves the ordinary Harness surface intact.
+Context changes never edit or delete transcript events. Include writes `context/compiler-snapshot`; plan changes write complete revisioned `contextify/plan` events. The `contextify@3` compiler selects model messages at request time, restores current-turn messages, and leaves the ordinary Harness surface intact. Historical Include positions are bounded before the current conversational suffix after exclusions and replacement mapping. This keeps a shortened historical prefix from placing imported history behind the question or inside its tool exchange; it does not rewrite stored positions or sort messages by their physical append sequence.
 
 ## Testing
 

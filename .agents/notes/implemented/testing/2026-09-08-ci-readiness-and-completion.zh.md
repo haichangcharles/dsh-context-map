@@ -28,6 +28,10 @@ Status: implemented
 
 [Worker runtime binding 测试](../../../../packages/code-runtime/code-runtime-worker-thread/tests/runtime.spec.ts)为源码 worker 初始化保留五秒计算额度，并将 binding 延迟设为 6.5 秒。若将该空闲延迟计费，仍会超过整个计算额度。用例保留 15 秒测试期限与 30 秒墙钟上限，登记 Context 和回复定时器的清理，并保持热循环、诱饵 dispatch、墙钟上限及取消控制用例的原有限制。生产预算不变。
 
+[Headless DeepSeek 默认值夹具](../../../../apps/cli/tests/profiles/headless/tests/headless.expected.e2e.ts)让本地主请求流发送二十个间隔 60ms 的心跳，对应 1000ms idle watchdog；数据晚于该期限才到达，因而注释仍是保活所必需的。标题响应保留三个心跳，主请求完成前等待标题请求到达。精确的两个请求、主请求和标题各一次，以及零重试断言拒绝任何重复发送。[Adapter 测试](../../../../packages/llm/llm-deepseek/tests/adapter.spec.ts)继续通过虚拟时间验证精确的 idle 到期和注释脉冲。受控的首个心跳延迟 250ms 会在原 150ms 夹具下复现 TIMEOUT 与主请求/标题/主请求三次发送；较大间隔通过同一控制，不改变生产策略。原 CI 额外请求缺少重试详情，故该控制不能确认远端事件的原因。失败输出保留请求限额和重试记录。
+
+[Change-scope 夹具](../../../../scripts/change-scope.spec.ts)继承执行通道的测试与 hook 预算，创建私有仓库、推送到本地裸远端，并精确比较 feature 首次推送前后的已提交路径。一次 [Windows coverage 失败](https://github.com/haichangcharles/dsh-context-map/actions/runs/39197830563/job/117884316572)显示，该用例完成 Git 操作用了 57 秒，却因独立的 20 秒期限失败，尽管通道已经授予 90 秒。这些断言验证仓库内容，不衡量进程启动延迟；不添加重试，也不削弱断言。
+
 ## 考虑过的替代方案
 
 **增大独立等待时限。** 已有完成 Promise 时不采用。独立轮询期限仍会与执行通道的预算竞争。

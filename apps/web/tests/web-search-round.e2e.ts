@@ -16,7 +16,10 @@ import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, recordFixture, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { restoreFullWidthChat, connectFreshWorkspace, expandOwningTurnProcess, newEnglishPage, saveFailureShot } from './support.ts'
+import {
+  restoreFullWidthChat, connectFreshWorkspace, expandOwningTurnProcess,
+  newEnglishPage, saveFailureShot, waitForMessageContextControls,
+} from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/web-search-round', import.meta.url))
 const FIXTURE = fileURLToPath(new URL('../../../snapshots/web/web-search-round/session.v3.jsonl', import.meta.url))
@@ -266,6 +269,7 @@ describe('web e2e: shipped default web search', () => {
     const searchTool = page.locator('[data-tool="web_search"]')
     await expandOwningTurnProcess(page, searchTool)
     await searchTool.waitFor({ timeout: 10_000 })
+    await waitForMessageContextControls(page, 2)
     await restoreFullWidthChat(page)
     const snapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(UI_EXPECTED, snapshot, MODE)

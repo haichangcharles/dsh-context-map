@@ -27,6 +27,7 @@
     "tests/contextify-work-state.e2e.ts",
     "tests/contextify-explicit-web-correction.e2e.ts",
     "tests/contextify-draft-branch.e2e.ts",
+    "tests/contextify-goal-route.e2e.ts",
     "tests/contextify-long-horizon.e2e.ts",
     "tests/research-contextify-web-evidence.e2e.ts",
     "tests/product-walkthrough.capture.ts",

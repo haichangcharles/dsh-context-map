@@ -14,7 +14,8 @@ DSH Context Map 是一个基于 [DeepSeek Harness](https://github.com/deepseek-a
 - **显式上下文控制** —— Include 或 Exclude 单条用户输入和模型最终输出，同时不改写底层 Session log。
 - **Context Steward** —— 默认使用零模型 Local 建议，也可以显式选择有界 Fast 或隔离 Deep 审核；来源、目标分支与生命周期建议在确认后才改变状态。
 - **跨轮次复用** —— 把其他分支的来源带入活动 Session，在后续轮次停止使用，再次需要时重新带入，而不删除原始来源。
-- **个性化 Context 建议** —— 把 Client 确认的 Include/Exclude 与 Keep-current 选择作为后续审核的有界示例；建议在确认前绝不改变 Plan。
+- **个性化 Context 建议** —— 把 Client 确认的 Include/Exclude、Branch、Navigate、Return 与 Keep-current 选择作为后续审核的有界示例；建议在确认前绝不改变 Plan。
+- **任务归属检查** —— 可选择将当前模型的目标归属与 Jev Context 检查组合；不确定时弃权，每项修改仍需确认。
 - **Branch 推荐** —— 当一个已完成的 Q&A 更适合移动到平行 Session 时，以轻量方式询问用户是否创建原生分支。
 - **单节点 Archive** —— 使用确定性的占位内容隐藏过时语义，同时保留节点、边、原始事件和恢复路径。
 - **Prompt Dashboard** —— 为 Context、Archive 和 Branch 推荐器追加 Profile 级规则，也可以在显式解锁后完整覆盖基础 Prompt。
@@ -34,14 +35,14 @@ Context Map 为每个成功 Turn 保存一个最初用户输入节点和一个�
 <a id="run-from-source"></a>
 ### 从源码运行
 
-Context Steward 预览版位于 `codex/context-steward-runtime`（[PR #24](https://github.com/haichangcharles/dsh-context-map/pull/24)）。下面的命令会检出这一分支。
+Context Steward 预览版位于 `codex/personal-context-jev`（[PR #26](https://github.com/haichangcharles/dsh-context-map/pull/26)）。下面的命令会检出这一分支。
 
-安装 Node.js 22.x（至少 22.19）或 Node.js 24 及以上版本，以及 `package.json` 固定的 pnpm 11.7.0，然后运行：
+使用 Node.js 22.x（至少 22.19）或 Node.js 24.x（至少 24.22），以及 `package.json` 固定的 pnpm 11.7.0，然后运行：
 
 在 macOS 和 Linux 上，源码构建还需要可作为 `cc` 调用的 C11 编译器，以及包含开发头文件的 Node 安装。
 
 ```sh
-git clone --branch codex/context-steward-runtime --single-branch https://github.com/haichangcharles/dsh-context-map.git
+git clone --branch codex/personal-context-jev --single-branch https://github.com/haichangcharles/dsh-context-map.git
 cd dsh-context-map
 pnpm install
 pnpm run build

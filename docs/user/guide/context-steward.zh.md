@@ -12,6 +12,7 @@ Context Steward 让规划、查证、写作和头脑风暴保留在同一个可�
 - [选择上下文与目标分支](#choose-context-and-a-destination)
 - [审核 Agent 建议](#review-agent-advice)
 - [管理任务与偏好](#manage-work-and-preferences)
+- [保留管理记录](#keep-a-management-record)
 - [无需 API 的验证](#verify-without-an-api)
 
 <a id="start-a-workspace"></a>
@@ -38,7 +39,7 @@ Context Steward 让规划、查证、写作和头脑风暴保留在同一个可�
 | 模式 | 用途 | 额外模型请求 |
 | --- | --- | --- |
 | Local | 图约束、明确路由提示与已确认选择建议 | 零次；默认模式 |
-| Fast | 有界的语义来源与目标分支审核 | 显式选择时，一次不使用工具的请求 |
+| Fast | 有界的语义来源与目标分支审核 | 显式选择时一次无工具请求；可选目标模型加 Jev 至多两次 |
 | Deep | 主动检查隔离的完整树快照 | 显式 DSH 审核；默认 3 次请求，可配置 1–10 次，45 秒超时 |
 
 发送前审核草稿，或打开 Map 审核菜单。建议本身不会发送草稿、创建分支或修改 Context Plan。目标分支相关性和证据相关性分别判断：查证分支可以提供有用证据，而对话仍在写作分支继续。目标不明确时保留当前分支。Local 使用明确提示、词法匹配和已确认选择，不能证明一般语义理解。Deep 的请求上限包含重试，每次请求最多输出 1,200 tokens。
@@ -56,10 +57,51 @@ Preferences 视图汇总同一 Profile 内不同原生 Session 家族中反复�
 
 重置学习利用已记录的 Session 水位清空派生偏好投影。对话、原始选择记录和当前 Context Plan 会保留。之后的明确选择可以积累新证据。这种 policy memory 描述上下文管理习惯，不是一般人格或个人事实。
 
+在 Context Map 提示词设置中，快速 Context 决策模型可选择当前聊天模型、Jev、目标模型＋Jev Context 或目标模型＋完整任务 Context。Jev 需要 Host 配置 `TYPESAFE_API_KEY`，调用可能收费；仅切换选项不会发出请求。“参考已确认的 Context 选择”控制后续检查使用的历史案例与个人校准。展开审核表可分别查看模型案例和校准记录。策略重置或设置变化会取消持有旧证据的运行中检查。
+
+目标模型＋Jev Context 先识别精确草稿的任务及要求保留的历史。你可以要求只保留该任务自己的消息，或同时保留其祖先任务；新任务自身的历史从空集开始。要求保留范围时，Jev 只审核明确要求的来源例外：不能仅因相关性低就丢弃已要求保留的消息，也不能仅因相关就从其他任务借用来源。普通确认单会在任何变更前显示建议选材。
+
+审核显示 **仅保留本任务** 或 **保留本任务及父级任务** 时，完整同意实际改变的范围可为后续建议保留整次选择的样例。保持任一条目不变只记录局部反馈。Undo 会移除完整策略样例，Redo 会恢复，重置学习会将其从后续审核中排除。空范围、无变化选择与含来源例外的建议不产生这类样例。显示的选择不代表对你一般人格的判断。
+
+任务、保留要求或必需的祖先信息不明确时，不调用 Jev，也不生成组合式自动建议；手动选择仍然可用。任务目标或新建／已有选择存在冲突时同样如此。没有要求保留范围的草稿仍可使用相关性审核。草稿检查使用一次聊天模型及至多一次 Jev 调用；非草稿 Fast 检查只使用 Jev。Host 在首次调用前检查凭据，组合检查限时 45 秒。此模式为可选项，不代表已证明准确率提升。
+
+目标模型＋完整任务 Context 至多调用一次聊天模型，不调用 Jev，也不需要 Jev 凭据。需要保留完整任务或原始祖先链且没有来源例外时，可选择此模式；逐条选择来源请使用其他决策模型。新任务自有分支从空历史 Context 开始。任务或策略不明确，以及手动选择、替换或路由冲突时会弃权。只有精确草稿可提出切换目标；否则仅审核当前任务。每项变更仍需你批准。聊天模型可能收费；此选项保证相对于已校验归属的范围，不保证模型选对了任务。
+
+打开 **Context 偏好 → 已确认的完整策略样例**，查看最近四条有效历史模式、任务及原始事件引用。审核可以改用更早的相关案例，因此记录的样例可能与此近期列表不同。这些选择可供已启用的个性化审核参考，不授权当前更改。Context Undo/Redo 后请刷新；重置已学习的偏好会刷新列表并保留 Context Plan。
+
+<a id="keep-a-management-record"></a>
+## 保留管理记录
+
+暂停操作，选择对话家族中已知的最上级 Session，再使用顶部菜单的 **Download session log** 或 `/export`。[既有日志导出器](../../../packages/session-query/session-log-export/README.zh.md)会包含该 Session 及其已知后代。只导出子分支会遗漏祖先和兄弟分支。各 Session 依次读取，因此归档不是整个家族的原子快照。
+
+归档包含原始对话、已记录的请求、管理选择、工作区路径及引用附件，并未匿名化。请留在本地检查后再分享。Undo 与重置学习保留旧选择的原始记录，同时改变它们能否用于后续建议。若重置记录在其他家族，完整恢复 Profile 还需要那个家族的日志。各 Session 的序号和明确来源引用保留顺序；仅靠时间戳不能确定所有分支的全局先后。Client 声明的显示或确认不证明真人身份或注意力，导出也不包含每项临时审核细节。
+
+使用同一导出读取器、官方解码器和原生 Context 编译器验证所选 fixture 日志：
+
+```sh
+pnpm exec vitest run scripts/context-steward-export.spec.ts --maxWorkers=1
+```
+
+这项隔离工程检查在恢复后保留确认事件引用，并检查 Undo、Redo 和 Reset。它不会读取你已保存的对话，也不评估模型质量或真实用户偏好。
+
 <a id="verify-without-an-api"></a>
 ## 无需 API 的验证
 
-在仓库根目录使用受支持的 Node.js，并安装依赖后，导出构造的 30 轮 fixture（测试前置数据）与分离的预期结果：
+按[源码安装](../../../README.zh.md#run-from-source)完成 `pnpm run build` 后，在仓库根目录运行以下原生工作流检查；无需配置模型或打开浏览器：
+
+```sh
+pnpm exec vitest run packages/context/contextify/tests/route-scope.spec.ts packages/context/contextify/tests/scope-policy-runtime.spec.ts --maxWorkers=2
+```
+
+两组测试在隔离临时目录中调用实际 Session、Contextify 和 Context Plan 服务，模型及 Jev 响应由工程 fixture（测试前置数据）提供。它们检查：
+
+1. 在指定父级下 Branch，Return 时不携带子任务 Context，之后导航回该任务并重新激活其 Context。
+2. 完整确认实际改变的 Context、原事件引用，以及下一次 Host 目标输入中的对应样例。范围未变时不产生完整策略样例。
+3. 在新服务实例中从 JSONL 恢复，Undo／Redo，以及再次冷启动后仍然生效的重置学习。
+
+两个测试文件都应通过。这些是隔离工程场景，不是同一段连续用户会话或语义准确率评测；它们不会修改你保存的对话。
+
+要检查构造的 30 轮 fixture 与分离的预期结果，可以导出仅含当前前缀的数据包：
 
 ```sh
 node --import tsx/esm scripts/context-steward-replay.ts /tmp/context-steward-replay

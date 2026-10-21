@@ -108,7 +108,7 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
     await expect.poll(() => map.getByText(/2 \/ 2 in context/).count(), { timeout: 5_000 }).toBe(1)
     await expect.poll(() => map.locator('.react-flow__node').count(), { timeout: 5_000 }).toBe(2)
 
-    const rootActionName = await page.locator('button[aria-label^="Session actions for "]').first().getAttribute('aria-label')
+    const rootActionName = await page.locator('button[aria-label^="Session actions for "]').getAttribute('aria-label')
     if (rootActionName === null) throw new Error('Context Map root row action has no accessible name')
 
     await map.getByRole('article', { name: 'Assistant message: LIGHTHOUSE' }).click({ button: 'right' })
@@ -120,6 +120,13 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
     const child = scaffold.ctx.agents.list()
       .find(agent => agent.session.header.parentSession === sessionId)
     if (child === undefined) throw new Error('Context Map did not create a native child Session')
+    await expect.poll(() => map.locator(`[data-work-session-id="${child.id}"]`).textContent(),
+      { timeout: 10_000 }).toContain('Active ·')
+    // Parent and child titles need not be unique; reproduce the observed collision.
+    scaffold.ctx.sessionTitle.rename(child.session, rootActionName.slice('Session actions for '.length))
+    await expect.poll(() => page.getByRole('button', {
+      name: rootActionName, exact: true, includeHidden: true,
+    }).count(), { timeout: 10_000 }).toBe(2)
     await expect.poll(() => map.locator('.react-flow__node').count(), { timeout: 10_000 }).toBe(2)
     await expect.poll(() => page.locator('[role="treeitem"]').count(), { timeout: 10_000 }).toBe(3)
 
@@ -128,8 +135,11 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
     // action must now address that visible child instead of the hidden owner.
     const sessionActions = page.locator('button[aria-label^="Session actions for "]')
     await expect.poll(() => sessionActions.count(), { timeout: 5_000 }).toBe(2)
-    const rootAction = page.getByRole('button', { name: rootActionName, exact: true, includeHidden: true })
-    const rootRow = rootAction.locator('xpath=ancestor::*[@role="treeitem"][1]')
+    const rootRow = page.locator('[role="treeitem"][aria-selected="false"]').filter({
+      has: page.getByRole('button', { name: rootActionName, exact: true, includeHidden: true }),
+    })
+    await expect.poll(() => rootRow.count(), { timeout: 5_000 }).toBe(1)
+    const rootAction = rootRow.getByRole('button', { name: rootActionName, exact: true, includeHidden: true })
     await rootRow.hover()
     await expect.poll(() => rootAction.isVisible(), { timeout: 5_000 }).toBe(true)
     await rootAction.click()
@@ -138,7 +148,9 @@ describe.skipIf(MODE === 'record')('web e2e: pinned Context Map controls compile
       () => scaffold.ctx.workspaceRegistry.archivedSessionIds.includes(sessionId),
       { timeout: 10_000 },
     ).toBe(true)
-    await expect.poll(() => page.getByLabel(rootActionName, { exact: true }).count(), { timeout: 10_000 }).toBe(0)
+    expect(scaffold.ctx.workspaceRegistry.archivedSessionIds).not.toContain(child.id)
+    await expect.poll(() => rootRow.count(), { timeout: 10_000 }).toBe(0)
+    await expect.poll(() => page.getByLabel(rootActionName, { exact: true }).count(), { timeout: 10_000 }).toBe(1)
     await expect.poll(() => map.locator('.react-flow__node').count(), { timeout: 10_000 }).toBe(2)
 
     await map.getByRole('article', { name: `User message: ${PROMPT}` }).click({ button: 'right' })

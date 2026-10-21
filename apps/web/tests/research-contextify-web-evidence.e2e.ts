@@ -455,6 +455,7 @@ it('admits only source-valid worker reports through the optional assembled Web l
 
 it('uses reviewed Web Context choices in the assembled Fast recommendation path', async () => {
   const scaffold = await launchWebScaffold()
+  let reviewRequests = 0
   try {
     scaffold.ctx.llm.registerAdapter(['context-policy-fixture'], new class extends LlmAdapter {
       override resolveModel(provider: string, model: string) {
@@ -463,6 +464,7 @@ it('uses reviewed Web Context choices in the assembled Fast recommendation path'
       }
 
       override async * stream(): AsyncIterable<StreamChunk> {
+        reviewRequests++
         const text = '{"exclude":[],"include":[],"archive":[]}'
         yield { type: 'block-start', index: 0, blockType: 'text' }
         yield { type: 'text-delta', index: 0, text }
@@ -520,7 +522,9 @@ it('uses reviewed Web Context choices in the assembled Fast recommendation path'
     const proposal = await scaffold.ctx.contextify.recommend(agent, {
       planRevision: plan.revision, graphRevision: graph.revision,
       activeSessionId: agent.id,
-    }, 'Compare warranty terms')
+    }, 'Compare warranty terms', 'fast')
+    expect(proposal.mode).toBe('fast')
+    expect(reviewRequests).toBe(1)
     const target = `${agent.id}:${String(resultSeqs[13])}`
     expect(graph.records.find(node => node.id === target)).toMatchObject({
       sourceKind: 'web', webAction: 'web_fetch',

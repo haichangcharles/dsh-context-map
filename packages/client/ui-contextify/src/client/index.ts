@@ -98,9 +98,11 @@ export function apply(ctx: ClientContext): void {
       setNodeMode: async (ref, node, mode) => valueOf(await remote.setNodeMode(
         sessionId, ref, node, mode, 'contextify-client',
       )),
-      setNodeModes: async (ref, mutations, expectedGraphRevision, reviewedDeclinedNodeIds) => valueOf(await remote.setNodeModes(
-        sessionId, ref, mutations, expectedGraphRevision, 'contextify-client', reviewedDeclinedNodeIds,
-      )),
+      setNodeModes: async (ref, mutations, expectedGraphRevision, reviewedDeclinedNodeIds, displayedPolicyKey) => valueOf(
+        await remote.setNodeModes(
+          sessionId, ref, mutations, expectedGraphRevision, 'contextify-client', reviewedDeclinedNodeIds,
+          displayedPolicyKey,
+        )),
       reset: async ref => valueOf(await remote.reset(sessionId, ref)),
       undo: async ref => valueOf(await remote.undo(sessionId, ref)),
       redo: async ref => valueOf(await remote.redo(sessionId, ref)),
@@ -231,7 +233,7 @@ export function apply(ctx: ClientContext): void {
             await controller.refresh()
           },
           cancelRecommendation: () => controller.cancelRecommendation(),
-          applyRecommendations: declinedNodeIds => controller.applyRecommendations(declinedNodeIds),
+          applyRecommendations: (declinedNodeIds, key) => controller.applyRecommendations(declinedNodeIds, key),
           clearRecommendation: () => { controller.clearRecommendation() },
           rejectRoute: async (route: ContextRouteAdvice) => {
             const sourceScope = ctx.sessions.scope(sessionId)
@@ -239,9 +241,9 @@ export function apply(ctx: ClientContext): void {
               || ctx.conversation.input.for(sourceScope).state.getSnapshot().draft.trim() !== route.objective) {
               throw new Error(t('error.changedDraftReview'))
             }
-            valueOf(await remote.reviewRoute(sessionId, route, 'reject', undefined, 'contextify-client'))
+            valueOf(await remote.reviewRoute(sessionId, route, 'reject', undefined, 'contextify-client', undefined, undefined))
           },
-          acceptRoute: async (route: ContextRouteAdvice) => {
+          acceptRoute: async (route: ContextRouteAdvice, carryContext?: boolean, displayedPolicyKey?: string) => {
             if (route.base.activeSessionId !== sessionId) throw new Error(t('error.staleRoute'))
             const page = valueOf(await remote.familyPage(sessionId, undefined, 1))
             const view = valueOf(await remote.get(sessionId))
@@ -256,16 +258,18 @@ export function apply(ctx: ClientContext): void {
             }
             let targetId: SessionId
             if (route.action === 'branch') {
+              const parentId = route.forkParentSessionId ?? sessionId
+              if (!page.sessions.some(session => session.id === parentId)) throw new Error(t('error.destinationSession'))
               const graph = controller.getSnapshot().graph
               if (controller.getSnapshot().graphRevision !== page.revision || graph === undefined) {
                 throw new Error(t('error.staleRoute'))
               }
-              const pivot = graph.nodes.filter(node => node.sessionIds.includes(sessionId)
+              const pivot = graph.nodes.filter(node => node.sessionIds.includes(parentId)
                 && node.branchAtSeq !== null).at(-1)
               if (pivot?.branchAtSeq === null || pivot === undefined) {
                 throw new Error(t('error.noBranchTurn'))
               }
-              targetId = await ctx.sessions.fork({ sessionId, atSeq: pivot.branchAtSeq, increaseTitle: true })
+              targetId = await ctx.sessions.fork({ sessionId: parentId, atSeq: pivot.branchAtSeq, increaseTitle: true })
             } else {
               const target = route.targetSessionId
               if (target === undefined || !page.sessions.some(session => session.id === target)) {
@@ -276,11 +280,19 @@ export function apply(ctx: ClientContext): void {
             if (!ctx.conversation.moveDraft(sessionId, targetId, { draft, draftRev })) {
               throw new Error(t('error.draftTransfer'))
             }
+            const targetScope = ctx.sessions.scope(targetId)
+            const transferred = targetScope === undefined ? undefined
+              : ctx.conversation.input.for(targetScope).state.getSnapshot()
             try {
-              valueOf(await remote.reviewRoute(sessionId, route, 'accept', targetId, 'contextify-client'))
-            } finally {
-              ctx.sessions.open(targetId)
+              valueOf(await remote.reviewRoute(sessionId, route, 'accept', targetId, 'contextify-client',
+                carryContext, carryContext === true ? displayedPolicyKey : undefined))
+            } catch (cause) {
+              const restored = transferred !== undefined && ctx.conversation.moveDraft(targetId, sessionId,
+                { draft: transferred.draft, draftRev: transferred.draftRev })
+              ctx.sessions.open(restored ? sessionId : targetId)
+              throw cause
             }
+            ctx.sessions.open(targetId)
           },
           presentRecommendation: proposal => controller.presentRecommendation(proposal),
           dismissRecommendation: declinedNodeIds => controller.dismissRecommendation(declinedNodeIds),

@@ -38,6 +38,8 @@ export interface ScoredContextRouteCandidate extends ContextRouteCandidate {
 export interface ContextRouteProposal {
   readonly action: ContextRouteAction
   readonly targetSessionId?: SessionId
+  /** Native parent for a new child, not a destination to resume. */
+  readonly forkParentSessionId?: SessionId
   readonly sourceNodeIds?: readonly string[]
   readonly reason: string
   /** Ambiguous route suggestions must be reviewed; this module never auto-applies. */

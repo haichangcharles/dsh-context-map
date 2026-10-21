@@ -18,6 +18,8 @@ Status: implemented
 
 Web observation 夹具先等待准确的来源 article，再读取节点标签列表。绑定 Session 不代表 Client graph 已发布；既有等待必须位于列表断言之前。
 
+默认 Web search 快照等待已接纳的用户消息和已完成的最终助手消息，各有四个 Context 控件。只有用户控件的发布是中间状态，且该发布也可能晚于搜索结果可见。Golden 保留此前全部控件，并加入逐项核对过的最终助手四个控件；Session/model 记录不变。Session 导出的几何检查等待全宽 Chat 收起动画结束，并在一次浏览器求值中读取全部三个矩形；独立协议调用可能看到不同动画帧。32 像素相邻断言保持不变。
+
 built-boot 测试验证准确的 SVG 属性、装饰性祖先以及其所属按钮确实位于可访问的 New session 控件列表中。多个独立的 New session 按钮是合法的。基准仅加入逐项核对过的合法 Context 控件。原始 Session/model JSONL、回放请求、文件内容、图片几何、反馈释放及队列顺序断言保持不变。
 
 SDK的手写`subagent-list-agents`轨迹同样要求子任务结算通知出现在父任务的独立下一轮。场景通过patch列表复用现有`subagent-send-message`事件屏障，防止快速子任务在父任务仍运行的启动轮内结算。此处只改变测试调度，生产continuation语义、超时和golden均不变。所属SDK语料在Node24下18项全通过，精确案例在Node22下也通过。此前远端120秒超时缺少临时日志，未确认其直接原因；此屏障消除的是另外核实可达的时序依赖。

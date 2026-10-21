@@ -279,6 +279,26 @@ describe('ContextMapPanel', () => {
     expect(mapActions.setNodeModes).not.toHaveBeenCalled()
   })
 
+  it.each(['en', 'zh'] as const)('inspects confirmed complete policies and refreshes them after reset (%s)', async (language) => {
+    const h = mount(fixture(), {}, [], language)
+    const profile = await h.mapActions.inspectPolicy()
+    vi.mocked(h.mapActions.inspectPolicy).mockResolvedValueOnce({ ...profile, scopePolicyExamples: [
+      { sourceSessionId: root, sourceEventSeq: 81, at: 1, objective: 'Writing scope fixture', mode: 'task-owned', assignment: 'existing' },
+      { sourceSessionId: child, sourceEventSeq: 82, at: 2, objective: 'Planning scope fixture', mode: 'task-lineage', assignment: 'new' },
+    ] }).mockResolvedValue({ ...profile, scopePolicyExamples: [] })
+    fireEvent.click(screen.getByRole('button', { name: language === 'en' ? 'Context preferences' : 'Context 偏好' }))
+    expect(await screen.findByText(language === 'en' ? 'Only this task' : '仅保留本任务')).toBeTruthy()
+    expect(screen.getByText(language === 'en' ? 'This task and its parent tasks' : '保留本任务及父级任务')).toBeTruthy()
+    expect(screen.getByText(language === 'en' ? 'Task at the time: Writing scope fixture' : '当时的任务: Writing scope fixture')).toBeTruthy()
+    expect(screen.getByText(language === 'en' ? 'Record source: root-session:81' : '记录来源: root-session:81')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: language === 'en' ? 'Reset learned preferences' : '重置已学习的偏好' }))
+    await waitFor(() => { expect(screen.queryByText(/Writing scope fixture/)).toBeNull() })
+    expect(screen.getByText(language === 'en' ? 'No active complete-scope approvals yet.' : '尚无可用的完整范围确认样例。')).toBeTruthy()
+    expect(h.mapActions.resetPolicy).toHaveBeenCalledOnce()
+    expect(h.mapActions.reset).not.toHaveBeenCalled()
+    expect(h.mapActions.setNodeModes).not.toHaveBeenCalled()
+  })
+
   it('reviews a proposed lifecycle state independently from context selection', async () => {
     const base = fixture()
     const proposal = { mode: 'local' as const,
@@ -909,6 +929,8 @@ describe('ContextMapPanel', () => {
     expect(h.mapActions.acceptRoute).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Return with draft' }))
     expect(h.mapActions.acceptRoute).toHaveBeenCalledWith(route)
+    fireEvent.click(screen.getByRole('button', { name: 'Move draft with proposed Context' }))
+    expect(h.mapActions.acceptRoute).toHaveBeenCalledWith(route, true)
     expect(h.mapActions.applyRecommendations).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Stay in this branch' }))
     expect(h.mapActions.rejectRoute).toHaveBeenCalledWith(route)
@@ -1190,7 +1212,7 @@ describe('ContextifyController', () => {
     const controller = new ContextifyController(transport)
     await controller.refresh()
     const recommending = controller.recommend()
-    expect(controller.getSnapshot().recommendation.phase).toBe('running')
+    await vi.waitFor(() => { expect(controller.getSnapshot().recommendation.phase).toBe('running') })
     const proposal = {
       mode: 'fast' as const,
       base: { planRevision: 3, graphRevision: 'family-20', activeSessionId: child },
@@ -1304,7 +1326,7 @@ describe('ContextifyController', () => {
     await controller.refresh()
 
     const recommendation = controller.recommend('deep')
-    expect(controller.getSnapshot().recommendation).toEqual({ phase: 'running', mode: 'deep' })
+    await vi.waitFor(() => { expect(controller.getSnapshot().recommendation).toEqual({ phase: 'running', mode: 'deep' }) })
     expect(transport.recommend).toHaveBeenCalledWith(
       { planRevision: 3, graphRevision: 'family-20', activeSessionId: child },
       undefined,
@@ -1669,4 +1691,32 @@ describe('Context Map recovery and explicit evidence boundaries', () => {
     expect(h.mapActions.setNodeMode).not.toHaveBeenCalled()
   })
 
+})
+
+it('echoes the displayed policy key from the actual panel only for complete Context approval', async () => {
+  for (const carry of [false, true]) {
+    const current = fixture(), sibling = sid('sibling-writing')
+    const graph = { ...current.graph!, sessions: [...current.graph!.sessions,
+      { id: sibling, parentSessionId: root, seedLength: 5, depth: 1, tipNodeId: 'sibling:12' }],
+    nodes: [...current.graph!.nodes, node('sibling:12', 12, 'user', 'Separate writing task', sibling)] }
+    const base = { planRevision: 3, graphRevision: 'family-20', activeSessionId: child }
+    const route = { action: 'navigate' as const, base, objective: 'Resume separate writing',
+      targetSessionId: sibling, contextNodeIds: ['sibling:12'], reason: 'Resume that writing task' }
+    const scopePolicy = { reviewId: 'fixture-panel-publication', key: 'e'.repeat(64), mode: 'task-owned' as const,
+      assignment: 'existing' as const, sessionId: sibling, sourceCount: 1 }
+    const proposal = { mode: 'fast' as const, base, currentNodeIds: ['root:1', 'root:2', 'child:8'],
+      proposedNodeIds: ['sibling:12'], addedNodeIds: ['sibling:12'], removedNodeIds: ['root:1', 'root:2', 'child:8'],
+      selection: [{ nodeId: 'sibling:12', action: 'include' as const, reason: 'Selected task', confidence: 'high' as const },
+        ...['root:1', 'root:2', 'child:8'].map(nodeId => ({ nodeId, action: 'exclude' as const,
+          reason: 'Different task', confidence: 'high' as const }))], archive: [], scopePolicy, route }
+    const h = mount({ ...current, graph, recommendation: { phase: 'ready', proposal } })
+    try {
+      expect(screen.getByText('Only this task')).toBeTruthy()
+      fireEvent.click(screen.getByRole('button', { name: carry ? 'Move draft with proposed Context' : 'Apply proposed context' }))
+      await waitFor(() => {
+        if (carry) expect(h.mapActions.acceptRoute).toHaveBeenCalledWith(route, true, scopePolicy.key)
+        else expect(h.mapActions.applyRecommendations).toHaveBeenCalledWith([], scopePolicy.key)
+      })
+    } finally { h.view.unmount() }
+  }
 })
